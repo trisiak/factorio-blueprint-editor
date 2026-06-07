@@ -17,6 +17,7 @@ import { IConnection } from '../core/WireConnections'
 import { IPoint } from '../types'
 import { Dialog } from '../UI/controls/Dialog'
 import { Viewport } from './Viewport'
+import { PinchPanRecognizer, PinchPanUpdate } from './PointerGestures'
 import { EntitySprite } from './EntitySprite'
 import { WiresContainer } from './WiresContainer'
 import { UnderlayContainer } from './UnderlayContainer'
@@ -111,6 +112,7 @@ export class BlueprintContainer extends Container {
     private copyModeUpdateFn: (endX: number, endY: number) => void
     private deleteModeUpdateFn: (endX: number, endY: number) => void
     private copySettingsActive = false
+    private readonly pointerGestures = new PinchPanRecognizer()
 
     // PIXI properties
     public readonly eventMode = 'static'
@@ -391,11 +393,60 @@ export class BlueprintContainer extends Container {
             this.removeEventListener('wheel', onWheel)
         })
 
-        this.addEventListener('pointerdown', G.actions.pressButton.bind(G.actions))
+        // Multi-touch (pinch-zoom + two-finger pan) lives alongside the existing
+        // single-pointer mouse pipeline. On touch there is no hover and a second
+        // finger must cancel whatever the first finger started (pan/build/mine),
+        // so the single-pointer action dispatch is gated through onPointerDown
+        // instead of binding `pressButton` directly to the canvas.
+        const onPointerDown = (e: FederatedPointerEvent): void => {
+            this.pointerGestures.down(e.pointerId, e.global.x, e.global.y)
+            if (this.pointerGestures.pointerCount >= 2) {
+                // a multi-touch gesture began: cancel the single-pointer action
+                // the first finger may have started and don't dispatch a new one
+                G.actions.releaseAll()
+                return
+            }
+            G.actions.pressButton(e as unknown as PointerEvent)
+        }
+        const onPointerMove = (e: FederatedPointerEvent): void => {
+            const gesture = this.pointerGestures.move(e.pointerId, e.global.x, e.global.y)
+            if (gesture) this.applyPinchPan(gesture)
+        }
+        const onPointerUp = (e: FederatedPointerEvent): void => {
+            this.pointerGestures.up(e.pointerId)
+        }
+
+        this.addEventListener('pointerdown', onPointerDown)
+        this.on('globalpointermove', onPointerMove)
+        this.addEventListener('pointerup', onPointerUp)
+        this.addEventListener('pointerupoutside', onPointerUp)
+        this.addEventListener('pointercancel', onPointerUp)
         this.on('destroyed', () => {
-            this.removeEventListener('pointerdown', G.actions.pressButton.bind(G.actions))
+            this.removeEventListener('pointerdown', onPointerDown)
+            this.off('globalpointermove', onPointerMove)
+            this.removeEventListener('pointerup', onPointerUp)
+            this.removeEventListener('pointerupoutside', onPointerUp)
+            this.removeEventListener('pointercancel', onPointerUp)
+            this.pointerGestures.clear()
             G.actions.releaseAll()
         })
+    }
+
+    /** Apply an incremental pinch/two-finger-pan gesture to the viewport. */
+    private applyPinchPan(g: PinchPanUpdate): void {
+        // two-finger pan: screen-space translation of the gesture center
+        if (g.panX !== 0 || g.panY !== 0) {
+            this.viewport.translateBy(g.panX, g.panY)
+        }
+        // pinch zoom: scale multiplicatively about the gesture center. zoomBy is
+        // additive on top of the (per-frame reset) scale, so `scale - 1` makes
+        // the next matrix update multiply the current zoom by `scale`. Reusing
+        // zoomBy keeps the existing min/max-zoom constraints intact.
+        if (g.scale !== 1) {
+            const [worldX, worldY] = this.toWorld(g.centerX, g.centerY)
+            this.viewport.setScaleCenter(worldX, worldY)
+            this.viewport.zoomBy(g.scale - 1)
+        }
     }
 
     public get entityForCopyData(): Entity {
