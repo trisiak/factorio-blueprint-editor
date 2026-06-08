@@ -12,6 +12,7 @@ import EDITOR, {
     BookWithNoBlueprintsError,
     encode,
     getBlueprintOrBookFromSource,
+    installTestHook,
 } from '@fbe/editor'
 import { initToasts } from './toasts'
 import { initFeedbackButton } from './feedbackButton'
@@ -118,6 +119,11 @@ editor
         }
 
         registerActions()
+
+        // Opt-in e2e probe for on-canvas state that the DOM can't expose.
+        if (new URLSearchParams(window.location.search).has('test')) {
+            installTestHook()
+        }
 
         const changeBookIndex = async (index: number): Promise<void> => {
             bp = book.selectBlueprint(index)
@@ -340,18 +346,24 @@ function registerActions(): void {
         },
     })
 
+    const infoPanel = document.getElementById('info-panel')
+    const toggleInfoPanel = (): void => {
+        infoPanel.classList.toggle('active')
+    }
+    const closeInfoPanel = (): void => infoPanel.classList.remove('active')
+
+    // Touch devices have no keyboard, so the corner hint doubles as the
+    // open/close button and the panel gets an on-screen close button.
+    document.getElementById('corner-panel').addEventListener('click', toggleInfoPanel)
+    document.getElementById('info-panel-close').addEventListener('click', closeInfoPanel)
+
     window.addEventListener('keydown', e => {
         if (e.target instanceof HTMLInputElement) return
         if (e.target instanceof HTMLTextAreaElement) return
-        const infoPanel = document.getElementById('info-panel')
         if (e.key === 'i') {
-            if (infoPanel.classList.contains('active')) {
-                infoPanel.classList.remove('active')
-            } else {
-                infoPanel.classList.add('active')
-            }
+            toggleInfoPanel()
         } else if (e.key === 'Escape') {
-            infoPanel.classList.remove('active')
+            closeInfoPanel()
         }
     })
 

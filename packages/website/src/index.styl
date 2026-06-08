@@ -82,6 +82,7 @@ html
     position: fixed
     left: 0
     top: 0
+    cursor: pointer
     background-color: #303030
     border-bottom-right-radius: 10px
     padding: 5px 10px
@@ -117,14 +118,80 @@ html
     font: 12px 'Roboto', sans-serif !important
     &.main
         position: fixed
-        bottom: 0
+        // Anchored under the top-left button stack; settingsPane.ts refines the
+        // exact `top`/`max-height` at runtime. Previously bottom-left, where the
+        // pane's open/close bar sat on top of the quickbar.
+        top: 80px
         left: 0
         z-index: 5
+    // The pane is toggled by the top-left Settings button, so dat.gui's own
+    // open/close bar is removed (it overlapped the quickbar).
+    .close-button
+        display: none
     .slider
         margin-left: 0 !important
         width: 65% !important
     .c select
         width: 100%
+
+// Touch-friendly settings pane. `body.mobile` is toggled from the editor's
+// input mode (see settingsPane.ts), not a media query, so it tracks the user's
+// explicit desktop/mobile choice rather than just the device.
+body.mobile
+    .dg.main
+        width: unquote('min(360px, 100vw) !important')
+    .dg
+        // Taller touch rows, but only for the *direct* rows of an open list.
+        // dat.gui collapses a closed pane/folder with `.dg .closed li{height:0}`,
+        // and an unscoped `height: 40px` here outranks it. The child combinator
+        // is load-bearing: a plain descendant (`ul:not(.closed) li`) still matches
+        // a *closed folder's* rows through the open root <ul> ancestor, leaving
+        // the folder stuck open. `> li` keys off the row's own list instead.
+        ul:not(.closed) > li:not(.folder)
+            height: 40px
+            line-height: 40px
+        li.title
+            height: 40px
+            line-height: 40px
+        ul:not(.closed) > li .c
+            line-height: 40px
+            input[type=text]
+            select
+                height: 30px
+            input[type=checkbox]
+                width: 22px
+                height: 22px
+
+    // Compact, icon-only square buttons stacked flush in the top-left, to save
+    // space on small screens. Targets the three icon buttons specifically (the
+    // externally-injected feedback button has no icon, so it's left untouched).
+    #buttons
+        .discord-button
+        .github-button
+        .settings-button
+            display: flex
+            align-items: center
+            justify-content: center
+            width: 44px
+            height: 44px
+            padding: 0
+            border-left: 0
+            border-bottom-right-radius: 0
+            transform: none
+            &:hover
+            &:active
+            &:focus
+                transform: none
+                filter: brightness(1.15)
+            span
+                display: none
+            img
+                position: static
+                top: auto
+                left: auto
+                transform: none
+                width: 24px
+                height: 24px
 
 #editor
     position: fixed
@@ -190,7 +257,11 @@ html
 
         span
             position: absolute
-            margin-left: 25px
+            // pinned explicitly (not via static position) so it lands the same in
+            // an <a> and a <button> — the latter centers its content differently
+            top: 50%
+            left: 25px
+            transform: translateY(-50%)
 
         img
             position: absolute
@@ -219,6 +290,18 @@ html
         img
             width: 20px
 
+    .settings-button
+        width: 110px
+        border-left: 5px solid #8a8a8a
+        background-color: #43464b
+        cursor: pointer
+        outline: none
+        img
+            width: 20px
+            height: auto
+            top: 50%
+            transform: translate(-50%, -50%)
+
     .doorbell-button
         width: 95px
         border-left: 5px solid #1E88E5
@@ -233,8 +316,11 @@ html
     top: 50vh
     left: 50vw
     transform: translate(-50%, -50%)
-    width: 40vw
-    max-width: 640px
+    // unquote() so Stylus emits the literal CSS min() instead of evaluating its
+    // own built-in min() at compile time (which would collapse it to one value).
+    width: unquote('min(640px, 90vw)')
+    max-height: calc(100dvh - 32px)
+    overflow-y: auto
     z-index: 100
     color: white
     background-color: #303030
@@ -275,6 +361,24 @@ html
     .copyright-notice
         font-size: 0.9em
         text-align: center
+
+#info-panel-close
+    position: absolute
+    top: 8px
+    right: 8px
+    width: 36px
+    height: 36px
+    padding: 0
+    line-height: 36px
+    font-size: 28px
+    color: white
+    background: transparent
+    border: 0
+    border-radius: 6px
+    cursor: pointer
+    &:hover
+    &:active
+        background-color: rgba(255, 255, 255, 0.1)
 
 
 /* TOASTS */

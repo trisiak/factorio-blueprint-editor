@@ -15,26 +15,54 @@ export function initSettingsPane(
 ): {
     changeBook: (bpOrBook: Book | Blueprint) => void
 } {
+    // On touch devices the pane is more intrusive (bigger touch targets, full
+    // width) so default it closed unless the user has made an explicit choice.
+    const persistedClosed = localStorage.getItem('dat.gui.closed')
+    const startClosed =
+        persistedClosed === null ? inputMode.mode === 'mobile' : persistedClosed === 'true'
+
     const gui = new GUI({
         autoPlace: false,
         hideable: false,
         closeOnTop: true,
-        closed: localStorage.getItem('dat.gui.closed') === 'true',
+        closed: startClosed,
         width: 320,
     })
 
     gui.domElement.style.overflowX = 'hidden'
     gui.domElement.style.overflowY = 'auto'
-    gui.domElement.style.maxHeight = `${window.innerHeight}px`
-    window.addEventListener('resize', () => {
-        gui.domElement.style.maxHeight = `${window.innerHeight}px`
-    })
+
+    // Anchor the pane just under the top-left button stack (it's toggled by the
+    // Settings button there) instead of dat.gui's default bottom-left, where its
+    // open/close bar overlapped the quickbar.
+    const buttonsEl = document.getElementById('buttons')
+    const GAP = 4
+    const positionPane = (): void => {
+        const top = (buttonsEl ? Math.round(buttonsEl.getBoundingClientRect().bottom) : 80) + GAP
+        gui.domElement.style.top = `${top}px`
+        gui.domElement.style.maxHeight = `${window.innerHeight - top}px`
+    }
+    positionPane()
+    window.addEventListener('resize', positionPane)
+    // The stack's height changes (compact buttons on mobile, async icon loads),
+    // and those reflows don't fire `resize`. A ResizeObserver re-anchors the pane
+    // whenever the stack actually changes size, free of init-order races.
+    if (buttonsEl && 'ResizeObserver' in window) {
+        new ResizeObserver(positionPane).observe(buttonsEl)
+    }
 
     window.addEventListener('visibilitychange', () =>
         localStorage.setItem('dat.gui.closed', String(gui.closed))
     )
 
     document.body.appendChild(gui.domElement)
+
+    // dat.gui's own open/close bar is hidden (CSS); drive the pane from the
+    // top-left Settings button instead.
+    document.getElementById('settings-button')?.addEventListener('click', () => {
+        if (gui.closed) gui.open()
+        else gui.close()
+    })
 
     const guiBPIndex = gui
         .add({ bpIndex: 0 }, 'bpIndex', 0, 0, 1)
@@ -186,6 +214,19 @@ export function initSettingsPane(
     keybindsFolder
         .add({ resetDefaults: () => EDITOR.resetKeybinds() }, 'resetDefaults')
         .name('Reset Defaults')
+
+    // Mobile-friendliness: drive a `body.mobile` class off the input mode (CSS in
+    // index.styl widens the pane and enlarges touch targets), and hide the
+    // Keybinds folder — it edits keyboard combos, which are meaningless without a
+    // keyboard and otherwise dominate the pane's height.
+    const syncMobileLayout = (mode: InputMode): void => {
+        const mobile = mode === 'mobile'
+        document.body.classList.toggle('mobile', mobile)
+        keybindsFolder.domElement.parentElement.style.display = mobile ? 'none' : ''
+        // (the ResizeObserver on #buttons re-anchors the pane when its height changes)
+    }
+    syncMobileLayout(inputMode.mode)
+    inputMode.on('change', syncMobileLayout)
 
     return { changeBook }
 }
