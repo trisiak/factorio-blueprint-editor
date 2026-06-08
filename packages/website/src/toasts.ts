@@ -2,6 +2,12 @@ interface IToastsOptions {
     text: string
     type?: 'success' | 'info' | 'warning' | 'error'
     timeout?: number
+    /**
+     * Optional call-to-action button rendered inside the toast. Clicking it runs
+     * `callback` and dismisses the toast (without triggering the toast's own
+     * click-to-dismiss). Used for the "restore saved blueprint" prompt.
+     */
+    action?: { text: string; callback: () => void }
 }
 
 export function initToasts(): (options: IToastsOptions) => void {
@@ -27,6 +33,30 @@ export function initToasts(): (options: IToastsOptions) => void {
 
         toast.classList.add(`toasts-${options.type || 'info'}`)
 
+        const dismiss = (): void => {
+            toast.classList.add('toasts-toast-fadeOut')
+            toast.addEventListener(
+                'transitionend',
+                () => {
+                    if (toast.parentNode === container) container.removeChild(toast)
+                },
+                { once: true }
+            )
+        }
+
+        if (options.action) {
+            const button = document.createElement('button')
+            button.className = 'toasts-action'
+            button.textContent = options.action.text
+            button.addEventListener('click', e => {
+                // Don't let the click also trigger the toast's dismiss-on-click.
+                e.stopPropagation()
+                options.action.callback()
+                dismiss()
+            })
+            toast.appendChild(button)
+        }
+
         toast.addEventListener(
             'animationend',
             () => {
@@ -43,16 +73,7 @@ export function initToasts(): (options: IToastsOptions) => void {
             promises.push(new Promise(resolve => setTimeout(resolve, options.timeout || 5000)))
         }
 
-        Promise.race(promises).then(() => {
-            toast.classList.add('toasts-toast-fadeOut')
-            toast.addEventListener(
-                'transitionend',
-                () => {
-                    container.removeChild(toast)
-                },
-                { once: true }
-            )
-        })
+        Promise.race(promises).then(dismiss)
 
         container.prepend(toast)
     }

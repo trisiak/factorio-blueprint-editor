@@ -16,6 +16,12 @@ import EDITOR, {
 import { initToasts } from './toasts'
 import { initFeedbackButton } from './feedbackButton'
 import { initSettingsPane } from './settingsPane'
+import {
+    saveBlueprint,
+    loadSavedBlueprint,
+    clearSavedBlueprint,
+    planBlueprintLoad,
+} from './blueprintStorage'
 
 document.addEventListener('contextmenu', e => e.preventDefault())
 
@@ -67,7 +73,11 @@ if (isMobile.any && forceDesktopOnly) {
     loadingScreen.el.classList.add('error')
     throw new Error('MOBILE_DEVICE_NOT_SUPPORTED')
 }
-if (isMobile.any) {
+// Touch support is experimental; let mobile users know — but only once. Now that
+// the blueprint persists across reloads, reloading is a normal part of the
+// workflow, and re-showing this on every load is just noise.
+if (isMobile.any && localStorage.getItem('fbe:touchToastSeen') !== 'true') {
+    localStorage.setItem('fbe:touchToastSeen', 'true')
     createToast({
         text:
             'Touch support is experimental.<br>' +
@@ -89,18 +99,13 @@ if (typeof WebAssembly !== 'object' && typeof WebAssembly.instantiate !== 'funct
     throw new Error('WEB_ASSEMBLY_NOT_SUPPORTED')
 }
 
-const params = window.location.search.slice(1).split('&')
-
-let bpSource: string
-let bpIndex = 0
-for (const p of params) {
-    if (p.includes('source')) {
-        bpSource = p.split('=')[1]
-    }
-    if (p.includes('index')) {
-        bpIndex = Number(p.split('=')[1])
-    }
-}
+// Parse with URLSearchParams so a `?source=<value>` is read whole and decoded —
+// the old hand-split on '=' truncated raw blueprint strings at their base64
+// padding ('='), and didn't percent-decode. `null` (param absent) is normalized
+// to `undefined` so the loader treats it as "no source given".
+const params = new URLSearchParams(window.location.search)
+const bpSource: string | undefined = params.get('source') ?? undefined
+const bpIndex = params.get('index') ? Number(params.get('index')) : 0
 
 let changeBookForIndexSelector: (bpOrBook: Book | Blueprint) => void
 
@@ -120,11 +125,7 @@ editor
         }
         changeBookForIndexSelector = initSettingsPane(editor, changeBookIndex).changeBook
 
-        getBlueprintOrBookFromSource(bpSource)
-            .catch(error => createBPImportError(error))
-
-            .then(bpOrBook => loadBp(bpOrBook || new Blueprint()))
-
+        loadInitialBlueprint()
             .then(() => createWelcomeMessage())
             .catch(error => createBPImportError(error))
     })
@@ -138,7 +139,91 @@ window.addEventListener('visibilitychange', () => {
     localStorage.setItem('quickbarItemNames', JSON.stringify(editor.quickbarItems))
 })
 
-async function loadBp(bpOrBook: Blueprint | Book): Promise<void> {
+// Autosave the working blueprint so a reload (or a backgrounded mobile tab being
+// discarded) doesn't wipe it. Persisting on `visibilitychange` is the
+// recommended moment to checkpoint state — it fires when a tab is hidden, which
+// covers tab close, navigation and mobile app-switch. An empty blueprint clears
+// the save so a cleared editor stays cleared across reloads.
+window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'hidden') return
+    if (bp === undefined) return
+
+    const isEmpty = book === undefined && bp.isEmpty()
+    if (isEmpty) {
+        clearSavedBlueprint()
+        return
+    }
+
+    encode(book || bp)
+        .then(saveBlueprint)
+        .catch(error => console.error('Failed to autosave blueprint', error))
+})
+
+// Reads the local autosave (if any) once, before init, so the loader can weigh
+// it against the URL `?source` argument.
+const savedBlueprint = loadSavedBlueprint()
+
+// Decide what to show on first load: the URL-named blueprint, the local
+// autosave, or a blank canvas — and, in the mixed case (URL + autosave), offer
+// to bring the autosave back.
+async function loadInitialBlueprint(): Promise<void> {
+    const plan = planBlueprintLoad(bpSource, savedBlueprint)
+
+    if (plan.kind === 'empty') {
+        await loadBp(new Blueprint())
+        return
+    }
+
+    if (plan.kind === 'restore') {
+        const bpOrBook = await getBlueprintOrBookFromSource(plan.source).catch(error => {
+            // A corrupt autosave shouldn't strand the user on the loading screen
+            // forever — drop it and fall back to a blank blueprint.
+            console.error('Failed to restore saved blueprint', error)
+            clearSavedBlueprint()
+            return undefined
+        })
+        await loadBp(bpOrBook || new Blueprint(), 'Restored your previous blueprint')
+        return
+    }
+
+    // plan.kind === 'url' — the URL argument is an explicit request, so it wins.
+    const bpOrBook = await getBlueprintOrBookFromSource(plan.source).catch(error => {
+        createBPImportError(error)
+        return undefined
+    })
+    await loadBp(bpOrBook || new Blueprint())
+
+    // Mixed state: there's also a local autosave. Only offer to restore it if it
+    // actually differs from what the URL just loaded, so re-opening the same
+    // link (autosave == URL blueprint) doesn't nag.
+    if (plan.savedString && bpOrBook) {
+        const urlString = await encode(book || bp).catch(() => null)
+        if (urlString !== plan.savedString) {
+            createToast({
+                text: 'You have a locally saved blueprint that differs from the one in this link.',
+                type: 'info',
+                timeout: Infinity,
+                action: {
+                    text: 'Restore my saved blueprint',
+                    callback: () => {
+                        loadingScreen.show()
+                        getBlueprintOrBookFromSource(plan.savedString)
+                            .then(saved => loadBp(saved, 'Restored your saved blueprint'))
+                            .catch(error => {
+                                loadingScreen.hide()
+                                createBPImportError(error)
+                            })
+                    },
+                },
+            })
+        }
+    }
+}
+
+async function loadBp(
+    bpOrBook: Blueprint | Book,
+    successMessage = 'Blueprint string loaded successfully'
+): Promise<void> {
     if (bpOrBook instanceof Book) {
         book = bpOrBook
         bp = book.selectBlueprint(bpIndex ? bpIndex : undefined)
@@ -154,7 +239,7 @@ async function loadBp(bpOrBook: Blueprint | Book): Promise<void> {
 
     const bpIsEmpty = bpOrBook instanceof Blueprint && bpOrBook.isEmpty()
     if (!bpIsEmpty) {
-        createToast({ text: 'Blueprint string loaded successfully', type: 'success' })
+        createToast({ text: successMessage, type: 'success' })
     }
 }
 
@@ -200,6 +285,7 @@ function registerActions(): void {
         modifiers: { shift: true },
         callbacks: {
             onPress: () => {
+                clearSavedBlueprint()
                 loadBp(new Blueprint())
                 return true
             },
