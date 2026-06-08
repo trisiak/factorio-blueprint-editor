@@ -5,6 +5,7 @@ import { Panel } from './controls/Panel'
 import { Slot } from './controls/Slot'
 import F from './controls/functions'
 import { colors } from './style'
+import { fitToWidthScale } from './quickbarLayout'
 
 class QuickbarSlot extends Slot<string | undefined> {
     public get itemName(): string {
@@ -157,12 +158,9 @@ export class QuickbarPanel extends Panel {
     }
 
     protected override setPosition(): void {
-        // The quickbar is a fixed-width panel; on screens narrower than it (phones
-        // in portrait, narrow desktop windows) it would otherwise run off both
-        // edges. Scale it down uniformly to fit the viewport width, then center.
-        const margin = 8
-        const available = G.app.screen.width - margin * 2
-        const scale = Math.min(1, available / this.iWidth)
+        // Scale to fit narrow viewports (see quickbarLayout) so the fixed-width
+        // panel never runs off the edges, then center along the bottom.
+        const scale = fitToWidthScale(G.app.screen.width, this.iWidth)
         this.scale.set(scale)
 
         const scaledWidth = this.iWidth * scale

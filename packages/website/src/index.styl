@@ -134,7 +134,12 @@ body.mobile
     .dg.main
         width: unquote('min(360px, 100vw) !important')
     .dg
-        li:not(.folder)
+        // Scope the taller touch rows to an *open* list: dat.gui collapses a
+        // closed pane via `.dg .closed li { height: 0 }`, and an unscoped
+        // `height: 40px` here outranks it (more elements) — so the controllers
+        // would stay visible when the pane is closed. `ul:not(.closed)` makes the
+        // override yield to the collapse.
+        ul:not(.closed) li:not(.folder)
             height: 40px
             line-height: 40px
         li.title
@@ -143,7 +148,7 @@ body.mobile
         .close-button
             height: 40px
             line-height: 40px
-        .c
+        ul:not(.closed) .c
             line-height: 40px
             input[type=text]
             select
