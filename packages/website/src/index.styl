@@ -257,7 +257,11 @@ body.mobile
 
         span
             position: absolute
-            margin-left: 25px
+            // pinned explicitly (not via static position) so it lands the same in
+            // an <a> and a <button> — the latter centers its content differently
+            top: 50%
+            left: 25px
+            transform: translateY(-50%)
 
         img
             position: absolute
