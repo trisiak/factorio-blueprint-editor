@@ -28,9 +28,10 @@ whose network policy allows it (see "Environment" below); some sessions can't.
 - **Test infra**: vitest (`npm test`) + Playwright e2e (`npm run test:e2e`,
   desktop + Pixel-7 touch projects). SessionStart hook installs deps + chromium.
 
-## UNVERIFIED — do this first in a session that can install
+## Verification status (2026-06-08)
 
-The Slice 1/2 editor code was written without a compiler/runtime available, so:
+The Slice 1/2 editor code was originally written without a compiler/runtime
+available. It has now been verified in a session that could install:
 
 ```bash
 npm install --legacy-peer-deps
@@ -39,6 +40,26 @@ npm run lint
 npm test               # vitest gesture tests
 npx playwright install chromium && npm run test:e2e
 ```
+
+Results:
+
+- **`type-check`** — Slice 1/2 touch files (`PointerGestures.ts`,
+  `BlueprintContainer.ts`, `GridData.ts`, website `index.ts`) compile clean. The
+  81 remaining errors (`spriteDataBuilder.ts`, `EntityInfoPanel.ts`, etc.) are a
+  **pre-existing master baseline** — identical count/files on `master` — and are
+  out of scope for the touch work.
+- **`lint`** — 96 errors, **identical on `master`**; the touch work adds zero new
+  lint errors. (The lone `BlueprintContainer.ts` `prefer-const` on `mult` is
+  pre-existing, just shifted down by the inserted touch code.)
+- **`npm test`** — 11/11 pass. One assertion in `PointerGestures.test.ts`
+  ("reports the screen-space translation…") originally expected `scale === 1`
+  for a two-finger pan; pointer events fire one finger at a time, so the spread
+  wobbles 100→80→100 and the second event's *incremental* scale is `100/80 =
+  1.25` (the two per-event scales 0.8·1.25 net to 1). Fixed the test to assert
+  the true incremental value; the recognizer was correct.
+- **`test:e2e`** — could **not** run here: the Playwright browser download host
+  (`playwright-verizon.azureedge.net`, the azureedge CDN actually used) is not
+  in this env's egress allowlist. Still needs a session whose policy allows it.
 
 Then verify on a real touch device:
 ```bash
@@ -52,8 +73,11 @@ one-finger drag pans.
 
 The web env proxies egress with an allowlist (`Host not in allowlist`). For the
 SessionStart hook (and manual installs) to work, the policy must allow
-`registry.npmjs.org` and the Playwright CDN
-(`cdn.playwright.dev`, `playwright.download.prss.microsoft.com`). The hook is
+`registry.npmjs.org` (verified working here) and the Playwright browser CDN.
+The download host observed in this env is `playwright-verizon.azureedge.net`
+(Playwright also uses `cdn.playwright.dev` /
+`playwright.download.prss.microsoft.com` depending on version/region) — none are
+currently allowlisted, so `playwright install chromium` 403s. The hook is
 synchronous (`.claude/settings.json` + `.claude/hooks/session-start.sh`); only
 sessions started from the branch (or, once merged, the default branch) run it.
 

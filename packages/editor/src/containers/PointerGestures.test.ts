@@ -48,13 +48,17 @@ describe('PinchPanRecognizer', () => {
     it('reports the screen-space translation of the gesture center', () => {
         const r = new PinchPanRecognizer()
         r.down(1, 0, 0)
-        r.down(2, 100, 0) // center (50, 0)
-        // move both fingers right by 20 without changing their spread
-        r.move(1, 20, 0)
-        const u = r.move(2, 120, 0) // center (70, 0)
-        expect(u!.scale).toBeCloseTo(1)
-        // only the second move is measured against the (already shifted) center
-        expect(u!.panX).toBeCloseTo(10)
+        r.down(2, 100, 0) // center (50, 0), spread 100
+        // Move both fingers right by 20. Pointer events fire one finger at a
+        // time, so the spread wobbles 100 -> 80 -> 100 across the two events and
+        // each event's scale is measured incrementally against the previous one.
+        r.move(1, 20, 0) // spread 80, center (60, 0)
+        const u = r.move(2, 120, 0) // spread back to 100, center (70, 0)
+        // The second event reports the incremental rebound (100/80); the two
+        // per-event scales (0.8 then 1.25) multiply back to 1, so a pure pan
+        // nets to no zoom. This case pins down the center/pan tracking.
+        expect(u!.scale).toBeCloseTo(1.25)
+        expect(u!.panX).toBeCloseTo(10) // center 60 -> 70
         expect(u!.panY).toBeCloseTo(0)
         expect(u!.centerX).toBeCloseTo(70)
     })
