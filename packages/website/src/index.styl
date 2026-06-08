@@ -82,6 +82,7 @@ html
     position: fixed
     left: 0
     top: 0
+    cursor: pointer
     background-color: #303030
     border-bottom-right-radius: 10px
     padding: 5px 10px
@@ -125,6 +126,31 @@ html
         width: 65% !important
     .c select
         width: 100%
+
+// Touch-friendly settings pane. `body.mobile` is toggled from the editor's
+// input mode (see settingsPane.ts), not a media query, so it tracks the user's
+// explicit desktop/mobile choice rather than just the device.
+body.mobile
+    .dg.main
+        width: unquote('min(360px, 100vw) !important')
+    .dg
+        li:not(.folder)
+            height: 40px
+            line-height: 40px
+        li.title
+            height: 40px
+            line-height: 40px
+        .close-button
+            height: 40px
+            line-height: 40px
+        .c
+            line-height: 40px
+            input[type=text]
+            select
+                height: 30px
+            input[type=checkbox]
+                width: 22px
+                height: 22px
 
 #editor
     position: fixed
@@ -233,8 +259,11 @@ html
     top: 50vh
     left: 50vw
     transform: translate(-50%, -50%)
-    width: 40vw
-    max-width: 640px
+    // unquote() so Stylus emits the literal CSS min() instead of evaluating its
+    // own built-in min() at compile time (which would collapse it to one value).
+    width: unquote('min(640px, 90vw)')
+    max-height: calc(100dvh - 32px)
+    overflow-y: auto
     z-index: 100
     color: white
     background-color: #303030
@@ -275,6 +304,24 @@ html
     .copyright-notice
         font-size: 0.9em
         text-align: center
+
+#info-panel-close
+    position: absolute
+    top: 8px
+    right: 8px
+    width: 36px
+    height: 36px
+    padding: 0
+    line-height: 36px
+    font-size: 28px
+    color: white
+    background: transparent
+    border: 0
+    border-radius: 6px
+    cursor: pointer
+    &:hover
+    &:active
+        background-color: rgba(255, 255, 255, 0.1)
 
 
 /* TOASTS */

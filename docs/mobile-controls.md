@@ -38,6 +38,14 @@ pipelines at once made touch taps double-act via the browser's synthetic
   10 px / 300 ms taps through the existing left-click pipeline (place / select /
   open unchanged).
 - ✅ **Explicit desktop/mobile mode + double-tap fix** — see Architecture above.
+- ✅ **Responsive overlays** — the INFO/shortcuts panel no longer overflows in
+  portrait (`width: min(640px, 90vw)`, scrolls instead of clipping) and is now
+  openable/closable without a keyboard (tap the corner panel; on-screen ✕). The
+  quickbar scales to fit narrow viewports instead of running off both edges. The
+  settings (dat.gui) pane gets touch-sized rows, a responsive width, and hides
+  the keyboard-only Keybinds folder in `mobile` mode (driven by a `body.mobile`
+  class off `inputMode`). (`packages/website/src/{index,settingsPane}.ts`,
+  `index.styl`, `packages/editor/src/UI/QuickbarPanel.ts`)
 - ✅ **Test + deploy infra** — vitest (`npm test`), Playwright e2e
   (`npm run test:e2e`, desktop + Pixel-7 projects), GitHub Pages production
   deploy + per-PR previews (shared atlas, `.nojekyll`). See

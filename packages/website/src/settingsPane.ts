@@ -15,11 +15,17 @@ export function initSettingsPane(
 ): {
     changeBook: (bpOrBook: Book | Blueprint) => void
 } {
+    // On touch devices the pane is more intrusive (bigger touch targets, full
+    // width) so default it closed unless the user has made an explicit choice.
+    const persistedClosed = localStorage.getItem('dat.gui.closed')
+    const startClosed =
+        persistedClosed === null ? inputMode.mode === 'mobile' : persistedClosed === 'true'
+
     const gui = new GUI({
         autoPlace: false,
         hideable: false,
         closeOnTop: true,
-        closed: localStorage.getItem('dat.gui.closed') === 'true',
+        closed: startClosed,
         width: 320,
     })
 
@@ -186,6 +192,18 @@ export function initSettingsPane(
     keybindsFolder
         .add({ resetDefaults: () => EDITOR.resetKeybinds() }, 'resetDefaults')
         .name('Reset Defaults')
+
+    // Mobile-friendliness: drive a `body.mobile` class off the input mode (CSS in
+    // index.styl widens the pane and enlarges touch targets), and hide the
+    // Keybinds folder — it edits keyboard combos, which are meaningless without a
+    // keyboard and otherwise dominate the pane's height.
+    const syncMobileLayout = (mode: InputMode): void => {
+        const mobile = mode === 'mobile'
+        document.body.classList.toggle('mobile', mobile)
+        keybindsFolder.domElement.parentElement.style.display = mobile ? 'none' : ''
+    }
+    syncMobileLayout(inputMode.mode)
+    inputMode.on('change', syncMobileLayout)
 
     return { changeBook }
 }

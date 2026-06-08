@@ -157,9 +157,19 @@ export class QuickbarPanel extends Panel {
     }
 
     protected override setPosition(): void {
+        // The quickbar is a fixed-width panel; on screens narrower than it (phones
+        // in portrait, narrow desktop windows) it would otherwise run off both
+        // edges. Scale it down uniformly to fit the viewport width, then center.
+        const margin = 8
+        const available = G.app.screen.width - margin * 2
+        const scale = Math.min(1, available / this.iWidth)
+        this.scale.set(scale)
+
+        const scaledWidth = this.iWidth * scale
+        const scaledHeight = this.iHeight * scale
         this.position.set(
-            G.app.screen.width / 2 - this.width / 2,
-            G.app.screen.height - this.height + 1
+            G.app.screen.width / 2 - scaledWidth / 2,
+            G.app.screen.height - scaledHeight + 1
         )
     }
 }
