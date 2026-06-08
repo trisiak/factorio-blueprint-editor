@@ -118,9 +118,16 @@ html
     font: 12px 'Roboto', sans-serif !important
     &.main
         position: fixed
-        bottom: 0
+        // Anchored under the top-left button stack; settingsPane.ts refines the
+        // exact `top`/`max-height` at runtime. Previously bottom-left, where the
+        // pane's open/close bar sat on top of the quickbar.
+        top: 80px
         left: 0
         z-index: 5
+    // The pane is toggled by the top-left Settings button, so dat.gui's own
+    // open/close bar is removed (it overlapped the quickbar).
+    .close-button
+        display: none
     .slider
         margin-left: 0 !important
         width: 65% !important
@@ -146,9 +153,6 @@ body.mobile
         li.title
             height: 40px
             line-height: 40px
-        .close-button
-            height: 40px
-            line-height: 40px
         ul:not(.closed) > li .c
             line-height: 40px
             input[type=text]
@@ -157,6 +161,37 @@ body.mobile
             input[type=checkbox]
                 width: 22px
                 height: 22px
+
+    // Compact, icon-only square buttons stacked flush in the top-left, to save
+    // space on small screens. Targets the three icon buttons specifically (the
+    // externally-injected feedback button has no icon, so it's left untouched).
+    #buttons
+        .discord-button
+        .github-button
+        .settings-button
+            display: flex
+            align-items: center
+            justify-content: center
+            width: 44px
+            height: 44px
+            padding: 0
+            border-left: 0
+            border-bottom-right-radius: 0
+            transform: none
+            &:hover
+            &:active
+            &:focus
+                transform: none
+                filter: brightness(1.15)
+            span
+                display: none
+            img
+                position: static
+                top: auto
+                left: auto
+                transform: none
+                width: 24px
+                height: 24px
 
 #editor
     position: fixed
@@ -250,6 +285,18 @@ body.mobile
         background-color: #31383f
         img
             width: 20px
+
+    .settings-button
+        width: 110px
+        border-left: 5px solid #8a8a8a
+        background-color: #43464b
+        cursor: pointer
+        outline: none
+        img
+            width: 20px
+            height: auto
+            top: 50%
+            transform: translate(-50%, -50%)
 
     .doorbell-button
         width: 95px

@@ -27,15 +27,13 @@ async function readTestState(page: Page): Promise<EditorTestState> {
 async function waitForAppReady(page: Page): Promise<void> {
     await expect(page.locator('#editor')).toBeVisible()
     await expect(page.locator('#loadingScreen')).not.toHaveClass(/active/, { timeout: 60_000 })
-    await expect(page.locator('.dg.main')).toBeVisible()
+    // attached, not visible: a closed pane has zero height (its open/close bar is hidden)
+    await page.locator('.dg.main').waitFor({ state: 'attached' })
 }
 
-/**
- * Toggle the dat.gui pane via its close/open button. The bottom-right toasts
- * overlap the button's right end, so click its left edge to avoid interception.
- */
+/** Toggle the dat.gui pane via the top-left Settings button. */
 async function toggleSettingsPane(page: Page): Promise<void> {
-    await page.locator('.dg.main .close-button').click({ position: { x: 20, y: 10 } })
+    await page.locator('#settings-button').click()
 }
 
 test.describe('INFO / shortcuts panel', () => {
@@ -76,6 +74,25 @@ test.describe('INFO / shortcuts panel', () => {
 })
 
 test.describe('settings pane (dat.gui)', () => {
+    test('toggles from the top-left Settings button; no bottom bar over the quickbar', async ({
+        page,
+    }) => {
+        await page.goto('/')
+        await waitForAppReady(page)
+
+        // dat.gui's built-in open/close bar (which overlapped the quickbar) is hidden
+        await expect(page.locator('.dg.main .close-button')).toBeHidden()
+
+        const inputModeRow = page.locator('.dg li.cr', { hasText: 'Input Mode' })
+        const openAtStart = await inputModeRow.isVisible()
+
+        await toggleSettingsPane(page)
+        await (openAtStart ? expect(inputModeRow).toBeHidden() : expect(inputModeRow).toBeVisible())
+
+        await toggleSettingsPane(page)
+        await (openAtStart ? expect(inputModeRow).toBeVisible() : expect(inputModeRow).toBeHidden())
+    })
+
     test('collapses fully when closed in mobile mode', async ({ page }) => {
         test.skip(!isMobileProject(), 'mobile-only: pane starts closed and uses touch rows')
 

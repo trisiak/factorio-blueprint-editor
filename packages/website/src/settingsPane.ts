@@ -29,23 +29,40 @@ export function initSettingsPane(
         width: 320,
     })
 
-    // dat.gui creates its close button *after* honoring a constructor `closed:true`,
-    // so a pane that starts closed keeps the wrong "Close Settings" label until the
-    // first toggle. Re-applying the closed state now fixes the initial label.
-    if (startClosed) gui.close()
-
     gui.domElement.style.overflowX = 'hidden'
     gui.domElement.style.overflowY = 'auto'
-    gui.domElement.style.maxHeight = `${window.innerHeight}px`
-    window.addEventListener('resize', () => {
-        gui.domElement.style.maxHeight = `${window.innerHeight}px`
-    })
+
+    // Anchor the pane just under the top-left button stack (it's toggled by the
+    // Settings button there) instead of dat.gui's default bottom-left, where its
+    // open/close bar overlapped the quickbar.
+    const buttonsEl = document.getElementById('buttons')
+    const GAP = 4
+    const positionPane = (): void => {
+        const top = (buttonsEl ? Math.round(buttonsEl.getBoundingClientRect().bottom) : 80) + GAP
+        gui.domElement.style.top = `${top}px`
+        gui.domElement.style.maxHeight = `${window.innerHeight - top}px`
+    }
+    positionPane()
+    window.addEventListener('resize', positionPane)
+    // The stack's height changes (compact buttons on mobile, async icon loads),
+    // and those reflows don't fire `resize`. A ResizeObserver re-anchors the pane
+    // whenever the stack actually changes size, free of init-order races.
+    if (buttonsEl && 'ResizeObserver' in window) {
+        new ResizeObserver(positionPane).observe(buttonsEl)
+    }
 
     window.addEventListener('visibilitychange', () =>
         localStorage.setItem('dat.gui.closed', String(gui.closed))
     )
 
     document.body.appendChild(gui.domElement)
+
+    // dat.gui's own open/close bar is hidden (CSS); drive the pane from the
+    // top-left Settings button instead.
+    document.getElementById('settings-button')?.addEventListener('click', () => {
+        if (gui.closed) gui.open()
+        else gui.close()
+    })
 
     const guiBPIndex = gui
         .add({ bpIndex: 0 }, 'bpIndex', 0, 0, 1)
@@ -206,6 +223,7 @@ export function initSettingsPane(
         const mobile = mode === 'mobile'
         document.body.classList.toggle('mobile', mobile)
         keybindsFolder.domElement.parentElement.style.display = mobile ? 'none' : ''
+        // (the ResizeObserver on #buttons re-anchors the pane when its height changes)
     }
     syncMobileLayout(inputMode.mode)
     inputMode.on('change', syncMobileLayout)

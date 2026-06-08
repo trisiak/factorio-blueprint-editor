@@ -46,6 +46,12 @@ pipelines at once made touch taps double-act via the browser's synthetic
   the keyboard-only Keybinds folder in `mobile` mode (driven by a `body.mobile`
   class off `inputMode`). (`packages/website/src/{index,settingsPane}.ts`,
   `index.styl`, `packages/editor/src/UI/QuickbarPanel.ts`)
+- ✅ **Settings moved off the quickbar** — dat.gui's bottom open/close bar sat on
+  top of the quickbar (desktop too); it's hidden and replaced by a Settings
+  button in the top-left stack, with the pane re-anchored just below it (tracked
+  via a `ResizeObserver` on `#buttons`). On mobile the top-left buttons
+  (Discord / Github / Settings) collapse to a flush column of square icon
+  buttons to save space. (`index.html`, `index.styl`, `settingsPane.ts`)
 - ✅ **Test + deploy infra** — vitest (`npm test`), Playwright e2e
   (`npm run test:e2e`, desktop + Pixel-7 projects), GitHub Pages production
   deploy + per-PR previews (shared atlas, `.nojekyll`). See
