@@ -2,9 +2,9 @@ import { test, expect } from '@playwright/test'
 
 test.describe('touch', () => {
     // These run on the touch-capable (mobile-chromium) project only.
-    test.beforeEach((_, testInfo) => {
+    test.beforeEach(() => {
         test.skip(
-            testInfo.project.name !== 'mobile-chromium',
+            test.info().project.name !== 'mobile-chromium',
             'touch tests run on the mobile project only'
         )
     })

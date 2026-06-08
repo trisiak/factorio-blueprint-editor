@@ -22,7 +22,7 @@
     },
     "devDependencies": {
         "@eslint/js": "9.36.0",
-        "@playwright/test": "1.49.1",
+        "@playwright/test": "1.56.1",
         "eslint": "9.36.0",
         "prettier": "3.6.2",
         "typescript": "5.9.2",
