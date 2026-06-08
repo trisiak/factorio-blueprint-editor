@@ -18,5 +18,9 @@
         },
 
         "types": ["vite/client", "typed-factorio/prototype"]
-    }
+    },
+
+    // Playwright type-checks its own config/specs at runtime (they rely on Node
+    // globals not in this project's `types`); keep them out of `npm run type-check`.
+    "exclude": ["e2e", "playwright.config.ts"]
 }

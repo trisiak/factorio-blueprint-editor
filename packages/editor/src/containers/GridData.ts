@@ -63,6 +63,15 @@ export class GridData extends EventEmitter<GridDataEvents> {
         this.update(this.lastMousePosX, this.lastMousePosY)
     }
 
+    /**
+     * Force the grid position to a screen-space point. Touch taps have no
+     * preceding pointermove to establish a position, so the tap handler seeds
+     * it here before dispatching the action.
+     */
+    public moveTo(screenX: number, screenY: number): void {
+        this.update(screenX, screenY)
+    }
+
     private update(mouseX: number, mouseY: number): void {
         if (!this.bpc) return
 

@@ -8,8 +8,13 @@
         "start:website": "npm --workspace=@fbe/website run start",
         "preview:website": "npm --workspace=@fbe/website run preview",
         "start:exporter": "cd ./packages/exporter && cargo run --release",
+        "serve:data": "npx -y serve packages/exporter/data/output -l 8081",
         "build:website": "npm --workspace=@fbe/website run build",
         "type-check": "tsc",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:e2e": "playwright test",
+        "test:e2e:ui": "playwright test --ui",
         "lint": "eslint .",
         "lint:fix": "eslint . --fix",
         "format": "prettier . --check",
@@ -17,9 +22,11 @@
     },
     "devDependencies": {
         "@eslint/js": "9.36.0",
+        "@playwright/test": "1.56.1",
         "eslint": "9.36.0",
         "prettier": "3.6.2",
         "typescript": "5.9.2",
-        "typescript-eslint": "8.44.1"
+        "typescript-eslint": "8.44.1",
+        "vitest": "3.2.4"
     }
 }

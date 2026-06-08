@@ -51,7 +51,12 @@ console.log(
 initFeedbackButton()
 const createToast = initToasts()
 
-if (isMobile.any) {
+// Touch support is a work in progress (pinch-to-zoom and two-finger pan are
+// wired up; tap-to-place and on-screen controls are still to come). The app
+// used to hard-refuse to load on any mobile device; that block is now opt-in
+// via `?desktopOnly` so touch work can be exercised on real devices.
+const forceDesktopOnly = window.location.search.includes('desktopOnly')
+if (isMobile.any && forceDesktopOnly) {
     createToast({
         text:
             'Application is not compatible with mobile devices.<br>' +
@@ -61,6 +66,15 @@ if (isMobile.any) {
     })
     loadingScreen.el.classList.add('error')
     throw new Error('MOBILE_DEVICE_NOT_SUPPORTED')
+}
+if (isMobile.any) {
+    createToast({
+        text:
+            'Touch support is experimental.<br>' +
+            'Pinch to zoom and drag with two fingers to pan.',
+        type: 'info',
+        timeout: 8000,
+    })
 }
 
 if (typeof WebAssembly !== 'object' && typeof WebAssembly.instantiate !== 'function') {

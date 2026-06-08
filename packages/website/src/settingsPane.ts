@@ -1,5 +1,6 @@
 import { GUI } from 'dat.gui'
-import EDITOR, { Blueprint, Book, GridPattern, Editor, FD } from '@fbe/editor'
+import EDITOR, { Blueprint, Book, GridPattern, Editor, FD, inputMode } from '@fbe/editor'
+import type { InputMode } from '@fbe/editor'
 
 GUI.TEXT_CLOSED = 'Close Settings'
 GUI.TEXT_OPEN = 'Open Settings'
@@ -81,6 +82,19 @@ export function initSettingsPane(
             localStorage.setItem('darkTheme', darkTheme.toString())
             editor.gridColor = darkTheme ? COLOR_DARK : COLOR_LIGHT
         })
+
+    // Input scheme: desktop (mouse/keyboard) vs mobile (touch). `inputMode`
+    // owns detection + persistence; `.listen()` keeps the dropdown in sync if
+    // the mode is changed elsewhere.
+    const inputModeProxy = {
+        get mode(): InputMode {
+            return inputMode.mode
+        },
+        set mode(m: InputMode) {
+            inputMode.mode = m
+        },
+    }
+    gui.add(inputModeProxy, 'mode', ['desktop', 'mobile']).name('Input Mode').listen()
 
     if (localStorage.getItem('debug')) {
         const debug = Boolean(localStorage.getItem('debug'))

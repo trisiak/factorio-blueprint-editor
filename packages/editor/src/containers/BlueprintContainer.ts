@@ -17,6 +17,8 @@ import { IConnection } from '../core/WireConnections'
 import { IPoint } from '../types'
 import { Dialog } from '../UI/controls/Dialog'
 import { Viewport } from './Viewport'
+import { PinchPanRecognizer, PinchPanUpdate } from './PointerGestures'
+import { inputMode } from '../common/input'
 import { EntitySprite } from './EntitySprite'
 import { WiresContainer } from './WiresContainer'
 import { UnderlayContainer } from './UnderlayContainer'
@@ -35,6 +37,11 @@ export enum GridPattern {
     CHECKER = 'checker',
     GRID = 'grid',
 }
+
+/** max pointer travel (screen px) for a touch to still count as a tap, not a pan */
+const TOUCH_TAP_MOVE_THRESHOLD = 10
+/** max duration (ms) for a touch to still count as a tap */
+const TOUCH_TAP_MAX_DURATION = 300
 
 type MoveDirections = {
     up: boolean
@@ -111,6 +118,17 @@ export class BlueprintContainer extends Container {
     private copyModeUpdateFn: (endX: number, endY: number) => void
     private deleteModeUpdateFn: (endX: number, endY: number) => void
     private copySettingsActive = false
+    private readonly pointerGestures = new PinchPanRecognizer()
+    /** in-progress single-finger touch, pending a tap-vs-pan decision */
+    private touchPan: {
+        pointerId: number
+        startX: number
+        startY: number
+        lastX: number
+        lastY: number
+        moved: boolean
+        startTime: number
+    } | null = null
 
     // PIXI properties
     public readonly eventMode = 'static'
@@ -391,11 +409,125 @@ export class BlueprintContainer extends Container {
             this.removeEventListener('wheel', onWheel)
         })
 
-        this.addEventListener('pointerdown', G.actions.pressButton.bind(G.actions))
+        // Input is either desktop (mouse) or mobile (touch) — never both at once.
+        // `inputMode` is the single source of truth; each handler dispatches for
+        // exactly one scheme. In mobile we ignore `mouse` pointers, so the
+        // synthetic ("compatibility") mouse events the browser fires after a tap
+        // can't re-trigger an action and double-act. In desktop we ignore touch.
+        const applyInputMode = (): void => {
+            // Mobile locks the canvas's touch-action so the browser doesn't
+            // pan/zoom the page (and suppresses most synthetic mouse events).
+            const canvas = G.app.canvas as HTMLCanvasElement | undefined
+            if (canvas?.style) {
+                canvas.style.touchAction = inputMode.mode === 'mobile' ? 'none' : ''
+            }
+            // Drop anything in flight when the scheme changes under us.
+            G.actions.releaseAll()
+            this.pointerGestures.clear()
+            this.touchPan = null
+        }
+
+        const onPointerDown = (e: FederatedPointerEvent): void => {
+            if (inputMode.mode === 'desktop') {
+                if (e.pointerType === 'touch') return // touch ignored in desktop mode
+                G.actions.pressButton(e as unknown as PointerEvent)
+                return
+            }
+            // mobile: touch/pen gestures only; ignore mouse (incl. ghost events)
+            if (e.pointerType === 'mouse') return
+            this.pointerGestures.down(e.pointerId, e.global.x, e.global.y)
+            if (this.pointerGestures.pointerCount >= 2) {
+                // a multi-touch gesture began: cancel the pending tap and let
+                // applyPinchPan drive the viewport
+                G.actions.releaseAll()
+                this.touchPan = null
+                return
+            }
+            // Touch has no hover, so on touchdown we can't yet tell a tap
+            // (place/select) from a drag (pan). Defer to onPointerMove / Up.
+            this.touchPan = {
+                pointerId: e.pointerId,
+                startX: e.global.x,
+                startY: e.global.y,
+                lastX: e.global.x,
+                lastY: e.global.y,
+                moved: false,
+                startTime: performance.now(),
+            }
+        }
+        const onPointerMove = (e: FederatedPointerEvent): void => {
+            if (inputMode.mode === 'desktop' || e.pointerType === 'mouse') return
+            const gesture = this.pointerGestures.move(e.pointerId, e.global.x, e.global.y)
+            if (gesture) {
+                this.applyPinchPan(gesture)
+                return
+            }
+            const tp = this.touchPan
+            if (!tp || e.pointerId !== tp.pointerId) return
+            if (!tp.moved) {
+                const travel = Math.hypot(e.global.x - tp.startX, e.global.y - tp.startY)
+                if (travel > TOUCH_TAP_MOVE_THRESHOLD) tp.moved = true
+            }
+            if (tp.moved) {
+                // one-finger drag pans the viewport
+                this.viewport.translateBy(e.global.x - tp.lastX, e.global.y - tp.lastY)
+            }
+            tp.lastX = e.global.x
+            tp.lastY = e.global.y
+        }
+        const onPointerUp = (e: FederatedPointerEvent): void => {
+            if (inputMode.mode === 'desktop' || e.pointerType === 'mouse') return
+            this.pointerGestures.up(e.pointerId)
+            const tp = this.touchPan
+            if (!tp || e.pointerId !== tp.pointerId) return
+            this.touchPan = null
+            const wasTap = !tp.moved && performance.now() - tp.startTime < TOUCH_TAP_MAX_DURATION
+            if (wasTap) {
+                // A tap acts at the touch point through the same left-click
+                // pipeline as the mouse: seed the grid + hover at the tap, then
+                // press/release so existing per-mode semantics (place / select /
+                // open) apply unchanged.
+                this.gridData.moveTo(tp.startX, tp.startY)
+                this.updateHoverContainer()
+                G.actions.pressButton(e as unknown as PointerEvent)
+                G.actions.releaseButton(e as unknown as PointerEvent)
+            }
+        }
+
+        this.addEventListener('pointerdown', onPointerDown)
+        this.on('globalpointermove', onPointerMove)
+        this.addEventListener('pointerup', onPointerUp)
+        this.addEventListener('pointerupoutside', onPointerUp)
+        this.addEventListener('pointercancel', onPointerUp)
+        inputMode.on('change', applyInputMode)
+        applyInputMode()
         this.on('destroyed', () => {
-            this.removeEventListener('pointerdown', G.actions.pressButton.bind(G.actions))
+            this.removeEventListener('pointerdown', onPointerDown)
+            this.off('globalpointermove', onPointerMove)
+            this.removeEventListener('pointerup', onPointerUp)
+            this.removeEventListener('pointerupoutside', onPointerUp)
+            this.removeEventListener('pointercancel', onPointerUp)
+            inputMode.off('change', applyInputMode)
+            this.pointerGestures.clear()
             G.actions.releaseAll()
         })
+    }
+
+    /** Apply an incremental pinch/two-finger-pan gesture to the viewport. */
+    private applyPinchPan(g: PinchPanUpdate): void {
+        // two-finger pan: screen-space translation of the gesture center
+        if (g.panX !== 0 || g.panY !== 0) {
+            this.viewport.translateBy(g.panX, g.panY)
+        }
+        // pinch zoom: scale multiplicatively about the gesture center. zoomBy is
+        // additive on top of the (per-frame reset) scale, so `scale - 1` makes
+        // the next matrix update multiply the current zoom by `scale`. Reusing
+        // zoomBy keeps the existing min/max-zoom constraints intact.
+        if (g.scale !== 1) {
+            const [worldX, worldY] = this.toWorld(g.centerX, g.centerY)
+            this.viewport.setScaleCenter(worldX, worldY)
+            this.viewport.zoomBy(g.scale - 1)
+        }
     }
 
     public get entityForCopyData(): Entity {

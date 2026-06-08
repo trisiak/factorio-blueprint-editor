@@ -6,6 +6,20 @@ import { ActionRegistry } from '../actions'
 
 const debug = false
 
+/**
+ * Base URL the sprite atlas (`*.basis`) and `data.json` are fetched from.
+ *
+ * Injected at build time by Vite's `define` (see website `vite.config.js`).
+ * Defaults to the app's own `<base>/data`, so a root deploy resolves to `/data`
+ * (unchanged) and a sub-path deploy (e.g. GitHub Pages under
+ * `/factorio-blueprint-editor/`) resolves to `<base>/data`. Preview builds set
+ * `VITE_DATA_URL` to reuse the production deploy's atlas instead of bundling
+ * their own ~68 MB copy. The `typeof` guard keeps it working outside Vite
+ * (e.g. vitest), where the constant isn't substituted.
+ */
+declare const __DATA_URL__: string
+export const DATA_URL: string = typeof __DATA_URL__ === 'string' ? __DATA_URL__ : '/data'
+
 export interface ILogMessage {
     text: string
     type: 'success' | 'info' | 'warning' | 'error'
@@ -57,7 +71,7 @@ function getBT(path: string): Promise<Texture> {
 }
 
 function getTexture(path: string, x = 0, y = 0, w = 0, h = 0): Texture {
-    const key = `/data/${path.replace('.png', '.basis')}`
+    const key = `${DATA_URL}/${path.replace('.png', '.basis')}`
     const KK = `${key}-${x}-${y}-${w}-${h}`
     let t = textureCache.get(KK)
     if (t) return t

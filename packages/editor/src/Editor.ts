@@ -11,7 +11,7 @@ import { Application, TextureSource, setBasisTranscoderPath, Assets } from 'pixi
 import basisTranscoderJS from './basis/transcoder.1.16.4.js?url'
 import basisTranscoderWASM from './basis/transcoder.1.16.4.wasm?url'
 import { loadData } from './core/factorioData'
-import G, { Logger } from './common/globals'
+import G, { DATA_URL, Logger } from './common/globals'
 import { Entity } from './core/Entity'
 import { Blueprint, oilOutpostSettings, IOilOutpostSettings } from './core/Blueprint'
 import { BlueprintContainer, GridPattern } from './containers/BlueprintContainer'
@@ -34,7 +34,7 @@ export class Editor {
         const app = new Application()
 
         await Promise.all([
-            fetch('/data/data.json')
+            fetch(`${DATA_URL}/data.json`)
                 .then(res => res.text())
                 .then(modules => loadData(modules)),
             app.init({
