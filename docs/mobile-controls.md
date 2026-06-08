@@ -50,10 +50,14 @@ pipelines at once made touch taps double-act via the browser's synthetic
   delete / undo / open-inventory. This is the natural next slice.
 - ⬜ **Touch area/marquee select** — multi-select for copy/delete is desktop-only
   (drag with a modifier); needs a touch gesture (e.g. long-press-drag).
-- ⬜ **Blueprint persistence across reloads** — the blueprint is _not_ saved
-  locally today (only quickbar / settings / keybinds are); persistence is via
-  blueprint strings + `?source`. Mobile users can't easily Ctrl+C, so an autosave
-  (serialize on `visibilitychange`, restore on load) would help a lot.
+- ✅ **Blueprint persistence across reloads** — the working blueprint now
+  autosaves to `localStorage` (`fbe:blueprint`): serialized on `visibilitychange`
+  (when the tab is hidden), restored on load. Clearing the editor (`shift+N` /
+  emptying it) drops the save. A `?source` URL argument still wins on load
+  (explicit intent); when both exist and differ, a toast offers a "Restore my
+  saved blueprint" button (the mixed-state UX). Storage + precedence logic lives
+  in `packages/website/src/blueprintStorage.ts` (unit-tested); the loader wiring
+  and autosave listener are in `packages/website/src/index.ts`.
 - 🚧 **e2e coverage gaps** (both `fixme`): pinch needs CDP
   `Input.dispatchTouchEvent` (the high-level touch API is single-touch);
   tap-to-place needs a window-level handle to read blueprint state for assertions.
