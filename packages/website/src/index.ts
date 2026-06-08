@@ -12,6 +12,7 @@ import EDITOR, {
     BookWithNoBlueprintsError,
     encode,
     getBlueprintOrBookFromSource,
+    installTestHook,
 } from '@fbe/editor'
 import { initToasts } from './toasts'
 import { initFeedbackButton } from './feedbackButton'
@@ -113,6 +114,11 @@ editor
         }
 
         registerActions()
+
+        // Opt-in e2e probe for on-canvas state that the DOM can't expose.
+        if (new URLSearchParams(window.location.search).has('test')) {
+            installTestHook()
+        }
 
         const changeBookIndex = async (index: number): Promise<void> => {
             bp = book.selectBlueprint(index)

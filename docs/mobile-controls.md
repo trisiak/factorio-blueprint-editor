@@ -50,6 +50,13 @@ pipelines at once made touch taps double-act via the browser's synthetic
   (`npm run test:e2e`, desktop + Pixel-7 projects), GitHub Pages production
   deploy + per-PR previews (shared atlas, `.nojekyll`). See
   `.github/workflows/pages-*.yml`.
+- ✅ **Canvas e2e probe** — everything inside the editor is one `<canvas>`, so
+  Playwright can't query on-canvas UI through the DOM. Loading with `?test`
+  installs `window.__FBE_TEST__.getState()` (logical input mode + quickbar
+  bounds/scale/visibility, in CSS px); see `packages/editor/src/common/testHook.ts`.
+  Opt-in, so it's absent in normal use. Extend its `EditorTestState` to unblock
+  the deferred touch `fixme`s below (e.g. add blueprint entity count for
+  tap-to-place).
 
 ## Not done / next
 
@@ -64,7 +71,8 @@ pipelines at once made touch taps double-act via the browser's synthetic
   (serialize on `visibilitychange`, restore on load) would help a lot.
 - 🚧 **e2e coverage gaps** (both `fixme`): pinch needs CDP
   `Input.dispatchTouchEvent` (the high-level touch API is single-touch);
-  tap-to-place needs a window-level handle to read blueprint state for assertions.
+  tap-to-place can now read state via the `?test` hook above — extend
+  `EditorTestState` with blueprint state and drop the `fixme`.
 - ⬜ **Pinch in desktop mode** — desktop currently ignores touch entirely, so a
   touch-laptop in desktop mode can't pinch. Out of scope for now (we don't care
   about touch-on-desktop yet); revisit if needed.

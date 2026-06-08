@@ -1,16 +1,27 @@
 import { test, expect, type Page } from '@playwright/test'
+import type { EditorTestState } from '@fbe/editor'
 
 /**
- * UI-panel coverage for the mobile-layout work:
+ * UI coverage for the mobile-layout work:
  *  - the INFO / shortcuts panel (responsive, openable/closable without a keyboard)
  *  - the dat.gui settings pane (touch layout: closes properly, hides Keybinds)
+ *  - the quickbar (canvas-rendered, asserted via the `?test` window hook)
  *
- * The quickbar is rendered in the PixiJS canvas (no DOM to query), so its
- * scale-to-fit behaviour is covered by a unit test (quickbarLayout.test.ts)
- * rather than here — same reason touch.spec defers canvas-state assertions.
+ * The quickbar is drawn in the PixiJS canvas, so the DOM has nothing to query;
+ * loading with `?test` installs window.__FBE_TEST__, which exposes its logical
+ * bounds/scale (see packages/editor/src/common/testHook.ts).
  */
 
 const isMobileProject = (): boolean => test.info().project.name === 'mobile-chromium'
+
+/** Read the opt-in canvas-state probe (only present when the page is loaded with `?test`). */
+async function readTestState(page: Page): Promise<EditorTestState> {
+    return (await page.evaluate(() => {
+        const w = window as unknown as { __FBE_TEST__?: { getState: () => unknown } }
+        if (!w.__FBE_TEST__) throw new Error('FBE test hook missing — load the page with ?test')
+        return w.__FBE_TEST__.getState()
+    })) as EditorTestState
+}
 
 /** Wait for the editor to finish booting (settings pane + handlers are wired then). */
 async function waitForAppReady(page: Page): Promise<void> {
@@ -130,5 +141,35 @@ test.describe('settings pane (dat.gui)', () => {
         await expect(page.locator('body')).not.toHaveClass(/mobile/)
         // desktop pane defaults open, so the folder title is visible
         await expect(page.getByText('Keybinds', { exact: true })).toBeVisible()
+    })
+})
+
+test.describe('quickbar', () => {
+    test('renders and fits within the viewport', async ({ page }) => {
+        await page.goto('/?test')
+        await waitForAppReady(page)
+
+        const state = await readTestState(page)
+        const viewport = page.viewportSize()!
+
+        // Regression: a NaN scale (uninitialized field during super()) left the
+        // quickbar invisible; an unscaled panel ran off the edges on narrow screens.
+        expect(state.quickbar.visible).toBe(true)
+        expect(state.quickbar.scale).toBeGreaterThan(0)
+        expect(state.quickbar.scale).toBeLessThanOrEqual(1)
+
+        const b = state.quickbar.bounds
+        // horizontally on-screen (the off-screen regression)
+        expect(b.x).toBeGreaterThanOrEqual(0)
+        expect(b.x + b.width).toBeLessThanOrEqual(viewport.width + 1)
+        // anchored along the bottom with its top edge on-screen
+        expect(b.y).toBeGreaterThanOrEqual(0)
+        expect(b.y).toBeLessThan(viewport.height)
+
+        if (isMobileProject()) {
+            expect(state.quickbar.scale).toBeLessThan(1) // narrow viewport forces scaling
+        } else {
+            expect(state.quickbar.scale).toBe(1) // wide enough to render at full size
+        }
     })
 })
