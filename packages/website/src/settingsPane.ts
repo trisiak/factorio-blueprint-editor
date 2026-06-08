@@ -1,5 +1,15 @@
 import { GUI } from 'dat.gui'
-import EDITOR, { Blueprint, Book, GridPattern, Editor, FD, inputMode } from '@fbe/editor'
+import EDITOR, {
+    Blueprint,
+    Book,
+    GridPattern,
+    Editor,
+    FD,
+    inputMode,
+    DATA_ROOT,
+    DATA_PACK,
+    setDataPack,
+} from '@fbe/editor'
 import type { InputMode } from '@fbe/editor'
 
 GUI.TEXT_CLOSED = 'Close Settings'
@@ -123,6 +133,31 @@ export function initSettingsPane(
         },
     }
     gui.add(inputModeProxy, 'mode', ['desktop', 'mobile']).name('Input Mode').listen()
+
+    // Data pack (modpack support): which game-data dump the editor renders —
+    // vanilla 2.0, 2.0 + Space Age, etc. Options come from the `packs.json`
+    // manifest next to the data dirs; the controller is created synchronously
+    // here (so it sits right under Input Mode) and populated once the manifest
+    // loads. Switching a pack reloads the app to re-fetch its atlas + data.json.
+    const dataPackFolder = gui.addFolder('Data Pack')
+    const dataPackProxy = { pack: DATA_PACK }
+    fetch(`${DATA_ROOT}/packs.json`)
+        .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+        .then((packs: { id: string; label?: string }[]) => {
+            const options: Record<string, string> = {}
+            for (const p of packs) options[p.label ?? p.id] = p.id
+            dataPackFolder
+                .add(dataPackProxy, 'pack', options)
+                .name('Active pack')
+                .onChange((id: string) => {
+                    if (id !== DATA_PACK) setDataPack(id)
+                })
+            dataPackFolder.open()
+        })
+        .catch(() => {
+            // No manifest (e.g. an old single-dump deploy) — leave the folder
+            // empty rather than surfacing an error; the default pack still loads.
+        })
 
     if (localStorage.getItem('debug')) {
         const debug = Boolean(localStorage.getItem('debug'))

@@ -56,11 +56,23 @@ exporter is a separate Rust tool and is **not** a JS workspace.
       slice — see `docs/mobile-controls.md`.
 - `packages/website/` (`@fbe/website`) — the deployable Vite app that hosts the
   editor. `src/index.ts` (boot + the mobile gate / `?desktopOnly`),
-  `settingsPane.ts` (settings UI incl. the Input Mode toggle), `toasts.ts`.
+  `settingsPane.ts` (settings UI incl. the Input Mode toggle and the Data Pack
+  selector), `toasts.ts`.
 - `packages/exporter/` — **Rust** CLI that pulls Factorio's data + sprites and
   builds the atlas/data the editor consumes. Needs Factorio credentials; you
-  almost never need to run it (the committed `vanilla-2.0` atlas is baked into
-  e2e builds). Excluded from eslint/vitest.
+  almost never need to run it (the committed atlas is baked into e2e builds).
+  Excluded from eslint/vitest.
+    - **Data packs (modpack support):** `data/output/` holds one sub-directory
+      per dump — `vanilla-2.0/` (base 2.0) and `space-age/` (2.0 + Space Age +
+      Quality + Elevated Rails), each with its own `data.json` + `*.basis` atlas
+      — plus a `packs.json` manifest. The editor renders one pack at a time,
+      chosen at runtime (`?pack=` query > persisted choice > default
+      `vanilla-2.0`); see `DATA_ROOT` / `DATA_PACK` / `setDataPack` in
+      `editor/src/common/globals.ts` and the "Data Pack" selector in the
+      website `settingsPane.ts`. The SA-aware rendering code is **backwards
+      compatible** (defensive null-guards + additive draw branches), so a single
+      build renders any pack. Adding a pack = drop a new `data/output/<id>/`
+      dump + a `packs.json` entry; no code changes.
 - `functions/corsproxy.js` — Cloudflare Pages Function for URL blueprint import.
   **Does not run on GitHub Pages**; paste-string import + editing do.
 - `e2e/` — Playwright specs. `docs/` — design/tracking docs.

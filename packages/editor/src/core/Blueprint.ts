@@ -173,7 +173,7 @@ class Blueprint extends EventEmitter<BlueprintEvents> {
                         const direction = (e.direction || 0) * dirMult
                         let position = util.sumprod(e.position, offset)
                         // Approximate position of placeable_off_grid entities (i.e. landmines)
-                        if (FD.entities[e.name].flags.includes('placeable-off-grid')) {
+                        if (FD.entities[e.name]?.flags?.includes('placeable-off-grid')) {
                             const e_size = getEntitySize(FD.entities[e.name])
                             const size = util.rotatePointBasedOnDir(
                                 [e_size.x / 2, e_size.y / 2],
@@ -197,6 +197,7 @@ class Blueprint extends EventEmitter<BlueprintEvents> {
                                 let stack = 0
                                 for (const [name, count] of Object.entries(e.items)) {
                                     const item = FD.items[name]
+                                    if (!item) continue
                                     if (item.type === 'module') {
                                         const inventory = getModuleInventoryIndex(
                                             FD.entities[e.name]
@@ -817,7 +818,7 @@ function getOffset(data?: Partial<IBlueprint>): IPoint {
 
     if (data.entities) {
         for (const entity of data.entities) {
-            if (FD.entities[entity.name].flags.includes('placeable-off-grid')) continue
+            if (FD.entities[entity.name]?.flags?.includes('placeable-off-grid')) continue
 
             const dirMult = data.version < getFactorioVersion(2, 0, 0) ? 2 : 1
             const size = getEntitySize(FD.entities[entity.name], (entity.direction || 0) * dirMult)

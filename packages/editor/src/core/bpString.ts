@@ -65,8 +65,7 @@ const keywords: KeywordDefinition[] = [
     },
     {
         keyword: 'itemFluidSignalRecipeEntityName',
-        validate: (data: string) =>
-            !!FD.items[data] || !!FD.fluids[data] || !!FD.signals[data] || !!FD.recipes[data],
+        validate: () => true,
         errors: false,
         schema: false,
     },
@@ -78,6 +77,7 @@ const validate = new Ajv({
     keywords,
     verbose: true,
     strict: true,
+    allowUnionTypes: true,
 }).compile<StringData>(blueprintSchema)
 
 const nameMigrations: Record<string, string> = {
@@ -123,6 +123,47 @@ const nameMigrations: Record<string, string> = {
 }
 const nameMigrationsRegex = new RegExp(Object.keys(nameMigrations).join('|'), 'g')
 
+let loadWarnings: string[] = []
+
+function getAndClearLoadWarnings(): string[] {
+    const warnings = loadWarnings
+    loadWarnings = []
+    return warnings
+}
+
+function stripUnknownEntities(data: StringData): string[] {
+    const strippedNames = new Set<string>()
+    const stripBlueprint = (bp: IBlueprint): void => {
+        if (bp.entities) {
+            const before = bp.entities.length
+            bp.entities = bp.entities.filter(e => {
+                if (!FD.entities[e.name]) {
+                    strippedNames.add(e.name)
+                    return false
+                }
+                return true
+            })
+            if (bp.entities.length < before) {
+                console.warn(`Stripped ${before - bp.entities.length} unknown entities`)
+            }
+        }
+    }
+
+    const stripBook = (entries: IBlueprintBookEntry[] = []): void => {
+        for (const entry of entries) {
+            if (entry.blueprint) stripBlueprint(entry.blueprint)
+            if (entry.blueprint_book) stripBook(entry.blueprint_book.blueprints)
+        }
+    }
+
+    if (data.blueprint) {
+        stripBlueprint(data.blueprint)
+    } else if (data.blueprint_book) {
+        stripBook(data.blueprint_book.blueprints)
+    }
+    return [...strippedNames]
+}
+
 function decode(str: string): Promise<Blueprint | Book> {
     return new Promise((resolve, reject) => {
         try {
@@ -137,35 +178,39 @@ function decode(str: string): Promise<Blueprint | Book> {
         }
     }).then(data => {
         console.log(data)
-        if (validate(data)) {
-            if (data.blueprint_book === undefined) {
-                return new Blueprint(data.blueprint)
-            } else {
-                const hasBlueprint = (entries: IBlueprintBookEntry[] = []): boolean => {
-                    for (const entry of entries) {
-                        if (entry.blueprint) return true
-                        if (entry.blueprint_book && hasBlueprint(entry.blueprint_book.blueprints))
-                            return true
-                    }
-                    return false
-                }
-                if (hasBlueprint(data.blueprint_book.blueprints)) {
-                    return new Book(data.blueprint_book)
-                } else {
-                    throw new BookWithNoBlueprintsError()
-                }
-            }
-        } else {
+        loadWarnings = []
+        if (!validate(data)) {
             const errors = validate.errors
-            const trainEntityNames = new Set(['locomotive', 'cargo-wagon', 'fluid-wagon'])
-            const hasTrain = (): boolean => errors.some(e => trainEntityNames.has(e.data as string))
-            const isModded = (): boolean =>
-                errors.some(e => !!keywords.find(k => k.keyword === e.keyword))
-            throw hasTrain()
-                ? new TrainBlueprintError(errors)
-                : isModded()
-                  ? new ModdedBlueprintError(errors)
-                  : errors
+            // Log validation warnings but try to load the blueprint anyway
+            console.warn('Blueprint validation warnings (loading anyway):', JSON.stringify(errors))
+            loadWarnings.push('Blueprint had validation warnings (loaded anyway)')
+        }
+        // Always strip unknown entities - they crash during rendering if they
+        // reach Blueprint.ts (e.g., mod entities like ee-infinity-loader)
+        const strippedNames = stripUnknownEntities(data as StringData)
+        if (strippedNames.length > 0) {
+            loadWarnings.push(
+                `Skipped ${strippedNames.length} unknown entit${strippedNames.length === 1 ? 'y' : 'ies'}: ${strippedNames.join(', ')}`
+            )
+        }
+
+        const bpData = data as StringData
+        if (bpData.blueprint_book === undefined) {
+            return new Blueprint(bpData.blueprint)
+        } else {
+            const hasBlueprint = (entries: IBlueprintBookEntry[] = []): boolean => {
+                for (const entry of entries) {
+                    if (entry.blueprint) return true
+                    if (entry.blueprint_book && hasBlueprint(entry.blueprint_book.blueprints))
+                        return true
+                }
+                return false
+            }
+            if (hasBlueprint(bpData.blueprint_book.blueprints)) {
+                return new Book(bpData.blueprint_book)
+            } else {
+                throw new BookWithNoBlueprintsError()
+            }
         }
     })
 }
@@ -258,4 +303,5 @@ export {
     BookWithNoBlueprintsError,
     encode,
     getBlueprintOrBookFromSource,
+    getAndClearLoadWarnings,
 }
