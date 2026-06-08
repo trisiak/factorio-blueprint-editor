@@ -11,6 +11,13 @@ export default tseslint.config(
         },
     },
     {
+        // build/config files run in Node and read process.env
+        files: ['**/*.config.{js,mjs,cjs}'],
+        languageOptions: {
+            globals: { process: 'readonly' },
+        },
+    },
+    {
         ignores: [
             'packages/website/dist',
             'packages/editor/src/basis',

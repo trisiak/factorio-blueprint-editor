@@ -1,0 +1,47 @@
+name: Deploy production site
+
+# Publishes the full site (including the ~68 MB sprite atlas) to the root of the
+# `gh-pages` branch. PR previews live under `pr-preview/` on the same branch and
+# reuse this deploy's atlas, so they don't ship their own copy.
+
+on:
+  push:
+    branches:
+      - master
+      # BOOTSTRAP ONLY — lets the production deploy run from the PR branch so the
+      # shared atlas exists before anything is merged to master. Remove this line
+      # when merging; production should deploy from master only.
+      - claude/repo-exploration-Gv3dZ
+  workflow_dispatch: {}
+
+# Serialize every push to gh-pages (this workflow + the PR-preview one) so they
+# never race on the same branch.
+concurrency:
+  group: gh-pages-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm install --legacy-peer-deps
+
+      - run: npm run build:website
+        env:
+          PUBLIC_BASE: /factorio-blueprint-editor/
+
+      - name: Deploy to gh-pages root
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: packages/website/dist
+          # don't wipe the PR previews that live alongside the root site
+          clean-exclude: pr-preview

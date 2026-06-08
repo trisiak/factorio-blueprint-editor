@@ -1,0 +1,45 @@
+name: PR preview
+
+# Builds a slim per-PR preview (no atlas — it reuses the production deploy's via
+# VITE_DATA_URL) and publishes it to `pr-preview/pr-<N>/` on the `gh-pages`
+# branch, then comments the URL on the PR. On close, the preview is removed.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+concurrency:
+  group: gh-pages-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        if: github.event.action != 'closed'
+        with:
+          node-version: 22
+
+      - run: npm install --legacy-peer-deps
+        if: github.event.action != 'closed'
+
+      - run: npm run build:website
+        if: github.event.action != 'closed'
+        env:
+          PUBLIC_BASE: /factorio-blueprint-editor/pr-preview/pr-${{ github.event.number }}/
+          # reuse the production deploy's atlas instead of bundling our own
+          VITE_DATA_URL: /factorio-blueprint-editor/data
+          SKIP_DATA_COPY: 'true'
+
+      - name: Deploy / remove preview
+        uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: packages/website/dist
+          umbrella-dir: pr-preview
