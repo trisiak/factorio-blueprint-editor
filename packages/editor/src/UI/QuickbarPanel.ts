@@ -160,11 +160,16 @@ export class QuickbarPanel extends Panel {
     protected override setPosition(): void {
         // Scale to fit narrow viewports (see quickbarLayout) so the fixed-width
         // panel never runs off the edges, then center along the bottom.
-        const scale = fitToWidthScale(G.app.screen.width, this.iWidth)
+        // Use the width/height getters (backed by the background sprite, which
+        // exists during super()'s setPosition() call) rather than iWidth/iHeight:
+        // those are class fields not yet initialized on that first call. The
+        // getters report the intrinsic size regardless of scale, so this stays
+        // correct across the repeated resize calls.
+        const scale = fitToWidthScale(G.app.screen.width, this.width)
         this.scale.set(scale)
 
-        const scaledWidth = this.iWidth * scale
-        const scaledHeight = this.iHeight * scale
+        const scaledWidth = this.width * scale
+        const scaledHeight = this.height * scale
         this.position.set(
             G.app.screen.width / 2 - scaledWidth / 2,
             G.app.screen.height - scaledHeight + 1

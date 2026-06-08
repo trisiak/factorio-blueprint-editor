@@ -29,6 +29,11 @@ export function initSettingsPane(
         width: 320,
     })
 
+    // dat.gui creates its close button *after* honoring a constructor `closed:true`,
+    // so a pane that starts closed keeps the wrong "Close Settings" label until the
+    // first toggle. Re-applying the closed state now fixes the initial label.
+    if (startClosed) gui.close()
+
     gui.domElement.style.overflowX = 'hidden'
     gui.domElement.style.overflowY = 'auto'
     gui.domElement.style.maxHeight = `${window.innerHeight}px`

@@ -102,6 +102,25 @@ test.describe('settings pane (dat.gui)', () => {
         await expect(page.getByText('Keybinds', { exact: true })).not.toBeVisible()
     })
 
+    test('keeps folders collapsed until tapped in mobile mode', async ({ page }) => {
+        test.skip(!isMobileProject(), 'mobile-only')
+
+        await page.goto('/')
+        await waitForAppReady(page)
+        await toggleSettingsPane(page) // open the pane (folders default collapsed)
+
+        // Regression: the touch row-height override must not leak through a closed
+        // folder via the open root <ul>, which left folders stuck expanded.
+        const folderRow = page.locator('.dg li.cr', { hasText: 'Pumpjack Modules' })
+        await expect(folderRow).not.toBeVisible()
+
+        // tapping the folder title expands it (click the left edge to dodge toasts)
+        await page
+            .getByText('Oil Outpost Generator Settings', { exact: true })
+            .click({ position: { x: 10, y: 5 } })
+        await expect(folderRow).toBeVisible()
+    })
+
     test('keeps the Keybinds folder on desktop', async ({ page }) => {
         test.skip(isMobileProject(), 'desktop-only')
 

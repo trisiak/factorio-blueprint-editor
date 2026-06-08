@@ -134,12 +134,13 @@ body.mobile
     .dg.main
         width: unquote('min(360px, 100vw) !important')
     .dg
-        // Scope the taller touch rows to an *open* list: dat.gui collapses a
-        // closed pane via `.dg .closed li { height: 0 }`, and an unscoped
-        // `height: 40px` here outranks it (more elements) — so the controllers
-        // would stay visible when the pane is closed. `ul:not(.closed)` makes the
-        // override yield to the collapse.
-        ul:not(.closed) li:not(.folder)
+        // Taller touch rows, but only for the *direct* rows of an open list.
+        // dat.gui collapses a closed pane/folder with `.dg .closed li{height:0}`,
+        // and an unscoped `height: 40px` here outranks it. The child combinator
+        // is load-bearing: a plain descendant (`ul:not(.closed) li`) still matches
+        // a *closed folder's* rows through the open root <ul> ancestor, leaving
+        // the folder stuck open. `> li` keys off the row's own list instead.
+        ul:not(.closed) > li:not(.folder)
             height: 40px
             line-height: 40px
         li.title
@@ -148,7 +149,7 @@ body.mobile
         .close-button
             height: 40px
             line-height: 40px
-        ul:not(.closed) .c
+        ul:not(.closed) > li .c
             line-height: 40px
             input[type=text]
             select
