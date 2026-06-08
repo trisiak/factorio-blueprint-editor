@@ -37,6 +37,11 @@ export enum GridPattern {
     GRID = 'grid',
 }
 
+/** max pointer travel (screen px) for a touch to still count as a tap, not a pan */
+const TOUCH_TAP_MOVE_THRESHOLD = 10
+/** max duration (ms) for a touch to still count as a tap */
+const TOUCH_TAP_MAX_DURATION = 300
+
 type MoveDirections = {
     up: boolean
     left: boolean
@@ -113,6 +118,16 @@ export class BlueprintContainer extends Container {
     private deleteModeUpdateFn: (endX: number, endY: number) => void
     private copySettingsActive = false
     private readonly pointerGestures = new PinchPanRecognizer()
+    /** in-progress single-finger touch, pending a tap-vs-pan decision */
+    private touchPan: {
+        pointerId: number
+        startX: number
+        startY: number
+        lastX: number
+        lastY: number
+        moved: boolean
+        startTime: number
+    } | null = null
 
     // PIXI properties
     public readonly eventMode = 'static'
@@ -401,19 +416,65 @@ export class BlueprintContainer extends Container {
         const onPointerDown = (e: FederatedPointerEvent): void => {
             this.pointerGestures.down(e.pointerId, e.global.x, e.global.y)
             if (this.pointerGestures.pointerCount >= 2) {
-                // a multi-touch gesture began: cancel the single-pointer action
-                // the first finger may have started and don't dispatch a new one
+                // a multi-touch gesture began: cancel the single-pointer action /
+                // pending tap and let applyPinchPan drive the viewport
                 G.actions.releaseAll()
+                this.touchPan = null
                 return
             }
+            if (e.pointerType === 'touch') {
+                // Touch has no hover, so on touchdown we can't yet tell a tap
+                // (place/select) from a drag (pan). Defer the decision to
+                // onPointerMove / onPointerUp.
+                this.touchPan = {
+                    pointerId: e.pointerId,
+                    startX: e.global.x,
+                    startY: e.global.y,
+                    lastX: e.global.x,
+                    lastY: e.global.y,
+                    moved: false,
+                    startTime: performance.now(),
+                }
+                return
+            }
+            // mouse / pen: dispatch immediately, as before
             G.actions.pressButton(e as unknown as PointerEvent)
         }
         const onPointerMove = (e: FederatedPointerEvent): void => {
             const gesture = this.pointerGestures.move(e.pointerId, e.global.x, e.global.y)
-            if (gesture) this.applyPinchPan(gesture)
+            if (gesture) {
+                this.applyPinchPan(gesture)
+                return
+            }
+            const tp = this.touchPan
+            if (!tp || e.pointerId !== tp.pointerId) return
+            if (!tp.moved) {
+                const travel = Math.hypot(e.global.x - tp.startX, e.global.y - tp.startY)
+                if (travel > TOUCH_TAP_MOVE_THRESHOLD) tp.moved = true
+            }
+            if (tp.moved) {
+                // one-finger drag pans the viewport
+                this.viewport.translateBy(e.global.x - tp.lastX, e.global.y - tp.lastY)
+            }
+            tp.lastX = e.global.x
+            tp.lastY = e.global.y
         }
         const onPointerUp = (e: FederatedPointerEvent): void => {
             this.pointerGestures.up(e.pointerId)
+            const tp = this.touchPan
+            if (!tp || e.pointerId !== tp.pointerId) return
+            this.touchPan = null
+            const wasTap = !tp.moved && performance.now() - tp.startTime < TOUCH_TAP_MAX_DURATION
+            if (wasTap) {
+                // A tap acts at the touch point through the same left-click
+                // pipeline as the mouse: seed the grid + hover at the tap, then
+                // press/release so existing per-mode semantics (place / select /
+                // open) apply unchanged.
+                this.gridData.moveTo(tp.startX, tp.startY)
+                this.updateHoverContainer()
+                G.actions.pressButton(e as unknown as PointerEvent)
+                G.actions.releaseButton(e as unknown as PointerEvent)
+            }
         }
 
         this.addEventListener('pointerdown', onPointerDown)

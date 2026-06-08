@@ -5,3 +5,9 @@ packages/exporter/data/*
 packages/exporter/data/output/metadata.json
 packages/exporter/target
 .env
+
+# Playwright
+/test-results
+/playwright-report
+/playwright/.cache
+/blob-report
