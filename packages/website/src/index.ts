@@ -17,6 +17,7 @@ import EDITOR, {
 import { initToasts } from './toasts'
 import { initFeedbackButton } from './feedbackButton'
 import { initSettingsPane } from './settingsPane'
+import { initActionToolbar } from './actionToolbar'
 import {
     saveBlueprint,
     loadSavedBlueprint,
@@ -119,6 +120,7 @@ editor
         }
 
         registerActions()
+        initActionToolbar(editor)
 
         // Opt-in e2e probe for on-canvas state that the DOM can't expose.
         if (new URLSearchParams(window.location.search).has('test')) {

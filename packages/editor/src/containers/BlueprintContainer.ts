@@ -616,6 +616,21 @@ export class BlueprintContainer extends Container {
         this.exitDeleteMode(true)
     }
 
+    /**
+     * Cancel whatever the cursor is currently doing — painting, or a copy/delete
+     * selection — and return to NONE. Desktop reaches this by toggling the
+     * trigger off (e.g. pipette again); this is the single explicit "stop" that
+     * the Escape key and the on-screen toolbar's cancel button both route
+     * through, since touch has no keyboard to bail out with.
+     */
+    public clearCursor(): void {
+        if (this.mode === EditorMode.PAINT) {
+            this.paintContainer.destroy()
+        }
+        this.exitCopyMode(true)
+        this.exitDeleteMode(true)
+    }
+
     public moveEntity(offset: IPoint) {
         if (this.mode === EditorMode.EDIT) {
             this.hoverContainer.entity.moveBy(offset)

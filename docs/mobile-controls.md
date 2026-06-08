@@ -77,9 +77,20 @@ pipelines at once made touch taps double-act via the browser's synthetic
 
 ## Not done / next
 
-- ⬜ **On-screen action toolbar** — mobile has no keyboard, so mirror the
-  `actions.ts` registry into on-screen buttons: rotate / flip / pipette / copy /
-  delete / undo / open-inventory. This is the natural next slice.
+- 🚧 **On-screen action toolbar** — DOM toolbar mirroring the `actions.ts`
+  registry into on-screen buttons, shown only in `mobile` input mode. Prototype
+  landed: Items (inventory) / Rotate / Flip H / Flip V / Pick (pipette) / Undo /
+  Redo / Center / **Cancel**. Buttons invoke actions by name via the new
+  `EDITOR.callAction(name)` seam (`actions.ts`), so they stay in lockstep with
+  the keybinds instead of duplicating logic. The Cancel button fixes the worst
+  gap — there was previously **no keyboard-free way out of paint mode** (only the
+  pipette toggle); `closeWindow`/Escape now falls through to a new
+  `BlueprintContainer.clearCursor()` (cancels paint/copy/delete), and Cancel
+  routes through it. Lives in `packages/website/src/actionToolbar.ts` (styled in
+  `index.styl`, mounted in `index.ts`); mode-awareness via the new
+  `Editor.onModeChange` / `Editor.mode` API (stable across blueprint reloads).
+  Remaining: real game-sprite icons (currently unicode glyphs — blocked on
+  `.basis`→DOM delivery), copy/delete-select buttons, and e2e coverage.
 - ⬜ **Touch area/marquee select** — multi-select for copy/delete is desktop-only
   (drag with a modifier); needs a touch gesture (e.g. long-press-drag).
 - 🚧 **e2e coverage gaps** (both `fixme`): pinch needs CDP
