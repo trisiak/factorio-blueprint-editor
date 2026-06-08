@@ -9,9 +9,7 @@ test.describe('touch', () => {
         )
     })
 
-    test('mobile device loads (gate lifted) and shows the experimental toast', async ({
-        page,
-    }) => {
+    test('mobile loads (gate lifted) and shows the experimental toast once', async ({ page }) => {
         const fatal: string[] = []
         page.on('pageerror', err => fatal.push(err.message))
 
@@ -20,8 +18,18 @@ test.describe('touch', () => {
         await expect(page.locator('#editor')).toBeVisible()
         expect(fatal.join('\n')).not.toContain('MOBILE_DEVICE_NOT_SUPPORTED')
 
-        // Slice 0: touch devices get an experimental-support info toast
-        await expect(page.getByText(/experimental/i)).toBeVisible({ timeout: 15_000 })
+        // Slice 0: touch devices get an experimental-support info toast on the
+        // first visit...
+        await expect(page.getByText(/Touch support is experimental/i)).toBeVisible({
+            timeout: 15_000,
+        })
+
+        // ...but a `fbe:touchToastSeen` flag is persisted, so it must not nag on
+        // every reload (reloading is normal now that blueprints persist).
+        await page.reload()
+        await expect(page.locator('#editor')).toBeVisible()
+        await expect(page.locator('#loadingScreen')).not.toHaveClass(/active/, { timeout: 60_000 })
+        await expect(page.getByText(/Touch support is experimental/i)).toHaveCount(0)
     })
 
     test('?desktopOnly restores the hard mobile block', async ({ page }) => {

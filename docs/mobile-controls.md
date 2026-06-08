@@ -29,8 +29,19 @@ pipelines at once made touch taps double-act via the browser's synthetic
 ## Done
 
 - ✅ **Mobile gate lifted** — hard `MOBILE_DEVICE_NOT_SUPPORTED` block is now
-  opt-in via `?desktopOnly`; touch devices load with an "experimental" toast.
-  (`packages/website/src/index.ts`)
+  opt-in via `?desktopOnly`; touch devices load with an "experimental" toast,
+  shown only once (persisted via `fbe:touchToastSeen`) so it doesn't nag on every
+  reload. (`packages/website/src/index.ts`)
+- ✅ **Blueprint persistence across reloads** — the working blueprint autosaves to
+  `localStorage` (`fbe:blueprint`): serialized on `visibilitychange` (when the tab
+  is hidden), restored on load. Clearing the editor (`shift+N` / emptying it)
+  drops the save. A `?source` URL argument still wins on load (explicit intent);
+  when both exist and differ, a toast offers a "Restore my saved blueprint" button
+  (the mixed-state UX). `?source` parsing moved to `URLSearchParams` so raw
+  blueprint strings (which carry `=` / `+` / `/`) survive. Storage + precedence
+  logic lives in `packages/website/src/blueprintStorage.ts` (unit-tested); the
+  loader wiring and autosave listener are in `packages/website/src/index.ts`;
+  end-to-end coverage in `e2e/persistence.spec.ts`.
 - ✅ **Pinch-zoom + two-finger pan** — framework-free `PinchPanRecognizer`
   (unit-tested), wired to `viewport.zoomBy` / `translateBy`.
   (`packages/editor/src/containers/PointerGestures.ts`)
@@ -50,14 +61,6 @@ pipelines at once made touch taps double-act via the browser's synthetic
   delete / undo / open-inventory. This is the natural next slice.
 - ⬜ **Touch area/marquee select** — multi-select for copy/delete is desktop-only
   (drag with a modifier); needs a touch gesture (e.g. long-press-drag).
-- ✅ **Blueprint persistence across reloads** — the working blueprint now
-  autosaves to `localStorage` (`fbe:blueprint`): serialized on `visibilitychange`
-  (when the tab is hidden), restored on load. Clearing the editor (`shift+N` /
-  emptying it) drops the save. A `?source` URL argument still wins on load
-  (explicit intent); when both exist and differ, a toast offers a "Restore my
-  saved blueprint" button (the mixed-state UX). Storage + precedence logic lives
-  in `packages/website/src/blueprintStorage.ts` (unit-tested); the loader wiring
-  and autosave listener are in `packages/website/src/index.ts`.
 - 🚧 **e2e coverage gaps** (both `fixme`): pinch needs CDP
   `Input.dispatchTouchEvent` (the high-level touch API is single-touch);
   tap-to-place needs a window-level handle to read blueprint state for assertions.

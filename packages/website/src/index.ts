@@ -73,7 +73,11 @@ if (isMobile.any && forceDesktopOnly) {
     loadingScreen.el.classList.add('error')
     throw new Error('MOBILE_DEVICE_NOT_SUPPORTED')
 }
-if (isMobile.any) {
+// Touch support is experimental; let mobile users know — but only once. Now that
+// the blueprint persists across reloads, reloading is a normal part of the
+// workflow, and re-showing this on every load is just noise.
+if (isMobile.any && localStorage.getItem('fbe:touchToastSeen') !== 'true') {
+    localStorage.setItem('fbe:touchToastSeen', 'true')
     createToast({
         text:
             'Touch support is experimental.<br>' +
@@ -95,18 +99,13 @@ if (typeof WebAssembly !== 'object' && typeof WebAssembly.instantiate !== 'funct
     throw new Error('WEB_ASSEMBLY_NOT_SUPPORTED')
 }
 
-const params = window.location.search.slice(1).split('&')
-
-let bpSource: string
-let bpIndex = 0
-for (const p of params) {
-    if (p.includes('source')) {
-        bpSource = p.split('=')[1]
-    }
-    if (p.includes('index')) {
-        bpIndex = Number(p.split('=')[1])
-    }
-}
+// Parse with URLSearchParams so a `?source=<value>` is read whole and decoded —
+// the old hand-split on '=' truncated raw blueprint strings at their base64
+// padding ('='), and didn't percent-decode. `null` (param absent) is normalized
+// to `undefined` so the loader treats it as "no source given".
+const params = new URLSearchParams(window.location.search)
+const bpSource: string | undefined = params.get('source') ?? undefined
+const bpIndex = params.get('index') ? Number(params.get('index')) : 0
 
 let changeBookForIndexSelector: (bpOrBook: Book | Blueprint) => void
 
