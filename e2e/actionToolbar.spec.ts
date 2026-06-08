@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 
 // The on-screen action toolbar (packages/website/src/actionToolbar.ts) is a
 // touch affordance: it mirrors the editor's keyboard action registry into DOM
@@ -10,10 +10,31 @@ import { test, expect } from '@playwright/test'
 // assertions don't depend on the decorative unicode glyph in the button text.
 const BUTTON_TITLES = ['Items', 'Rotate', 'Flip H', 'Flip V', 'Pick', 'Undo', 'Redo', 'Center']
 
-async function waitForLoaded(page: import('@playwright/test').Page): Promise<void> {
+async function waitForLoaded(page: Page): Promise<void> {
     await expect(page.locator('#editor')).toBeVisible()
     // loadingScreen starts with .active and loses it once data + atlas load.
     await expect(page.locator('#loadingScreen')).not.toHaveClass(/active/, { timeout: 60_000 })
+}
+
+// Enter paint mode deterministically without clipboard or canvas hit-testing:
+// seed a quickbar item (the website loads `quickbarItemNames` from localStorage
+// on boot), then press the slot-1 key, which spawns the paint cursor for that
+// item. The toolbar surfaces PAINT by activating its Cancel button (via
+// Editor.onModeChange), so `button[title="Cancel"].active` is our DOM-observable
+// proxy for "the cursor is holding something".
+async function gotoAndEnterPaint(page: Page): Promise<void> {
+    await page.addInitScript(() => {
+        window.localStorage.setItem('quickbarItemNames', JSON.stringify(['transport-belt']))
+    })
+    await page.goto('/')
+    await waitForLoaded(page)
+
+    const cancel = page.locator('#action-toolbar button[title="Cancel"]')
+    await expect(cancel).not.toHaveClass(/active/)
+
+    await page.locator('#editor').focus()
+    await page.keyboard.press('1') // code 'Digit1' -> quickbar slot 1 -> paint
+    await expect(cancel).toHaveClass(/active/)
 }
 
 test.describe('action toolbar', () => {
@@ -83,16 +104,26 @@ test.describe('action toolbar', () => {
 
             expect(fatal.join('\n')).toBe('')
         })
-    })
 
-    // The headline behavior — Cancel (and Escape) clearing the paint cursor —
-    // can't be asserted end to end yet. Both entering paint mode and reading the
-    // editor mode back out need a window-level handle into editor state that the
-    // website doesn't expose (the same blocker as tap-to-place; see
-    // docs/mobile-controls.md). Until then this is verified manually.
-    test.fixme('Cancel button exits paint mode', async () => {
-        // Needs a test seam to enter PAINT (e.g. appendBlueprint from the
-        // clipboard) and to observe editor.mode returning to NONE after tapping
-        // the Cancel button.
+        // The headline behavior: a touch user can get out of paint mode. Cancel
+        // routes through closeWindow -> BlueprintContainer.clearCursor().
+        test('Cancel button exits paint mode', async ({ page }) => {
+            await gotoAndEnterPaint(page)
+
+            const cancel = page.locator('#action-toolbar button[title="Cancel"]')
+            await cancel.tap()
+            await expect(cancel).not.toHaveClass(/active/)
+        })
+
+        // Escape gains the same fall-through (close dialog if open, else clear the
+        // cursor), so a physical keyboard on a touch device also bails out.
+        test('Escape also exits paint mode', async ({ page }) => {
+            await gotoAndEnterPaint(page)
+
+            await page.keyboard.press('Escape')
+            await expect(page.locator('#action-toolbar button[title="Cancel"]')).not.toHaveClass(
+                /active/
+            )
+        })
     })
 })

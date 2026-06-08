@@ -471,6 +471,11 @@ body.mobile
     transform: translateX(-50%)
     z-index: 6
     display: none
+    flex-wrap: wrap
+    justify-content: center
+    // Keep every button (esp. Cancel) on-screen on narrow phones — the full row
+    // is wider than a ~410px viewport, so let it wrap to a second centered row.
+    max-width: calc(100vw - 16px)
     gap: 6px
     padding: 6px
     border-radius: 8px

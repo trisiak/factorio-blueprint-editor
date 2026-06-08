@@ -89,11 +89,13 @@ pipelines at once made touch taps double-act via the browser's synthetic
   routes through it. Lives in `packages/website/src/actionToolbar.ts` (styled in
   `index.styl`, mounted in `index.ts`); mode-awareness via the new
   `Editor.onModeChange` / `Editor.mode` API (stable across blueprint reloads).
-  e2e in `e2e/actionToolbar.spec.ts` covers the input-mode gating, button
-  presence and the `callAction` tap path; the behavioral paint-exit assertion is
-  `test.fixme` (needs the same window-level state handle as tap-to-place).
-  Remaining: real game-sprite icons (currently unicode glyphs — blocked on
-  `.basis`→DOM delivery) and copy/delete-select buttons.
+  e2e in `e2e/actionToolbar.spec.ts` covers input-mode gating, button presence,
+  the `callAction` tap path, and the headline behavior — tapping **Cancel** (and
+  pressing Escape) exits paint mode. The paint-exit tests dodge the
+  tap-to-place blocker by seeding a quickbar item to enter PAINT via a keypress
+  and reading the Cancel button's `.active` class as a DOM-observable proxy for
+  cursor state. Remaining: real game-sprite icons (currently unicode glyphs —
+  blocked on `.basis`→DOM delivery) and copy/delete-select buttons.
 - ⬜ **Touch area/marquee select** — multi-select for copy/delete is desktop-only
   (drag with a modifier); needs a touch gesture (e.g. long-press-drag).
 - 🚧 **e2e coverage gaps** (both `fixme`): pinch needs CDP
