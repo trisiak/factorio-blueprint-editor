@@ -7,9 +7,18 @@ agent and optimizes for getting useful work done quickly and safely.
 ## What this is
 
 A feature-rich **Factorio Blueprint Editor** — a browser app that renders and
-edits Factorio blueprints. Live at https://fbe.teoxoy.com. Rendering is done
-with **PixiJS 8** on a canvas; there is no React/Vue/framework — UI is
-hand-built.
+edits Factorio blueprints. Rendering is done with **PixiJS 8** on a canvas;
+there is no React/Vue/framework — UI is hand-built.
+
+> **This is a fork.** Upstream is
+> [`Teoxoy/factorio-blueprint-editor`](https://github.com/Teoxoy/factorio-blueprint-editor),
+> hosted at https://fbe.teoxoy.com. This fork is **not** expected to merge back
+> upstream — treat it as an independent line of development (mobile/touch + e2e
+> are this fork's focus, not necessarily upstream's). It deploys on its own via
+> **GitHub Pages** (the `gh-pages` branch, base path `/factorio-blueprint-editor/`,
+> i.e. `https://trisiak.github.io/factorio-blueprint-editor/`); see
+> `.github/workflows/pages-*.yml`. Don't assume changes here go to teoxoy.com,
+> and don't open upstream PRs.
 
 ### Current focus areas
 
