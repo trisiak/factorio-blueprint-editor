@@ -18,6 +18,7 @@ import { IPoint } from '../types'
 import { Dialog } from '../UI/controls/Dialog'
 import { Viewport } from './Viewport'
 import { PinchPanRecognizer, PinchPanUpdate } from './PointerGestures'
+import { inputMode } from '../common/input'
 import { EntitySprite } from './EntitySprite'
 import { WiresContainer } from './WiresContainer'
 import { UnderlayContainer } from './UnderlayContainer'
@@ -408,39 +409,54 @@ export class BlueprintContainer extends Container {
             this.removeEventListener('wheel', onWheel)
         })
 
-        // Multi-touch (pinch-zoom + two-finger pan) lives alongside the existing
-        // single-pointer mouse pipeline. On touch there is no hover and a second
-        // finger must cancel whatever the first finger started (pan/build/mine),
-        // so the single-pointer action dispatch is gated through onPointerDown
-        // instead of binding `pressButton` directly to the canvas.
+        // Input is either desktop (mouse) or mobile (touch) — never both at once.
+        // `inputMode` is the single source of truth; each handler dispatches for
+        // exactly one scheme. In mobile we ignore `mouse` pointers, so the
+        // synthetic ("compatibility") mouse events the browser fires after a tap
+        // can't re-trigger an action and double-act. In desktop we ignore touch.
+        const applyInputMode = (): void => {
+            // Mobile locks the canvas's touch-action so the browser doesn't
+            // pan/zoom the page (and suppresses most synthetic mouse events).
+            const canvas = G.app.canvas as HTMLCanvasElement | undefined
+            if (canvas?.style) {
+                canvas.style.touchAction = inputMode.mode === 'mobile' ? 'none' : ''
+            }
+            // Drop anything in flight when the scheme changes under us.
+            G.actions.releaseAll()
+            this.pointerGestures.clear()
+            this.touchPan = null
+        }
+
         const onPointerDown = (e: FederatedPointerEvent): void => {
+            if (inputMode.mode === 'desktop') {
+                if (e.pointerType === 'touch') return // touch ignored in desktop mode
+                G.actions.pressButton(e as unknown as PointerEvent)
+                return
+            }
+            // mobile: touch/pen gestures only; ignore mouse (incl. ghost events)
+            if (e.pointerType === 'mouse') return
             this.pointerGestures.down(e.pointerId, e.global.x, e.global.y)
             if (this.pointerGestures.pointerCount >= 2) {
-                // a multi-touch gesture began: cancel the single-pointer action /
-                // pending tap and let applyPinchPan drive the viewport
+                // a multi-touch gesture began: cancel the pending tap and let
+                // applyPinchPan drive the viewport
                 G.actions.releaseAll()
                 this.touchPan = null
                 return
             }
-            if (e.pointerType === 'touch') {
-                // Touch has no hover, so on touchdown we can't yet tell a tap
-                // (place/select) from a drag (pan). Defer the decision to
-                // onPointerMove / onPointerUp.
-                this.touchPan = {
-                    pointerId: e.pointerId,
-                    startX: e.global.x,
-                    startY: e.global.y,
-                    lastX: e.global.x,
-                    lastY: e.global.y,
-                    moved: false,
-                    startTime: performance.now(),
-                }
-                return
+            // Touch has no hover, so on touchdown we can't yet tell a tap
+            // (place/select) from a drag (pan). Defer to onPointerMove / Up.
+            this.touchPan = {
+                pointerId: e.pointerId,
+                startX: e.global.x,
+                startY: e.global.y,
+                lastX: e.global.x,
+                lastY: e.global.y,
+                moved: false,
+                startTime: performance.now(),
             }
-            // mouse / pen: dispatch immediately, as before
-            G.actions.pressButton(e as unknown as PointerEvent)
         }
         const onPointerMove = (e: FederatedPointerEvent): void => {
+            if (inputMode.mode === 'desktop' || e.pointerType === 'mouse') return
             const gesture = this.pointerGestures.move(e.pointerId, e.global.x, e.global.y)
             if (gesture) {
                 this.applyPinchPan(gesture)
@@ -460,6 +476,7 @@ export class BlueprintContainer extends Container {
             tp.lastY = e.global.y
         }
         const onPointerUp = (e: FederatedPointerEvent): void => {
+            if (inputMode.mode === 'desktop' || e.pointerType === 'mouse') return
             this.pointerGestures.up(e.pointerId)
             const tp = this.touchPan
             if (!tp || e.pointerId !== tp.pointerId) return
@@ -482,12 +499,15 @@ export class BlueprintContainer extends Container {
         this.addEventListener('pointerup', onPointerUp)
         this.addEventListener('pointerupoutside', onPointerUp)
         this.addEventListener('pointercancel', onPointerUp)
+        inputMode.on('change', applyInputMode)
+        applyInputMode()
         this.on('destroyed', () => {
             this.removeEventListener('pointerdown', onPointerDown)
             this.off('globalpointermove', onPointerMove)
             this.removeEventListener('pointerup', onPointerUp)
             this.removeEventListener('pointerupoutside', onPointerUp)
             this.removeEventListener('pointercancel', onPointerUp)
+            inputMode.off('change', applyInputMode)
             this.pointerGestures.clear()
             G.actions.releaseAll()
         })
