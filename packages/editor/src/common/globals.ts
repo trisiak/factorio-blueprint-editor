@@ -66,6 +66,23 @@ export function setDataPack(id: string): void {
     } catch {
         // ignore storage failures (private mode, etc.)
     }
+    // `?pack=` outranks the persisted choice in resolveDataPack, so a plain
+    // reload of a `?pack=…` URL would ignore this new selection. Strip the param
+    // (preserving any other query, e.g. `?source=`) so the dropdown choice wins;
+    // fall back to a plain reload when there's no query to rewrite.
+    try {
+        const loc = globalThis.location
+        if (loc) {
+            const url = new URL(loc.href)
+            if (url.searchParams.has('pack')) {
+                url.searchParams.delete('pack')
+                loc.href = url.toString()
+                return
+            }
+        }
+    } catch {
+        // URL parsing unavailable — fall through to a plain reload
+    }
     globalThis.location?.reload()
 }
 

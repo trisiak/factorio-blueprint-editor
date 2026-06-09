@@ -101,3 +101,121 @@ test.describe('modpack + Space Age', () => {
         await expect(page.locator('#editor')).toBeVisible()
     })
 })
+
+/**
+ * Pack switching through the settings UI. The "Data Pack" dropdown lives in the
+ * dat.gui settings pane (open by default on desktop); selecting an option calls
+ * `setDataPack(id)` which persists to localStorage (`fbe:dataPack`) and reloads
+ * so the new atlas + data.json are fetched. These cover that path plus the
+ * persisted-choice and `?pack=` query precedence in `resolveDataPack`.
+ */
+test.describe('data pack switching (UI)', () => {
+    // Each test does up to two full loads (initial + reload after a switch), and
+    // the space-age atlas is large, so give them more than the default 30s.
+    test.describe.configure({ timeout: 120_000 })
+
+    /** The dropdown <select> — uniquely identified by its Space Age option. */
+    const packSelect = (page: Page) =>
+        page
+            .locator('select')
+            .filter({ has: page.locator('option', { hasText: 'Space Age (2.0)' }) })
+
+    /** Record which pack's data.json gets fetched (after any reload). */
+    function watchDataFetch(page: Page): string[] {
+        const fetched: string[] = []
+        page.on('response', r => {
+            const m = r.url().match(/\/data\/([^/]+)\/data\.json/)
+            if (m) fetched.push(m[1])
+        })
+        return fetched
+    }
+
+    const dataPack = (page: Page) =>
+        page.evaluate(() => window.localStorage.getItem('fbe:dataPack'))
+
+    test('switching to space-age via the dropdown persists + reloads', async ({ page }, ti) => {
+        const { appErrors } = captureConsole(page)
+        const fetched = watchDataFetch(page)
+        await page.goto('/') // no ?pack → default vanilla-2.0
+        await waitForReady(page)
+        expect(await dataPack(page)).toBeNull() // nothing persisted yet
+        expect(await packSelect(page).inputValue()).toBe('vanilla-2.0')
+
+        // Pick Space Age — this triggers setDataPack() → reload. Tolerate the
+        // navigation interrupting the action; assert on the post-reload state.
+        await Promise.all([
+            page.waitForResponse(r => /\/data\/space-age\/data\.json/.test(r.url()), {
+                timeout: 60_000,
+            }),
+            packSelect(page)
+                .selectOption({ label: 'Space Age (2.0)' })
+                .catch(() => undefined),
+        ])
+        await waitForReady(page)
+
+        expect(await dataPack(page)).toBe('space-age')
+        expect(await packSelect(page).inputValue()).toBe('space-age')
+        expect(fetched).toContain('space-age')
+        const shot = await page.screenshot()
+        await ti.attach('switched-to-space-age', { body: shot, contentType: 'image/png' })
+        expect(appErrors, appErrors.join('\n')).toHaveLength(0)
+    })
+
+    test('remembers the persisted pack across a plain reload (no ?pack)', async ({ page }) => {
+        const fetched = watchDataFetch(page)
+        // Persist the choice before any app code runs, then load without ?pack.
+        await page.addInitScript(() => window.localStorage.setItem('fbe:dataPack', 'space-age'))
+        await page.goto('/')
+        await waitForReady(page)
+        expect(fetched).toContain('space-age')
+        expect(fetched).not.toContain('vanilla-2.0')
+        expect(await packSelect(page).inputValue()).toBe('space-age')
+    })
+
+    test('round-trips vanilla → space-age → vanilla via the dropdown', async ({ page }) => {
+        const fetched = watchDataFetch(page)
+        await page.goto('/') // fresh: default vanilla, nothing persisted
+        await waitForReady(page)
+
+        // → space-age
+        await Promise.all([
+            page.waitForResponse(r => /\/data\/space-age\/data\.json/.test(r.url()), {
+                timeout: 60_000,
+            }),
+            packSelect(page)
+                .selectOption({ label: 'Space Age (2.0)' })
+                .catch(() => undefined),
+        ])
+        await waitForReady(page)
+        expect(await packSelect(page).inputValue()).toBe('space-age')
+
+        // → back to vanilla
+        await Promise.all([
+            page.waitForResponse(r => /\/data\/vanilla-2\.0\/data\.json/.test(r.url()), {
+                timeout: 60_000,
+            }),
+            packSelect(page)
+                .selectOption({ label: 'Vanilla 2.0' })
+                .catch(() => undefined),
+        ])
+        await waitForReady(page)
+
+        expect(await dataPack(page)).toBe('vanilla-2.0')
+        expect(await packSelect(page).inputValue()).toBe('vanilla-2.0')
+        expect(fetched).toContain('vanilla-2.0')
+    })
+
+    test('?pack= query overrides the persisted pack', async ({ page }) => {
+        const fetched = watchDataFetch(page)
+        // Persisted choice is space-age, but the URL explicitly asks for vanilla.
+        await page.addInitScript(() => window.localStorage.setItem('fbe:dataPack', 'space-age'))
+        await page.goto('/?pack=vanilla-2.0')
+        await waitForReady(page)
+        // Query wins for what's loaded/shown…
+        expect(fetched).toContain('vanilla-2.0')
+        expect(fetched).not.toContain('space-age')
+        expect(await packSelect(page).inputValue()).toBe('vanilla-2.0')
+        // …but it doesn't rewrite the persisted preference.
+        expect(await dataPack(page)).toBe('space-age')
+    })
+})
