@@ -120,6 +120,12 @@ export class BlueprintContainer extends Container {
      * until the first positioning tap of a paint session.
      */
     private lastPaintTapTile?: IPoint
+    /**
+     * Entity (by number) the last touch tap selected. Opening an entity's editor
+     * is deferred on touch: the first tap selects/inspects it, a second tap on the
+     * same entity opens the editor. Undefined when nothing is selected.
+     */
+    private lastEditTapEntity?: number
     private copyModeEntities: Entity[] = []
     private deleteModeEntities: Entity[] = []
     private copyModeUpdateFn: (endX: number, endY: number) => void
@@ -514,9 +520,19 @@ export class BlueprintContainer extends Container {
                     // old blind tap-to-place. The Place (✓) toolbar button is the
                     // alternative confirm. Desktop is unaffected.
                     this.handlePaintTap()
+                } else if (this.mode === EditorMode.EDIT) {
+                    // Opening an entity's settings is deferred like placement: the
+                    // first tap selects/hovers it (which shows its info panel,
+                    // highlight and range via updateHoverContainer) and only a
+                    // second tap on the same entity opens the editor overlay. This
+                    // keeps the canvas from being covered the instant you touch an
+                    // entity you only meant to inspect. Desktop click-to-open is
+                    // unaffected.
+                    this.handleEditTap()
                 } else {
                     // Other modes keep the original left-click pipeline so
                     // select / open / pan semantics apply unchanged.
+                    this.lastEditTapEntity = undefined
                     G.actions.pressButton(e as unknown as PointerEvent)
                     G.actions.releaseButton(e as unknown as PointerEvent)
                 }
@@ -677,6 +693,24 @@ export class BlueprintContainer extends Container {
             this.paintContainer.placeEntityContainer()
         }
         this.lastPaintTapTile = tile
+    }
+
+    /**
+     * Handle a touch tap on an entity (EDIT mode). The first tap on an entity
+     * just selects it — `updateHoverContainer` has already shown its info panel,
+     * highlight and range — and only a second tap on the *same* entity opens the
+     * editor overlay, so a glance doesn't bury the canvas under a dialog. Tapping
+     * a different entity re-selects (shows the new one's info) without opening.
+     */
+    private handleEditTap(): void {
+        const entityNumber = this.hoverContainer?.entity?.entityNumber
+        if (entityNumber !== undefined && entityNumber === this.lastEditTapEntity) {
+            this.openEditor()
+            // Next tap starts the select→open cycle over (e.g. after closing).
+            this.lastEditTapEntity = undefined
+        } else {
+            this.lastEditTapEntity = entityNumber
+        }
     }
 
     /**
@@ -1107,8 +1141,10 @@ export class BlueprintContainer extends Container {
         this.updateHoverContainer(true)
         this.setMode(EditorMode.PAINT)
         this.cursor = 'pointer'
-        // Fresh cursor: the first touch tap should position, not commit.
+        // Fresh cursor: the first touch tap should position, not commit; and a
+        // held item supersedes any pending entity-edit selection.
         this.lastPaintTapTile = undefined
+        this.lastEditTapEntity = undefined
 
         if (typeof itemNameOrEntities === 'string') {
             const itemData = FD.items[itemNameOrEntities]

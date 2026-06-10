@@ -114,6 +114,13 @@ pipelines at once made touch taps double-act via the browser's synthetic
   `blueprint.entityCount`), incl. a CDP one-finger-drag pan assertion. **Slice 2
   (next):** one-finger *drag* paints a continuous line (belts/pipes) — reuse the
   existing `gridData.on('update32', build)` drag-place path; tap stays deferred.
+- 🚧 **Touch editing: select first, open on second tap** — same deferral for
+  opening an entity's settings. On mobile the first tap on an entity selects it
+  (`updateHoverContainer` already shows its info panel, highlight and range) and
+  only a second tap on the *same* entity opens the editor overlay, so a glance
+  doesn't bury the canvas under a dialog. `BlueprintContainer.handleEditTap()`;
+  desktop click-to-open is unchanged. Covered in `e2e/touchPlacement.spec.ts`
+  (`dialogOpen` added to the `?test` hook).
 - ⬜ **Touch area/marquee select** — multi-select for copy/delete is desktop-only
   (drag with a modifier); needs a touch gesture (e.g. long-press-drag).
 - 🚧 **e2e coverage gaps**: pinch needs CDP `Input.dispatchTouchEvent` (the

@@ -9,6 +9,7 @@ import { test, expect, type Page } from '@playwright/test'
 interface PaintState {
     paint: { active: boolean; visible: boolean; tile: { x: number; y: number } | null }
     blueprint: { entityCount: number }
+    dialogOpen: boolean
 }
 
 function getState(page: Page): Promise<PaintState> {
@@ -27,13 +28,13 @@ async function waitForLoaded(page: Page): Promise<void> {
     await expect(page.locator('#loadingScreen')).not.toHaveClass(/active/, { timeout: 60_000 })
 }
 
-// Boot in mobile mode holding an item: seed transport-belt into quickbar slot 1
-// (loaded from localStorage on boot), enable the test hook with `?test`, then
-// press the slot key to pick it up (enter paint).
-async function gotoHoldingItem(page: Page): Promise<void> {
-    await page.addInitScript(() => {
-        window.localStorage.setItem('quickbarItemNames', JSON.stringify(['transport-belt']))
-    })
+// Boot in mobile mode holding an item: seed it into quickbar slot 1 (loaded from
+// localStorage on boot), enable the test hook with `?test`, then press the slot
+// key to pick it up (enter paint).
+async function gotoHoldingItem(page: Page, item = 'transport-belt'): Promise<void> {
+    await page.addInitScript(seedItem => {
+        window.localStorage.setItem('quickbarItemNames', JSON.stringify([seedItem]))
+    }, item)
     await page.goto('/?test')
     await waitForLoaded(page)
     await page.locator('#editor').focus()
@@ -146,5 +147,32 @@ test.describe('touch placement (deferred)', () => {
         const after = (await getState(page)).paint.tile
         expect(after).toEqual(before) // pinned to its world tile through the pan
         expect(await entityCount(page)).toBe(0) // panning places nothing
+    })
+
+    test('tapping a placed entity shows info first; a second tap opens the editor', async ({
+        page,
+    }) => {
+        // This one does a lot — place (2 taps) + cancel + two edit taps + opening a
+        // heavy editor overlay — so its sequential taps can outrun the default
+        // 30s budget when specs run in parallel against one render loop.
+        test.slow()
+
+        // Place an assembling machine (it has an editor overlay), then drop the
+        // held cursor so subsequent taps are edits, not placements.
+        await gotoHoldingItem(page, 'assembling-machine-2')
+        await page.locator('#editor').tap({ position: TILE_A })
+        await page.locator('#editor').tap({ position: TILE_A })
+        await expect.poll(() => entityCount(page)).toBe(1)
+        await page.locator('#action-toolbar button[title="Cancel"]').tap()
+        await expect.poll(async () => (await getState(page)).paint.active).toBe(false)
+
+        // First tap selects/inspects the entity — its info shows, but no overlay.
+        await page.locator('#editor').tap({ position: TILE_A })
+        expect((await getState(page)).dialogOpen).toBe(false)
+
+        // Second tap on the same entity opens the editor overlay (openEditor runs
+        // synchronously within the tap, so read directly rather than polling).
+        await page.locator('#editor').tap({ position: TILE_A })
+        expect((await getState(page)).dialogOpen).toBe(true)
     })
 })

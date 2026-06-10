@@ -1,6 +1,7 @@
 import G from './globals'
 import { inputMode, type InputMode } from './input'
 import { EditorMode } from '../containers/BlueprintContainer'
+import { Dialog } from '../UI/controls/Dialog'
 
 /**
  * Read-only logical-state snapshot for e2e tests. The editor renders into a
@@ -28,6 +29,12 @@ export interface EditorTestState {
         visible: boolean
         tile: { x: number; y: number } | null
     }
+    /**
+     * True while a modal dialog (e.g. an entity editor overlay) is open. On touch,
+     * tapping an entity selects it (first tap) and only a second tap opens the
+     * editor, so tests read this to confirm the overlay didn't pop on first touch.
+     */
+    dialogOpen: boolean
 }
 
 export function getEditorTestState(): EditorTestState {
@@ -48,6 +55,7 @@ export function getEditorTestState(): EditorTestState {
             visible: painting && G.BPC.paintContainer.visible,
             tile: painting ? G.BPC.paintContainer.getGridPosition() : null,
         },
+        dialogOpen: Dialog.anyOpen(),
     }
 }
 
