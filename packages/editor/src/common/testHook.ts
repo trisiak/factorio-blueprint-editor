@@ -18,6 +18,11 @@ export interface EditorTestState {
         scale: number
         bounds: { x: number; y: number; width: number; height: number }
     }
+    /** The wires (copper/red/green) panel; sits next to the quickbar. */
+    wires: {
+        visible: boolean
+        bounds: { x: number; y: number; width: number; height: number }
+    }
     /** Entities currently in the blueprint — lets tests assert what got placed. */
     blueprint: { entityCount: number }
     /**
@@ -43,6 +48,8 @@ export interface EditorTestState {
 export function getEditorTestState(): EditorTestState {
     const qb = G.UI.quickbarPanel
     const r = qb.getBounds().rectangle
+    const wp = G.UI.wiresPanel
+    const wr = wp.getBounds().rectangle
     const painting = G.BPC.mode === EditorMode.PAINT && !!G.BPC.paintContainer
     return {
         inputMode: inputMode.mode,
@@ -51,6 +58,10 @@ export function getEditorTestState(): EditorTestState {
             visible: qb.visible && r.width > 0 && r.height > 0,
             scale: qb.scale.x,
             bounds: { x: r.x, y: r.y, width: r.width, height: r.height },
+        },
+        wires: {
+            visible: wp.visible && wr.width > 0 && wr.height > 0,
+            bounds: { x: wr.x, y: wr.y, width: wr.width, height: wr.height },
         },
         blueprint: { entityCount: G.bp.entities.size },
         paint: {

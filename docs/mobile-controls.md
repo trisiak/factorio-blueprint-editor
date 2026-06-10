@@ -57,6 +57,16 @@ pipelines at once made touch taps double-act via the browser's synthetic
   the keyboard-only Keybinds folder in `mobile` mode (driven by a `body.mobile`
   class off `inputMode`). (`packages/website/src/{index,settingsPane}.ts`,
   `index.styl`, `packages/editor/src/UI/QuickbarPanel.ts`)
+- ✅ **Remaining pixi panels fit in portrait** — the quickbar fix left the other
+  canvas panels overflowing on a phone. Now: the **wires** panel anchors off the
+  quickbar's _actual_ (scaled) bounds and stacks above it when there's no room to
+  the side (it previously fell entirely off the right edge); the **entity
+  editors / inventory / entity-info** panels reuse the quickbar's `fitToWidthScale`
+  to shrink to fit and clamp on-screen (the splitter editor is 504px, the
+  inventory ~520px tall — wider/taller than a portrait phone). Shared
+  `Panel.clampToScreen` helper. Covered in `e2e/panels.spec.ts` (the wires panel,
+  via a new `wires` field on the `?test` hook). (`packages/editor/src/UI/`
+  `WiresPanel.ts`, `EntityInfoPanel.ts`, `InventoryDialog.ts`, `controls/{Dialog,Panel}.ts`)
 - ✅ **Settings moved off the quickbar** — dat.gui's bottom open/close bar sat on
   top of the quickbar (desktop too); it's hidden and replaced by a Settings
   button in the top-left stack, with the pane re-anchored just below it (tracked
@@ -113,14 +123,14 @@ pipelines at once made touch taps double-act via the browser's synthetic
   so a drag no longer drags the ghost along with the finger. Covered by
   `e2e/touchPlacement.spec.ts` via the extended `?test` hook (`paint` +
   `blueprint.entityCount`), incl. a CDP one-finger-drag pan assertion. **Slice 2
-  (next):** one-finger *drag* paints a continuous line (belts/pipes) — reuse the
+  (next):** one-finger _drag_ paints a continuous line (belts/pipes) — reuse the
   existing `gridData.on('update32', build)` drag-place path; tap stays deferred.
 - 🚧 **Touch editing: select first, open on second tap** — same deferral for
   opening an entity's settings. On mobile the first tap on an entity selects it
   (`updateHoverContainer` already shows its info panel, highlight and range) and
-  only a second tap on the *same* entity opens the editor overlay, so a glance
+  only a second tap on the _same_ entity opens the editor overlay, so a glance
   doesn't bury the canvas under a dialog. `BlueprintContainer.handleEditTap()`;
-  desktop click-to-open is unchanged. A tap on the canvas *outside* an open
+  desktop click-to-open is unchanged. A tap on the canvas _outside_ an open
   dialog dismisses it (dialogs swallow taps that land on them, so a tap reaching
   the BPC is necessarily outside) — so a stale editor doesn't linger when you tap
   away; re-tap an entity to open it. Covered in `e2e/touchPlacement.spec.ts`

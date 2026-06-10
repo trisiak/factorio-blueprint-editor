@@ -10,7 +10,7 @@ import { createEditor } from './editors/factory'
 export class UIContainer extends Container {
     private debugContainer: DebugContainer
     public quickbarPanel: QuickbarPanel
-    private wiresPanel: WiresPanel
+    public wiresPanel: WiresPanel
     private entityInfoPanel: EntityInfoPanel
     private dialogsContainer: Container
     private paintIconContainer: Container

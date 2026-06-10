@@ -1,8 +1,8 @@
-import { Graphics, Text } from 'pixi.js'
+import { Text } from 'pixi.js'
 import G from '../../common/globals'
 import { colors, styles } from '../style'
-import F from './functions'
 import { Panel } from './Panel'
+import { fitToWidthScale } from '../quickbarLayout'
 
 /**
  * Base Dialog for usage whenever a dialog shall be shown to the user
@@ -68,11 +68,18 @@ export abstract class Dialog extends Panel {
             .join(' ')
     }
 
-    /** Automatically sets position of dialog to center screen */
+    /**
+     * Center the dialog, scaling it down first if it's wider than the viewport.
+     * The editors/dialogs are laid out at fixed desktop widths (up to 504px), so
+     * on a phone in portrait they'd overflow; this mirrors the quickbar's
+     * fit-to-width approach (see quickbarLayout) and clamps as a backstop.
+     */
     protected override setPosition(): void {
-        this.position.set(
-            G.app.screen.width / 2 - this.width / 2,
-            G.app.screen.height / 2 - this.height / 2
+        const scale = fitToWidthScale(G.app.screen.width, this.width)
+        this.scale.set(scale)
+        this.clampToScreen(
+            G.app.screen.width / 2 - (this.width * scale) / 2,
+            G.app.screen.height / 2 - (this.height * scale) / 2
         )
     }
 
