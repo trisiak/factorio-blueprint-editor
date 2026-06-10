@@ -1,4 +1,5 @@
 import { Entity } from '../../core/Entity'
+import { isCraftingMachine } from '../../core/factorioData'
 import { Editor } from './Editor'
 import { BeaconEditor } from './BeaconEditor'
 import { InserterEditor } from './InserterEditor'
@@ -80,6 +81,27 @@ export function createEditor(entity: Entity): Editor {
             editor = new TrainStopEditor(entity)
             break
         default: {
+            // The cases above enumerate vanilla crafting machines by name, so
+            // modded/expansion ones (e.g. Space Age's foundry, electromagnetic-
+            // plant, biochamber, cryogenic-plant, recycler) fall through here.
+            // Without this they'd open no editor at all — you could place them
+            // but never set a recipe. Route any unrecognised crafting machine
+            // through the generic editor, which reads `acceptedRecipes`/
+            // `moduleSlots` off the entity and so adapts to whatever the active
+            // data pack defines. Only do so when there's actually something to
+            // configure — a selectable recipe (assembling-machine types; furnaces
+            // and rocket silos auto-pick theirs) or module slots — so e.g. a plain
+            // stone/steel furnace still opens nothing rather than a blank dialog.
+            if (isCraftingMachine(entity.entityData)) {
+                const hasRecipePicker =
+                    entity.acceptedRecipes.length > 0 &&
+                    entity.type !== 'furnace' &&
+                    entity.type !== 'rocket-silo'
+                if (hasRecipePicker || entity.moduleSlots > 0) {
+                    editor = new TempEditor(entity)
+                    break
+                }
+            }
             return undefined
         }
     }
