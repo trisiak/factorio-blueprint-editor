@@ -96,12 +96,26 @@ pipelines at once made touch taps double-act via the browser's synthetic
   and reading the Cancel button's `.active` class as a DOM-observable proxy for
   cursor state. Remaining: real game-sprite icons (currently unicode glyphs —
   blocked on `.basis`→DOM delivery) and copy/delete-select buttons.
+- 🚧 **Touch placement: preview + confirm (Slice 1 done)** — desktop previews a
+  placement by hovering (ghost shows orientation/validity before you click);
+  touch had no such step — a tap committed blindly. Now, in `mobile` paint mode a
+  tap **positions/previews** the ghost (the touch analogue of hover) and only a
+  **second tap on the same tile** — or the on-screen **Place (✓)** button /
+  `Enter` — commits it. Rotate/Flip from the toolbar preview live on the
+  stationary ghost; the item stays in hand after a placement (place several with
+  tap-elsewhere / tap-again). Seams: `BlueprintContainer.handlePaintTap()` +
+  `confirmPlacement()` (new `confirmPlacement` action), `PaintContainer`'s ghost
+  show/hide, and the hover handlers gated to desktop so synthetic touch
+  `pointerout` no longer hides the ghost. Covered by `e2e/touchPlacement.spec.ts`
+  via the extended `?test` hook (`paint` + `blueprint.entityCount`). **Slice 2
+  (next):** one-finger *drag* paints a continuous line (belts/pipes) — reuse the
+  existing `gridData.on('update32', build)` drag-place path; tap stays deferred.
 - ⬜ **Touch area/marquee select** — multi-select for copy/delete is desktop-only
   (drag with a modifier); needs a touch gesture (e.g. long-press-drag).
-- 🚧 **e2e coverage gaps** (both `fixme`): pinch needs CDP
-  `Input.dispatchTouchEvent` (the high-level touch API is single-touch);
-  tap-to-place can now read state via the `?test` hook above — extend
-  `EditorTestState` with blueprint state and drop the `fixme`.
+- 🚧 **e2e coverage gaps**: pinch needs CDP `Input.dispatchTouchEvent` (the
+  high-level touch API is single-touch). Tap-to-place is now covered —
+  `EditorTestState` was extended with `paint` + `blueprint.entityCount` and
+  `e2e/touchPlacement.spec.ts` drives the deferred place/confirm flow.
 - ⬜ **Pinch in desktop mode** — desktop currently ignores touch entirely, so a
   touch-laptop in desktop mode can't pinch. Out of scope for now (we don't care
   about touch-on-desktop yet); revisit if needed.

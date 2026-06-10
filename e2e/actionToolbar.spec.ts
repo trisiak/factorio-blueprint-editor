@@ -87,9 +87,13 @@ test.describe('action toolbar', () => {
             await waitForLoaded(page)
 
             const toolbar = page.locator('#action-toolbar')
-            // On an empty blueprint these are safe no-ops, but tapping them
+            // On an empty blueprint these are safe no-ops, but clicking them
             // exercises the EDITOR.callAction(...) seam end to end; nothing should
-            // throw (e.g. an unbound action name or a null cursor).
+            // throw (e.g. an unbound action name or a null cursor). Use force
+            // clicks: this test is purely about the handler firing, the sibling
+            // test already covers visibility/tappability, and the actionability
+            // wait on every button is what makes a 7-tap loop blow the test
+            // timeout when several specs run in parallel against one render loop.
             for (const title of [
                 'Rotate',
                 'Flip H',
@@ -97,9 +101,10 @@ test.describe('action toolbar', () => {
                 'Undo',
                 'Redo',
                 'Center',
+                'Place',
                 'Cancel',
             ]) {
-                await toolbar.locator(`button[title="${title}"]`).tap()
+                await toolbar.locator(`button[title="${title}"]`).click({ force: true })
             }
 
             expect(fatal.join('\n')).toBe('')

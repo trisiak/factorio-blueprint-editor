@@ -340,6 +340,20 @@ export class Editor {
                     },
                 },
             },
+            // Commit the held paint cursor at its previewed tile. Pairs with
+            // touch's deferred placement (tap to position, confirm to place); the
+            // on-screen Place (✓) button routes through here too.
+            confirmPlacement: {
+                trigger: {
+                    code: 'Enter',
+                },
+                callbacks: {
+                    onPress: () => {
+                        G.BPC.confirmPlacement()
+                        return true
+                    },
+                },
+            },
             inventory: {
                 trigger: {
                     code: 'KeyE',

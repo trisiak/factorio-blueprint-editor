@@ -33,6 +33,10 @@ const BUTTONS: ToolbarButton[] = [
     { action: 'undo', glyph: '↶', label: 'Undo' },
     { action: 'redo', glyph: '↷', label: 'Redo' },
     { action: 'focus', glyph: '⌖', label: 'Center' },
+    // Confirm/cancel the held cursor. On touch a tap only positions/previews the
+    // ghost; Place commits it (Cancel drops it). Both are emphasized only when
+    // they're meaningful (see applyMode).
+    { action: 'confirmPlacement', glyph: '✓', label: 'Place', className: 'confirm' },
     { action: 'closeWindow', glyph: '✕', label: 'Cancel', className: 'cancel' },
 ]
 
@@ -46,6 +50,7 @@ export function initActionToolbar(editor: Editor): void {
     toolbar.id = 'action-toolbar'
 
     let cancelButton: HTMLButtonElement | undefined
+    let placeButton: HTMLButtonElement | undefined
 
     for (const spec of BUTTONS) {
         const button = document.createElement('button')
@@ -70,13 +75,16 @@ export function initActionToolbar(editor: Editor): void {
 
         toolbar.appendChild(button)
         if (spec.action === 'closeWindow') cancelButton = button
+        if (spec.action === 'confirmPlacement') placeButton = button
     }
 
     document.body.appendChild(toolbar)
 
-    // Emphasize Cancel while there's a cursor to cancel. It still works in any
-    // mode (it also closes dialogs), so it stays enabled — just visually calmer.
+    // Emphasize Place/Cancel only while they're meaningful: Place lights up when
+    // an item is held (paint mode), Cancel whenever there's a cursor to drop.
+    // Both stay clickable otherwise (harmless no-ops) — just visually calmer.
     const applyMode = (mode: EditorMode): void => {
+        placeButton?.classList.toggle('active', mode === EditorMode.PAINT)
         cancelButton?.classList.toggle('active', isCancelableMode(mode))
     }
     applyMode(editor.mode)

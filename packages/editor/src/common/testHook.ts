@@ -1,5 +1,6 @@
 import G from './globals'
 import { inputMode, type InputMode } from './input'
+import { EditorMode } from '../containers/BlueprintContainer'
 
 /**
  * Read-only logical-state snapshot for e2e tests. The editor renders into a
@@ -15,11 +16,24 @@ export interface EditorTestState {
         scale: number
         bounds: { x: number; y: number; width: number; height: number }
     }
+    /** Entities currently in the blueprint — lets tests assert what got placed. */
+    blueprint: { entityCount: number }
+    /**
+     * The paint cursor (held item). On touch, a tap positions/previews the ghost
+     * without committing, so tests read `tile` to confirm where it landed and
+     * `entityCount` to confirm a tap did *not* place until confirmed.
+     */
+    paint: {
+        active: boolean
+        visible: boolean
+        tile: { x: number; y: number } | null
+    }
 }
 
 export function getEditorTestState(): EditorTestState {
     const qb = G.UI.quickbarPanel
     const r = qb.getBounds().rectangle
+    const painting = G.BPC.mode === EditorMode.PAINT && !!G.BPC.paintContainer
     return {
         inputMode: inputMode.mode,
         screen: { width: G.app.screen.width, height: G.app.screen.height },
@@ -27,6 +41,12 @@ export function getEditorTestState(): EditorTestState {
             visible: qb.visible && r.width > 0 && r.height > 0,
             scale: qb.scale.x,
             bounds: { x: r.x, y: r.y, width: r.width, height: r.height },
+        },
+        blueprint: { entityCount: G.bp.entities.size },
+        paint: {
+            active: painting,
+            visible: painting && G.BPC.paintContainer.visible,
+            tile: painting ? G.BPC.paintContainer.getGridPosition() : null,
         },
     }
 }
