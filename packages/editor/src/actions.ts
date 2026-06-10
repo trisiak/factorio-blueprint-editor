@@ -201,6 +201,11 @@ export class ActionRegistry {
     public get(name: string): Action {
         return this.actions.get(name)
     }
+    /** Invoke a registered action by name as a synthetic tap (see `Action.call`). No-op if unknown. */
+    public call(name: string): boolean {
+        const action = this.actions.get(name)
+        return action ? action.call() : false
+    }
     public forEach(cb: (action: Action) => void): void {
         for (const [, action] of this.actions) {
             cb(action)
@@ -458,6 +463,21 @@ class Action {
     public release(e: TriggerEvent): void {
         if (this.triggerMatches(e)) this.forceReleaseB()
     }
+
+    /**
+     * Fire this action directly, as if its trigger were pressed and released,
+     * bypassing trigger/modifier matching. This is the seam the on-screen action
+     * toolbar uses to invoke otherwise keyboard-only actions on touch devices,
+     * where there's no key to press. Runs `onPress` then, if the press succeeded
+     * and the action is momentary, `onRelease`; returns what `onPress` reported.
+     */
+    public call(): boolean {
+        const succeeded = this.callbacks.onPress()
+        if (succeeded && this.callbacks.onRelease) {
+            this.callbacks.onRelease()
+        }
+        return succeeded
+    }
     private triggerMatches(e: TriggerEvent): boolean {
         function isMouseEvent(e: TriggerEvent): e is PointerEvent {
             return 'button' in e
@@ -507,6 +527,11 @@ function registerAction(name: string, action: IAction): void {
     G.actions.add(name, action)
 }
 
+/** Invoke a registered action by name (e.g. from an on-screen toolbar button). */
+function callAction(name: string): boolean {
+    return G.actions.call(name)
+}
+
 function forEachAction(cb: (action: Action) => void): void {
     G.actions.forEach(cb)
 }
@@ -535,4 +560,4 @@ function exportKeybinds(): Record<string, string> {
     return changedKeybinds
 }
 
-export { registerAction, forEachAction, resetKeybinds, importKeybinds, exportKeybinds }
+export { registerAction, callAction, forEachAction, resetKeybinds, importKeybinds, exportKeybinds }

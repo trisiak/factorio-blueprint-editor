@@ -104,7 +104,7 @@ export abstract class PaintContainer extends Container<EntitySprite> {
         super.destroy()
     }
 
-    protected getGridPosition(): IPoint {
+    public getGridPosition(): IPoint {
         return {
             x: Math.round((this.x / 32) * 10) / 10,
             y: Math.round((this.y / 32) * 10) / 10,

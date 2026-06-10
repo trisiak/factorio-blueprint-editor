@@ -8,19 +8,25 @@ import 'pixi.js/graphics'
 import 'pixi.js/basis'
 
 import { Application, TextureSource, setBasisTranscoderPath, Assets } from 'pixi.js'
+import EventEmitter from 'eventemitter3'
 import basisTranscoderJS from './basis/transcoder.1.16.4.js?url'
 import basisTranscoderWASM from './basis/transcoder.1.16.4.wasm?url'
 import { loadData } from './core/factorioData'
 import G, { DATA_URL, Logger } from './common/globals'
 import { Entity } from './core/Entity'
 import { Blueprint, oilOutpostSettings, IOilOutpostSettings } from './core/Blueprint'
-import { BlueprintContainer, GridPattern } from './containers/BlueprintContainer'
+import { BlueprintContainer, EditorMode, GridPattern } from './containers/BlueprintContainer'
 import { PaintTileContainer } from './containers/PaintTileContainer'
 import { UIContainer } from './UI/UIContainer'
 import { Dialog } from './UI/controls/Dialog'
 import { ActionRegistry, MouseButton } from './actions'
 
 export class Editor {
+    // Stable mode emitter. The BlueprintContainer is swapped out on every
+    // blueprint load, so DOM consumers (the on-screen toolbar) subscribe here
+    // once and we re-forward each new container's mode changes onto it.
+    private readonly m_modeEmitter = new EventEmitter<{ mode: [EditorMode] }>()
+
     public async init(canvas: HTMLCanvasElement, logger?: Logger): Promise<void> {
         setBasisTranscoderPath({ jsUrl: basisTranscoderJS, wasmUrl: basisTranscoderWASM })
 
@@ -63,11 +69,27 @@ export class Editor {
 
         G.bp = new Blueprint()
         G.BPC = new BlueprintContainer(G.bp)
+        this.bindBPCMode()
         G.app.stage.addChild(G.BPC)
 
         G.UI = new UIContainer()
         G.app.stage.addChild(G.UI)
         G.UI.showDebuggingLayer = G.debug
+    }
+
+    /** Re-emit the active BlueprintContainer's mode changes on the stable emitter. */
+    private bindBPCMode(): void {
+        G.BPC.on('mode', (mode: EditorMode) => this.m_modeEmitter.emit('mode', mode))
+    }
+
+    /** Current editor mode (NONE / EDIT / PAINT / PAN / COPY / DELETE). */
+    public get mode(): EditorMode {
+        return G.BPC.mode
+    }
+
+    /** Subscribe to editor mode changes — e.g. to show a "cancel paint" control. */
+    public onModeChange(cb: (mode: EditorMode) => void): void {
+        this.m_modeEmitter.on('mode', cb)
     }
 
     public get moveSpeed(): number {
@@ -153,6 +175,7 @@ export class Editor {
         G.bp = bp
 
         G.BPC = new BlueprintContainer(bp)
+        this.bindBPCMode()
         G.BPC.initBP()
         Dialog.closeAll()
         G.app.stage.addChildAt(G.BPC, i)
@@ -311,7 +334,29 @@ export class Editor {
                 },
                 callbacks: {
                     onPress: () => {
-                        Dialog.closeLast()
+                        // Escape is the universal "get me out": close the topmost
+                        // dialog if one is open, otherwise cancel an in-progress
+                        // paint / copy / delete cursor. The toolbar's cancel
+                        // button routes through this same action.
+                        if (Dialog.anyOpen()) {
+                            Dialog.closeLast()
+                        } else {
+                            G.BPC.clearCursor()
+                        }
+                        return true
+                    },
+                },
+            },
+            // Commit the held paint cursor at its previewed tile. Pairs with
+            // touch's deferred placement (tap to position, confirm to place); the
+            // on-screen Place (✓) button routes through here too.
+            confirmPlacement: {
+                trigger: {
+                    code: 'Enter',
+                },
+                callbacks: {
+                    onPress: () => {
+                        G.BPC.confirmPlacement()
                         return true
                     },
                 },
