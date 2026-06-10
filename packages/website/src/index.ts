@@ -240,8 +240,27 @@ async function loadBp(
         bp = bpOrBook
     }
 
-    await editor.loadBlueprint(bp)
-    changeBookForIndexSelector(bpOrBook)
+    try {
+        await editor.loadBlueprint(bp)
+        changeBookForIndexSelector(bpOrBook)
+    } catch (error) {
+        // Rendering can throw if the blueprint references prototype data the
+        // active pack lacks — e.g. pasting a Space Age blueprint while on the
+        // vanilla pack (unknown entities are stripped, but a sprite path may
+        // still dereference absent data). Don't strand the user on the loading
+        // screen forever: fall back to a blank canvas and surface the error.
+        createErrorMessage(
+            'This blueprint could not be rendered with the current data pack ' +
+                '(it may require a different pack, e.g. Space Age).',
+            error
+        )
+        book = undefined
+        bp = new Blueprint()
+        await editor.loadBlueprint(bp).catch(() => undefined)
+        changeBookForIndexSelector(bp)
+        loadingScreen.hide()
+        return
+    }
 
     loadingScreen.hide()
 

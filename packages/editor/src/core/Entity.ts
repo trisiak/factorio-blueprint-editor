@@ -212,6 +212,11 @@ export class Entity extends EventEmitter<EntityEvents> {
             .commit()
     }
 
+    /** Rail layer (elevated) for rail signals on raised rails */
+    public get railLayer(): string | undefined {
+        return this.m_rawEntity.rail_layer
+    }
+
     /** Direction Type (input|output) for underground belts */
     public get directionType(): DirectionType {
         return this.m_rawEntity.type
@@ -385,7 +390,8 @@ export class Entity extends EventEmitter<EntityEvents> {
         switch (this.name) {
             case 'splitter':
             case 'fast-splitter':
-            case 'express-splitter': {
+            case 'express-splitter':
+            case 'turbo-splitter': {
                 return this.splitterFilter
             }
             case 'burner-inserter':
@@ -415,7 +421,8 @@ export class Entity extends EventEmitter<EntityEvents> {
         switch (this.name) {
             case 'splitter':
             case 'fast-splitter':
-            case 'express-splitter': {
+            case 'express-splitter':
+            case 'turbo-splitter': {
                 this.splitterFilter = FILTERS
                 return
             }
@@ -766,7 +773,7 @@ export class Entity extends EventEmitter<EntityEvents> {
 
     private constrainDirection(direction: number): number {
         const pr = this.possibleRotations
-        let canRotate = pr.length !== 0
+        const canRotate = pr.length !== 0
 
         if (canRotate) {
             if (!pr.includes(direction)) {
@@ -1008,12 +1015,14 @@ export class Entity extends EventEmitter<EntityEvents> {
     public get assemblerHasFluidInputs(): boolean {
         if (!this.recipe) return false
         const recipe = FD.recipes[this.recipe]
+        if (!recipe || !recipe.ingredients) return false
         return !!recipe.ingredients.find(ingredient => ingredient.type === 'fluid')
     }
 
     public get assemblerHasFluidOutputs(): boolean {
         if (!this.recipe) return false
         const recipe = FD.recipes[this.recipe]
+        if (!recipe || !recipe.results) return false
         return !!recipe.results.find(result => result.type === 'fluid')
     }
 
