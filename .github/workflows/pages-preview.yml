@@ -34,14 +34,13 @@ jobs:
         if: github.event.action != 'closed'
         env:
           PUBLIC_BASE: /factorio-blueprint-editor/pr-preview/pr-${{ github.event.number }}/
-          # NOTE: This branch introduces the per-pack data layout
-          # (data/<pack>/data.json + atlas) and the Space Age dump. The
-          # production deploy still serves the OLD single-dump layout
-          # (/data/data.json), so the usual VITE_DATA_URL=/…/data +
-          # SKIP_DATA_COPY trick would load stale data with new code (or 404 on
-          # /data/<pack>/data.json). Bundle this PR's own data instead so the
-          # preview renders Space Age correctly. Once this merges and prod is
-          # pack-aware, this can revert to reusing the prod atlas.
+          # Reuse the production deploy's per-pack atlas instead of bundling our
+          # own (~70 MB/pack) copy. Production is now pack-aware — it serves
+          # data/<pack>/data.json + atlas — and the editor appends the active
+          # pack id to this root at runtime, so a preview fetches
+          # /factorio-blueprint-editor/data/<pack>/data.json from the prod deploy.
+          VITE_DATA_URL: /factorio-blueprint-editor/data
+          SKIP_DATA_COPY: 'true'
 
       - name: Deploy / remove preview
         uses: rossjrw/pr-preview-action@v1
