@@ -1,6 +1,7 @@
 import G from './globals'
 import { inputMode, type InputMode } from './input'
 import { EditorMode } from '../containers/BlueprintContainer'
+import { PaintEntityContainer } from '../containers/PaintEntityContainer'
 import { Dialog } from '../UI/controls/Dialog'
 
 /**
@@ -28,6 +29,8 @@ export interface EditorTestState {
         active: boolean
         visible: boolean
         tile: { x: number; y: number } | null
+        /** Held entity ghost's facing (0/4/8/12 cardinal); null for tiles/wires. */
+        direction: number | null
     }
     /**
      * True while a modal dialog (e.g. an entity editor overlay) is open. On touch,
@@ -54,6 +57,10 @@ export function getEditorTestState(): EditorTestState {
             active: painting,
             visible: painting && G.BPC.paintContainer.visible,
             tile: painting ? G.BPC.paintContainer.getGridPosition() : null,
+            direction:
+                painting && G.BPC.paintContainer instanceof PaintEntityContainer
+                    ? G.BPC.paintContainer.getDirection()
+                    : null,
         },
         dialogOpen: Dialog.anyOpen(),
     }

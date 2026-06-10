@@ -80,7 +80,8 @@ pipelines at once made touch taps double-act via the browser's synthetic
 - 🚧 **On-screen action toolbar** — DOM toolbar mirroring the `actions.ts`
   registry into on-screen buttons, shown only in `mobile` input mode. Prototype
   landed: Items (inventory) / Rotate / Flip H / Flip V / Pick (pipette) / Undo /
-  Redo / Center / **Cancel**. Buttons invoke actions by name via the new
+  Redo / Center / **Delete** (mine the selected entity — touch has no
+  right-click) / **Place** / **Cancel**. Buttons invoke actions by name via the new
   `EDITOR.callAction(name)` seam (`actions.ts`), so they stay in lockstep with
   the keybinds instead of duplicating logic. The Cancel button fixes the worst
   gap — there was previously **no keyboard-free way out of paint mode** (only the

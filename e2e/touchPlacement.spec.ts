@@ -7,7 +7,12 @@ import { test, expect, type Page } from '@playwright/test'
 // the `?test` state hook (window.__FBE_TEST__). See docs/mobile-controls.md.
 
 interface PaintState {
-    paint: { active: boolean; visible: boolean; tile: { x: number; y: number } | null }
+    paint: {
+        active: boolean
+        visible: boolean
+        tile: { x: number; y: number } | null
+        direction: number | null
+    }
     blueprint: { entityCount: number }
     dialogOpen: boolean
 }
@@ -179,5 +184,33 @@ test.describe('touch placement (deferred)', () => {
         // lingering when you tap away). The editor is centered, so tap low.
         await page.locator('#editor').tap({ position: { x: 206, y: 740 } })
         expect((await getState(page)).dialogOpen).toBe(false)
+    })
+
+    test('the Delete button removes the selected entity', async ({ page }) => {
+        test.slow()
+
+        // Place an entity, drop the held cursor, then select it.
+        await gotoHoldingItem(page, 'assembling-machine-2')
+        await page.locator('#editor').tap({ position: TILE_A })
+        await page.locator('#editor').tap({ position: TILE_A })
+        await expect.poll(() => entityCount(page)).toBe(1)
+        await page.locator('#action-toolbar button[title="Cancel"]').tap()
+        await page.locator('#editor').tap({ position: TILE_A }) // select (EDIT)
+
+        // Delete mines the selected entity (touch has no right-click to mine).
+        await page.locator('#action-toolbar button[title="Delete"]').tap()
+        await expect.poll(() => entityCount(page)).toBe(0)
+    })
+
+    // Merge-safety: PR #6 (Space Age) reworks entity directions/sizing in the same
+    // auto-merging files, so guard that rotating a held entity still changes its
+    // facing.
+    test('the Rotate button changes the held entity facing', async ({ page }) => {
+        await gotoHoldingItem(page, 'inserter')
+        const before = (await getState(page)).paint.direction
+        expect(typeof before).toBe('number')
+
+        await page.locator('#action-toolbar button[title="Rotate"]').tap()
+        expect((await getState(page)).paint.direction).not.toBe(before)
     })
 })

@@ -33,6 +33,10 @@ const BUTTONS: ToolbarButton[] = [
     { action: 'undo', glyph: '↶', label: 'Undo' },
     { action: 'redo', glyph: '↷', label: 'Redo' },
     { action: 'focus', glyph: '⌖', label: 'Center' },
+    // Delete the selected entity. Touch has no right-click, so this is the way to
+    // "mine" a single entity; it routes through the same `mine` action and is
+    // emphasized only while an entity is selected (EDIT mode).
+    { action: 'mine', glyph: '🗑', label: 'Delete', className: 'delete' },
     // Confirm/cancel the held cursor. On touch a tap only positions/previews the
     // ghost; Place commits it (Cancel drops it). Both are emphasized only when
     // they're meaningful (see applyMode).
@@ -51,6 +55,7 @@ export function initActionToolbar(editor: Editor): void {
 
     let cancelButton: HTMLButtonElement | undefined
     let placeButton: HTMLButtonElement | undefined
+    let deleteButton: HTMLButtonElement | undefined
 
     for (const spec of BUTTONS) {
         const button = document.createElement('button')
@@ -76,6 +81,7 @@ export function initActionToolbar(editor: Editor): void {
         toolbar.appendChild(button)
         if (spec.action === 'closeWindow') cancelButton = button
         if (spec.action === 'confirmPlacement') placeButton = button
+        if (spec.action === 'mine') deleteButton = button
     }
 
     document.body.appendChild(toolbar)
@@ -85,6 +91,7 @@ export function initActionToolbar(editor: Editor): void {
     // Both stay clickable otherwise (harmless no-ops) — just visually calmer.
     const applyMode = (mode: EditorMode): void => {
         placeButton?.classList.toggle('active', mode === EditorMode.PAINT)
+        deleteButton?.classList.toggle('active', mode === EditorMode.EDIT)
         cancelButton?.classList.toggle('active', isCancelableMode(mode))
     }
     applyMode(editor.mode)
