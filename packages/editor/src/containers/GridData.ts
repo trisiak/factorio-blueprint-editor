@@ -1,5 +1,6 @@
 import EventEmitter from 'eventemitter3'
 import { EditorMode, BlueprintContainer } from './BlueprintContainer'
+import { inputMode } from '../common/input'
 
 export interface GridDataEvents {
     destroy: []
@@ -25,7 +26,14 @@ export class GridData extends EventEmitter<GridDataEvents> {
         super()
         this.bpc = bpc
 
-        const onMouseMove = (e: MouseEvent): void => this.update(e.clientX, e.clientY)
+        const onMouseMove = (e: MouseEvent): void => {
+            // On touch the grid cursor is placed explicitly by taps (`moveTo`),
+            // not by pointer movement. If we tracked moves here too, dragging to
+            // pan (or the synthetic mouse events a tap emits) would drag the paint
+            // ghost along with the finger instead of leaving it pinned to its tile.
+            if (inputMode.mode === 'mobile') return
+            this.update(e.clientX, e.clientY)
+        }
         window.addEventListener('pointermove', onMouseMove)
         this.on('destroy', () => window.removeEventListener('pointermove', onMouseMove))
     }

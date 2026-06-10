@@ -197,7 +197,13 @@ export class BlueprintContainer extends Container {
 
         const update = () => {
             if (this.viewport.update()) {
-                this.gridData.recalculate()
+                // Desktop re-anchors the grid cursor (and paint ghost) under the
+                // mouse as the view scrolls/zooms. On touch the ghost is pinned to
+                // its tapped tile and the camera pans/pinches around it, so don't
+                // re-derive the cursor from the stale last-touch point each frame.
+                if (inputMode.mode === 'desktop') {
+                    this.gridData.recalculate()
+                }
                 const t = this.viewport.getTransform()
                 this.position.set(t.tx, t.ty)
                 this.scale.set(t.a, t.d)

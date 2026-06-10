@@ -106,8 +106,12 @@ pipelines at once made touch taps double-act via the browser's synthetic
   tap-elsewhere / tap-again). Seams: `BlueprintContainer.handlePaintTap()` +
   `confirmPlacement()` (new `confirmPlacement` action), `PaintContainer`'s ghost
   show/hide, and the hover handlers gated to desktop so synthetic touch
-  `pointerout` no longer hides the ghost. Covered by `e2e/touchPlacement.spec.ts`
-  via the extended `?test` hook (`paint` + `blueprint.entityCount`). **Slice 2
+  `pointerout` no longer hides the ghost. The ghost is also pinned to its tapped
+  world tile while you pan/pinch (the camera moves around it) — `GridData`'s
+  pointer-move tracking and the per-frame `recalculate()` are gated to desktop,
+  so a drag no longer drags the ghost along with the finger. Covered by
+  `e2e/touchPlacement.spec.ts` via the extended `?test` hook (`paint` +
+  `blueprint.entityCount`), incl. a CDP one-finger-drag pan assertion. **Slice 2
   (next):** one-finger *drag* paints a continuous line (belts/pipes) — reuse the
   existing `gridData.on('update32', build)` drag-place path; tap stays deferred.
 - ⬜ **Touch area/marquee select** — multi-select for copy/delete is desktop-only

@@ -41,6 +41,35 @@ async function gotoHoldingItem(page: Page): Promise<void> {
     await expect.poll(async () => (await getState(page)).paint.active).toBe(true)
 }
 
+// Drag a single finger across the canvas (a one-finger pan). Playwright's
+// touchscreen API only taps, so synthesize the touch stream over CDP — the same
+// raw `Input.dispatchTouchEvent` path the pinch work needs.
+async function dragOneFinger(
+    page: Page,
+    from: { x: number; y: number },
+    to: { x: number; y: number }
+): Promise<void> {
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x: from.x, y: from.y }],
+    })
+    const steps = 8
+    for (let i = 1; i <= steps; i++) {
+        await cdp.send('Input.dispatchTouchEvent', {
+            type: 'touchMove',
+            touchPoints: [
+                {
+                    x: from.x + ((to.x - from.x) * i) / steps,
+                    y: from.y + ((to.y - from.y) * i) / steps,
+                },
+            ],
+        })
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+    await cdp.detach()
+}
+
 // Two clearly-separated points in the open canvas (away from the top toolbar,
 // the bottom quickbar and the left button stack).
 const TILE_A = { x: 180, y: 480 }
@@ -102,5 +131,20 @@ test.describe('touch placement (deferred)', () => {
         await page.locator('#action-toolbar button[title="Place"]').tap()
 
         await expect.poll(() => entityCount(page)).toBe(1)
+    })
+
+    test('panning keeps the previewed ghost pinned to its tile', async ({ page }) => {
+        await gotoHoldingItem(page)
+
+        await page.locator('#editor').tap({ position: TILE_A })
+        const before = (await getState(page)).paint.tile
+
+        // A one-finger drag pans the camera. The ghost must stay on its tapped
+        // world tile (the view moves around it) rather than follow the finger.
+        await dragOneFinger(page, { x: 120, y: 520 }, { x: 300, y: 560 })
+
+        const after = (await getState(page)).paint.tile
+        expect(after).toEqual(before) // pinned to its world tile through the pan
+        expect(await entityCount(page)).toBe(0) // panning places nothing
     })
 })
