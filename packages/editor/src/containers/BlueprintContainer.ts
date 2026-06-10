@@ -509,6 +509,18 @@ export class BlueprintContainer extends Container {
             this.touchPan = null
             const wasTap = !tp.moved && performance.now() - tp.startTime < TOUCH_TAP_MAX_DURATION
             if (wasTap) {
+                // A tap while a dialog (entity editor, inventory, …) is open
+                // dismisses it. Dialogs swallow taps that land on them, so a tap
+                // reaching here is necessarily *outside* the dialog — this is the
+                // touch "tap-away to close" and, crucially, stops a stale editor
+                // lingering when you tap another entity. Re-tap an entity to open
+                // its editor. (Desktop, which refocuses via openEntityGUI, is on a
+                // separate path and unaffected.)
+                if (Dialog.anyOpen()) {
+                    Dialog.closeLast()
+                    this.lastEditTapEntity = undefined
+                    return
+                }
                 // A tap seeds the grid + hover at the touch point, then acts.
                 this.gridData.moveTo(tp.startX, tp.startY)
                 this.updateHoverContainer()

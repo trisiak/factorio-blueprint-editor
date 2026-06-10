@@ -174,5 +174,10 @@ test.describe('touch placement (deferred)', () => {
         // synchronously within the tap, so read directly rather than polling).
         await page.locator('#editor').tap({ position: TILE_A })
         expect((await getState(page)).dialogOpen).toBe(true)
+
+        // Tapping the canvas outside the editor dismisses it (no stale overlay
+        // lingering when you tap away). The editor is centered, so tap low.
+        await page.locator('#editor').tap({ position: { x: 206, y: 740 } })
+        expect((await getState(page)).dialogOpen).toBe(false)
     })
 })

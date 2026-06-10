@@ -119,7 +119,10 @@ pipelines at once made touch taps double-act via the browser's synthetic
   (`updateHoverContainer` already shows its info panel, highlight and range) and
   only a second tap on the *same* entity opens the editor overlay, so a glance
   doesn't bury the canvas under a dialog. `BlueprintContainer.handleEditTap()`;
-  desktop click-to-open is unchanged. Covered in `e2e/touchPlacement.spec.ts`
+  desktop click-to-open is unchanged. A tap on the canvas *outside* an open
+  dialog dismisses it (dialogs swallow taps that land on them, so a tap reaching
+  the BPC is necessarily outside) — so a stale editor doesn't linger when you tap
+  away; re-tap an entity to open it. Covered in `e2e/touchPlacement.spec.ts`
   (`dialogOpen` added to the `?test` hook).
 - ⬜ **Touch area/marquee select** — multi-select for copy/delete is desktop-only
   (drag with a modifier); needs a touch gesture (e.g. long-press-drag).
