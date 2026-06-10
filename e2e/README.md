@@ -118,10 +118,9 @@ yet, extend `EditorTestState` rather than reaching into the DOM.
 
 ## Open work
 
-The remaining `test.fixme(...)` in `touch.spec.ts`:
+The one remaining `test.fixme(...)` in `touch.spec.ts`:
 
 - **pinch-zoom** — needs the CDP `Input.dispatchTouchEvent` recipe above wired
   into a spec (the high-level touch API is single-touch).
-- the `single-finger tap places the held entity` fixme there is now **redundant** —
-  deferred touch placement is covered for real in `touchPlacement.spec.ts` — and
-  can be deleted.
+
+(Deferred tap-to-place is covered for real in `touchPlacement.spec.ts`.)
