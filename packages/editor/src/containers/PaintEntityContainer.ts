@@ -29,6 +29,11 @@ export class PaintEntityContainer extends PaintContainer {
         this.redraw()
     }
 
+    /** The held ghost's current facing (0/4/8/12 for cardinal). Exposed for tests. */
+    public getDirection(): number {
+        return this.direction
+    }
+
     private get size(): IPoint {
         return getEntitySize(FD.entities[this.name], this.direction)
     }

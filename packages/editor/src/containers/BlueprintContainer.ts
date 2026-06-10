@@ -113,6 +113,19 @@ export class BlueprintContainer extends Container {
     public paintContainer: PaintContainer
 
     private _entityForCopyData: Entity
+    /**
+     * Tile the paint cursor was last positioned at by a touch tap. On mobile a
+     * tap positions/previews the ghost instead of committing (there's no hover to
+     * preview with); a second tap on the *same* tile is what commits. Undefined
+     * until the first positioning tap of a paint session.
+     */
+    private lastPaintTapTile?: IPoint
+    /**
+     * Entity (by number) the last touch tap selected. Opening an entity's editor
+     * is deferred on touch: the first tap selects/inspects it, a second tap on the
+     * same entity opens the editor. Undefined when nothing is selected.
+     */
+    private lastEditTapEntity?: number
     private copyModeEntities: Entity[] = []
     private deleteModeEntities: Entity[] = []
     private copyModeUpdateFn: (endX: number, endY: number) => void
@@ -190,7 +203,13 @@ export class BlueprintContainer extends Container {
 
         const update = () => {
             if (this.viewport.update()) {
-                this.gridData.recalculate()
+                // Desktop re-anchors the grid cursor (and paint ghost) under the
+                // mouse as the view scrolls/zooms. On touch the ghost is pinned to
+                // its tapped tile and the camera pans/pinches around it, so don't
+                // re-derive the cursor from the stale last-touch point each frame.
+                if (inputMode.mode === 'desktop') {
+                    this.gridData.recalculate()
+                }
                 const t = this.viewport.getTransform()
                 this.position.set(t.tx, t.ty)
                 this.scale.set(t.a, t.d)
@@ -201,13 +220,20 @@ export class BlueprintContainer extends Container {
             G.app.ticker.remove(update)
         })
 
+        // Hover is a desktop-only concept. On mobile these fire for the browser's
+        // synthetic ("compatibility") mouse events after a tap — and a synthetic
+        // `pointerout` would hide the paint ghost we just positioned, breaking the
+        // tap-to-preview flow. On touch, ghost visibility is driven explicitly by
+        // the tap / Place path instead (see handlePaintTap / confirmPlacement).
         this.on('pointerover', () => {
+            if (inputMode.mode !== 'desktop') return
             if (this.mode === EditorMode.PAINT) {
                 this.paintContainer.show()
             }
             this.updateHoverContainer()
         })
         this.on('pointerout', () => {
+            if (inputMode.mode !== 'desktop') return
             if (this.mode === EditorMode.PAINT) {
                 this.paintContainer.hide()
             }
@@ -483,14 +509,45 @@ export class BlueprintContainer extends Container {
             this.touchPan = null
             const wasTap = !tp.moved && performance.now() - tp.startTime < TOUCH_TAP_MAX_DURATION
             if (wasTap) {
-                // A tap acts at the touch point through the same left-click
-                // pipeline as the mouse: seed the grid + hover at the tap, then
-                // press/release so existing per-mode semantics (place / select /
-                // open) apply unchanged.
+                // A tap while a dialog (entity editor, inventory, …) is open
+                // dismisses it. Dialogs swallow taps that land on them, so a tap
+                // reaching here is necessarily *outside* the dialog — this is the
+                // touch "tap-away to close" and, crucially, stops a stale editor
+                // lingering when you tap another entity. Re-tap an entity to open
+                // its editor. (Desktop, which refocuses via openEntityGUI, is on a
+                // separate path and unaffected.)
+                if (Dialog.anyOpen()) {
+                    Dialog.closeLast()
+                    this.lastEditTapEntity = undefined
+                    return
+                }
+                // A tap seeds the grid + hover at the touch point, then acts.
                 this.gridData.moveTo(tp.startX, tp.startY)
                 this.updateHoverContainer()
-                G.actions.pressButton(e as unknown as PointerEvent)
-                G.actions.releaseButton(e as unknown as PointerEvent)
+                if (this.mode === EditorMode.PAINT) {
+                    // Placement is deferred on touch: a tap positions/previews the
+                    // ghost (the touch analogue of desktop hover) and only a second
+                    // tap on the same tile commits. This makes orientation and
+                    // location previewable before the entity lands, instead of the
+                    // old blind tap-to-place. The Place (✓) toolbar button is the
+                    // alternative confirm. Desktop is unaffected.
+                    this.handlePaintTap()
+                } else if (this.mode === EditorMode.EDIT) {
+                    // Opening an entity's settings is deferred like placement: the
+                    // first tap selects/hovers it (which shows its info panel,
+                    // highlight and range via updateHoverContainer) and only a
+                    // second tap on the same entity opens the editor overlay. This
+                    // keeps the canvas from being covered the instant you touch an
+                    // entity you only meant to inspect. Desktop click-to-open is
+                    // unaffected.
+                    this.handleEditTap()
+                } else {
+                    // Other modes keep the original left-click pipeline so
+                    // select / open / pan semantics apply unchanged.
+                    this.lastEditTapEntity = undefined
+                    G.actions.pressButton(e as unknown as PointerEvent)
+                    G.actions.releaseButton(e as unknown as PointerEvent)
+                }
             }
         }
 
@@ -614,6 +671,70 @@ export class BlueprintContainer extends Container {
         }
         this.exitCopyMode(true)
         this.exitDeleteMode(true)
+    }
+
+    /**
+     * Cancel whatever the cursor is currently doing — painting, or a copy/delete
+     * selection — and return to NONE. Desktop reaches this by toggling the
+     * trigger off (e.g. pipette again); this is the single explicit "stop" that
+     * the Escape key and the on-screen toolbar's cancel button both route
+     * through, since touch has no keyboard to bail out with.
+     */
+    public clearCursor(): void {
+        if (this.mode === EditorMode.PAINT) {
+            this.paintContainer.destroy()
+        }
+        this.exitCopyMode(true)
+        this.exitDeleteMode(true)
+    }
+
+    /**
+     * Handle a touch tap while holding a paint cursor: reveal + position the
+     * ghost, and commit only when the tap repeats on the tile the ghost already
+     * occupies. The item stays in hand after a placement (like desktop), so
+     * tap-elsewhere / tap-again lets you place several quickly.
+     */
+    private handlePaintTap(): void {
+        this.paintContainer.show()
+        const tile = this.paintContainer.getGridPosition()
+        const onSameTile =
+            this.lastPaintTapTile !== undefined &&
+            this.lastPaintTapTile.x === tile.x &&
+            this.lastPaintTapTile.y === tile.y
+        if (onSameTile) {
+            this.paintContainer.placeEntityContainer()
+        }
+        this.lastPaintTapTile = tile
+    }
+
+    /**
+     * Handle a touch tap on an entity (EDIT mode). The first tap on an entity
+     * just selects it — `updateHoverContainer` has already shown its info panel,
+     * highlight and range — and only a second tap on the *same* entity opens the
+     * editor overlay, so a glance doesn't bury the canvas under a dialog. Tapping
+     * a different entity re-selects (shows the new one's info) without opening.
+     */
+    private handleEditTap(): void {
+        const entityNumber = this.hoverContainer?.entity?.entityNumber
+        if (entityNumber !== undefined && entityNumber === this.lastEditTapEntity) {
+            this.openEditor()
+            // Next tap starts the select→open cycle over (e.g. after closing).
+            this.lastEditTapEntity = undefined
+        } else {
+            this.lastEditTapEntity = entityNumber
+        }
+    }
+
+    /**
+     * Commit the held paint cursor at its current tile. Drives the on-screen
+     * Place (✓) button and the Enter key — the explicit confirm that pairs with
+     * touch's deferred placement. No-op outside paint mode or before the ghost
+     * has been positioned (it stays hidden until the first tap).
+     */
+    public confirmPlacement(): void {
+        if (this.mode !== EditorMode.PAINT) return
+        this.paintContainer.placeEntityContainer()
+        this.lastPaintTapTile = this.paintContainer.getGridPosition()
     }
 
     public moveEntity(offset: IPoint) {
@@ -1032,6 +1153,10 @@ export class BlueprintContainer extends Container {
         this.updateHoverContainer(true)
         this.setMode(EditorMode.PAINT)
         this.cursor = 'pointer'
+        // Fresh cursor: the first touch tap should position, not commit; and a
+        // held item supersedes any pending entity-edit selection.
+        this.lastPaintTapTile = undefined
+        this.lastEditTapEntity = undefined
 
         if (typeof itemNameOrEntities === 'string') {
             const itemData = FD.items[itemNameOrEntities]

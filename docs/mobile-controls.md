@@ -77,15 +77,60 @@ pipelines at once made touch taps double-act via the browser's synthetic
 
 ## Not done / next
 
-- ⬜ **On-screen action toolbar** — mobile has no keyboard, so mirror the
-  `actions.ts` registry into on-screen buttons: rotate / flip / pipette / copy /
-  delete / undo / open-inventory. This is the natural next slice.
+- 🚧 **On-screen action toolbar** — DOM toolbar mirroring the `actions.ts`
+  registry into on-screen buttons, shown only in `mobile` input mode. Prototype
+  landed: Items (inventory) / Rotate / Flip H / Flip V / Pick (pipette) / Undo /
+  Redo / Center / **Delete** (mine the selected entity — touch has no
+  right-click) / **Place** / **Cancel**. Buttons invoke actions by name via the new
+  `EDITOR.callAction(name)` seam (`actions.ts`), so they stay in lockstep with
+  the keybinds instead of duplicating logic. The Cancel button fixes the worst
+  gap — there was previously **no keyboard-free way out of paint mode** (only the
+  pipette toggle); `closeWindow`/Escape now falls through to a new
+  `BlueprintContainer.clearCursor()` (cancels paint/copy/delete), and Cancel
+  routes through it. Lives in `packages/website/src/actionToolbar.ts` (styled in
+  `index.styl`, mounted in `index.ts`); mode-awareness via the new
+  `Editor.onModeChange` / `Editor.mode` API (stable across blueprint reloads).
+  e2e in `e2e/actionToolbar.spec.ts` covers input-mode gating, button presence,
+  the `callAction` tap path, and the headline behavior — tapping **Cancel** (and
+  pressing Escape) exits paint mode. The paint-exit tests dodge the
+  tap-to-place blocker by seeding a quickbar item to enter PAINT via a keypress
+  and reading the Cancel button's `.active` class as a DOM-observable proxy for
+  cursor state. Remaining: real game-sprite icons (currently unicode glyphs —
+  blocked on `.basis`→DOM delivery) and copy/delete-select buttons.
+- 🚧 **Touch placement: preview + confirm (Slice 1 done)** — desktop previews a
+  placement by hovering (ghost shows orientation/validity before you click);
+  touch had no such step — a tap committed blindly. Now, in `mobile` paint mode a
+  tap **positions/previews** the ghost (the touch analogue of hover) and only a
+  **second tap on the same tile** — or the on-screen **Place (✓)** button /
+  `Enter` — commits it. Rotate/Flip from the toolbar preview live on the
+  stationary ghost; the item stays in hand after a placement (place several with
+  tap-elsewhere / tap-again). Seams: `BlueprintContainer.handlePaintTap()` +
+  `confirmPlacement()` (new `confirmPlacement` action), `PaintContainer`'s ghost
+  show/hide, and the hover handlers gated to desktop so synthetic touch
+  `pointerout` no longer hides the ghost. The ghost is also pinned to its tapped
+  world tile while you pan/pinch (the camera moves around it) — `GridData`'s
+  pointer-move tracking and the per-frame `recalculate()` are gated to desktop,
+  so a drag no longer drags the ghost along with the finger. Covered by
+  `e2e/touchPlacement.spec.ts` via the extended `?test` hook (`paint` +
+  `blueprint.entityCount`), incl. a CDP one-finger-drag pan assertion. **Slice 2
+  (next):** one-finger *drag* paints a continuous line (belts/pipes) — reuse the
+  existing `gridData.on('update32', build)` drag-place path; tap stays deferred.
+- 🚧 **Touch editing: select first, open on second tap** — same deferral for
+  opening an entity's settings. On mobile the first tap on an entity selects it
+  (`updateHoverContainer` already shows its info panel, highlight and range) and
+  only a second tap on the *same* entity opens the editor overlay, so a glance
+  doesn't bury the canvas under a dialog. `BlueprintContainer.handleEditTap()`;
+  desktop click-to-open is unchanged. A tap on the canvas *outside* an open
+  dialog dismisses it (dialogs swallow taps that land on them, so a tap reaching
+  the BPC is necessarily outside) — so a stale editor doesn't linger when you tap
+  away; re-tap an entity to open it. Covered in `e2e/touchPlacement.spec.ts`
+  (`dialogOpen` added to the `?test` hook).
 - ⬜ **Touch area/marquee select** — multi-select for copy/delete is desktop-only
   (drag with a modifier); needs a touch gesture (e.g. long-press-drag).
-- 🚧 **e2e coverage gaps** (both `fixme`): pinch needs CDP
-  `Input.dispatchTouchEvent` (the high-level touch API is single-touch);
-  tap-to-place can now read state via the `?test` hook above — extend
-  `EditorTestState` with blueprint state and drop the `fixme`.
+- 🚧 **e2e coverage gaps**: pinch needs CDP `Input.dispatchTouchEvent` (the
+  high-level touch API is single-touch). Tap-to-place is now covered —
+  `EditorTestState` was extended with `paint` + `blueprint.entityCount` and
+  `e2e/touchPlacement.spec.ts` drives the deferred place/confirm flow.
 - ⬜ **Pinch in desktop mode** — desktop currently ignores touch entirely, so a
   touch-laptop in desktop mode can't pinch. Out of scope for now (we don't care
   about touch-on-desktop yet); revisit if needed.

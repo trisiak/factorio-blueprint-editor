@@ -15,6 +15,9 @@ cd "$CLAUDE_PROJECT_DIR"
 npm install --legacy-peer-deps
 
 # NOTE: deliberately no `playwright install`. This environment ships a
-# pre-installed Chromium that @playwright/test targets, and the browser-download
-# CDN isn't in the egress allowlist — adding it back would 403 and (under
-# `set -e`) fail the whole hook. That's exactly why the previous hook was dropped.
+# pre-installed Chromium under /opt/pw-browsers (matching the pinned
+# @playwright/test build); the env var PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
+# in .claude/settings.json points Playwright at it, so `npm run test:e2e` works
+# without a download. The browser-download CDN isn't in the egress allowlist, so
+# `playwright install` would 403 and (under `set -e`) fail the whole hook —
+# that's exactly why the previous hook was dropped.

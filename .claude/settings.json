@@ -1,4 +1,7 @@
 {
+    "env": {
+        "PLAYWRIGHT_BROWSERS_PATH": "/opt/pw-browsers"
+    },
     "hooks": {
         "SessionStart": [
             {

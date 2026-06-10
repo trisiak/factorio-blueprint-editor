@@ -459,3 +459,70 @@ body.mobile
         transform: translateX(0)
     to
         transform: translateX(100%)
+
+// On-screen action toolbar — DOM mirror of the keyboard actions for touch users.
+// Hidden by default; `.visible` is toggled on when the input mode is `mobile`
+// (see actionToolbar.ts). Top-center keeps it clear of the settings pane
+// (bottom-left), toasts (bottom-right) and the Pixi quickbar (bottom).
+#action-toolbar
+    position: fixed
+    top: 8px
+    left: 50%
+    transform: translateX(-50%)
+    z-index: 6
+    display: none
+    flex-wrap: wrap
+    justify-content: center
+    // Keep every button (esp. Cancel) on-screen on narrow phones — the full row
+    // is wider than a ~410px viewport, so let it wrap to a second centered row.
+    max-width: calc(100vw - 16px)
+    gap: 6px
+    padding: 6px
+    border-radius: 8px
+    background: rgba(20, 20, 20, 0.85)
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4)
+    user-select: none
+    -webkit-user-select: none
+    touch-action: manipulation
+    &.visible
+        display: flex
+    button
+        display: flex
+        flex-direction: column
+        align-items: center
+        justify-content: center
+        min-width: 48px
+        min-height: 48px
+        padding: 4px
+        border: none
+        border-radius: 6px
+        background: #3a3a3a
+        color: #eee
+        font: 500 10px 'Roboto', sans-serif
+        cursor: pointer
+        &:hover
+            background: #4a4a4a
+        &:active
+            background: #5a5a5a
+        .glyph
+            font-size: 20px
+            line-height: 1
+            margin-bottom: 2px
+    button.confirm
+        background: #2a5a2a
+        &:hover
+            background: #306a30
+        &.active
+            background: #2f9e3f
+    button.delete
+        background: #5a3320
+        &:hover
+            background: #6a3d26
+        &.active
+            background: #c8641e
+    button.cancel
+        background: #5a2a2a
+        &:hover
+            background: #6a3030
+        &.active
+            background: #b03030
