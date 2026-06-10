@@ -79,11 +79,11 @@ pipelines at once made touch taps double-act via the browser's synthetic
   `.github/workflows/pages-*.yml`.
 - ✅ **Canvas e2e probe** — everything inside the editor is one `<canvas>`, so
   Playwright can't query on-canvas UI through the DOM. Loading with `?test`
-  installs `window.__FBE_TEST__.getState()` (logical input mode + quickbar
-  bounds/scale/visibility, in CSS px); see `packages/editor/src/common/testHook.ts`.
-  Opt-in, so it's absent in normal use. Extend its `EditorTestState` to unblock
-  the deferred touch `fixme`s below (e.g. add blueprint entity count for
-  tap-to-place).
+  installs `window.__FBE_TEST__.getState()` (CSS px): logical input mode, screen
+  size, `dialogOpen`, quickbar + wires bounds/scale/visibility, blueprint entity
+  count, and the paint ghost's tile/direction; see
+  `packages/editor/src/common/testHook.ts`. Opt-in, so it's absent in normal use.
+  Extend its `EditorTestState` for any future on-canvas assertion.
 
 ## Not done / next
 

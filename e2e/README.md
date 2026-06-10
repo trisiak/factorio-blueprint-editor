@@ -99,20 +99,29 @@ This drives the framework-free `PinchPanRecognizer`
 (`packages/editor/src/containers/PointerGestures.ts`, unit-tested in
 `PointerGestures.test.ts`) → `viewport.zoomBy` / `translateBy`.
 
-## Asserting blueprint state
+## Asserting on-canvas state (the `?test` hook)
 
-Some specs (e.g. tap-to-place) need to read editor state to assert on it. The
-website does **not** expose a window-level blueprint handle yet, so those specs
-are currently `test.fixme(...)` and double as a to-do list. The intended fix is
-to expose a small read-only handle on `window` from the website boot
-(`packages/website/src/index.ts`) so tests can read placed entities. Once that
-lands, convert the relevant `fixme` to a real test and tick the box in
-`docs/mobile-controls.md` — don't leave the doc stale.
+Everything inside the editor renders into a single `<canvas>`, so Playwright
+can't query on-canvas UI (the quickbar, wires panel, paint ghost, …) through the
+DOM. Loading the page with **`?test`** installs `window.__FBE_TEST__`, whose
+`getState()` returns a read-only `EditorTestState` snapshot (CSS px), exposing:
+
+- `inputMode`, `screen` size, `dialogOpen`
+- `quickbar` / `wires` bounds + visibility (and the quickbar's fit scale)
+- `blueprint.entityCount` — what got placed
+- `paint` — the held ghost's `active`/`visible`/`tile`/`direction`
+
+It's opt-in, so it's absent in normal use. See
+`packages/editor/src/common/testHook.ts`; `panels.spec.ts` and
+`touchPlacement.spec.ts` read it. To assert something the snapshot doesn't cover
+yet, extend `EditorTestState` rather than reaching into the DOM.
 
 ## Open work
 
-See the `test.fixme(...)` blocks in `touch.spec.ts` and the "e2e coverage gaps"
-item in `docs/mobile-controls.md`. The two known gaps:
+The remaining `test.fixme(...)` in `touch.spec.ts`:
 
-- **tap-to-place assertion** — needs the window-level blueprint handle above.
-- **pinch-zoom** — needs the CDP recipe above wired into a spec.
+- **pinch-zoom** — needs the CDP `Input.dispatchTouchEvent` recipe above wired
+  into a spec (the high-level touch API is single-touch).
+- the `single-finger tap places the held entity` fixme there is now **redundant** —
+  deferred touch placement is covered for real in `touchPlacement.spec.ts` — and
+  can be deleted.
