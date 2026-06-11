@@ -37,10 +37,6 @@ jobs:
 
   type-check:
     runs-on: ubuntu-latest
-    # The repo still carries pre-existing type errors (tracked in #11). This job
-    # runs `tsc` for visibility but is allowed to fail until they're cleared;
-    # dropping `continue-on-error` then turns it into a hard gate.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
