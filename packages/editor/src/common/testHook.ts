@@ -3,6 +3,7 @@ import { inputMode, type InputMode } from './input'
 import { EditorMode } from '../containers/BlueprintContainer'
 import { PaintEntityContainer } from '../containers/PaintEntityContainer'
 import { Dialog } from '../UI/controls/Dialog'
+import { Entity } from '../core/Entity'
 
 /**
  * Read-only logical-state snapshot for e2e tests. The editor renders into a
@@ -82,6 +83,21 @@ export const TEST_HOOK_KEY = '__FBE_TEST__'
 
 export interface FbeTestHook {
     getState: () => EditorTestState
+    /**
+     * Sandbox/screenshot controls: drive the on-canvas UI into a given state
+     * deterministically (no fragile click-coordinate math), reusing the exact
+     * code paths real interactions hit. Each returns `false` if the named entity
+     * isn't in the blueprint.
+     */
+    showEntityInfo: (name: string | null) => boolean
+    openEntityEditor: (name: string) => boolean
+    openInventory: () => void
+    closeDialogs: () => void
+    centerView: () => void
+}
+
+function findEntity(name: string): Entity | undefined {
+    return G.bp.entities.valuesArray().find(e => e.name === name)
 }
 
 /**
@@ -89,6 +105,30 @@ export interface FbeTestHook {
  * under `?test` — so it is absent in normal use.
  */
 export function installTestHook(win: Window = window): void {
-    const hook: FbeTestHook = { getState: getEditorTestState }
+    const hook: FbeTestHook = {
+        getState: getEditorTestState,
+        showEntityInfo: name => {
+            if (name === null) {
+                G.UI.updateEntityInfoPanel(undefined)
+                return true
+            }
+            const e = findEntity(name)
+            if (e) G.UI.updateEntityInfoPanel(e)
+            return !!e
+        },
+        openEntityEditor: name => {
+            const e = findEntity(name)
+            if (!e) return false
+            Dialog.closeAll()
+            G.UI.createEditor(e)
+            return true
+        },
+        openInventory: () => {
+            Dialog.closeAll()
+            G.UI.createInventory('Inventory')
+        },
+        closeDialogs: () => Dialog.closeAll(),
+        centerView: () => G.BPC.centerViewport(),
+    }
     ;(win as unknown as Record<string, unknown>)[TEST_HOOK_KEY] = hook
 }

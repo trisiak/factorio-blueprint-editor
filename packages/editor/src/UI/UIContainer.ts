@@ -35,7 +35,7 @@ export class UIContainer extends Container {
         )
     }
 
-    public updateEntityInfoPanel(entity: Entity): void {
+    public updateEntityInfoPanel(entity?: Entity): void {
         this.entityInfoPanel.updateVisualization(entity)
     }
 
