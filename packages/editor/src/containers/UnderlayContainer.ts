@@ -1,5 +1,11 @@
 import { Sprite, Container, Texture, AlphaFilter, ColorSource } from 'pixi.js'
 import FD, { getEnergySource, hasModuleFunctionality } from '../core/factorioData'
+import {
+    BeaconPrototype,
+    ElectricPolePrototype,
+    MiningDrillPrototype,
+    RoboportPrototype,
+} from 'factorio:prototype'
 import { IPoint } from '../types'
 import { VisualizationArea } from './VisualizationArea'
 
@@ -38,13 +44,13 @@ export class UnderlayContainer extends Container {
             return [
                 {
                     type: 'logistics0',
-                    radius: ed.construction_radius,
+                    radius: (ed as RoboportPrototype).construction_radius,
                     color: 0x83d937,
                     alpha: 1,
                 },
                 {
                     type: 'logistics1',
-                    radius: ed.logistics_radius,
+                    radius: (ed as RoboportPrototype).logistics_radius,
                     color: {
                         r: 0xff - 0x83 * VisualizationArea.ALPHA,
                         g: 0x88 - 0xd9 * VisualizationArea.ALPHA,
@@ -58,7 +64,7 @@ export class UnderlayContainer extends Container {
             return [
                 {
                     type: 'poles',
-                    radius: ed.supply_area_distance,
+                    radius: (ed as ElectricPolePrototype).supply_area_distance,
                     color: 0x3755d9,
                     alpha: VisualizationArea.ALPHA,
                 },
@@ -68,7 +74,7 @@ export class UnderlayContainer extends Container {
             return [
                 {
                     type: 'beacons',
-                    radius: ed.supply_area_distance + 1,
+                    radius: (ed as BeaconPrototype).supply_area_distance + 1,
                     color: 0xd9c037,
                     alpha: VisualizationArea.ALPHA,
                 },
@@ -78,7 +84,7 @@ export class UnderlayContainer extends Container {
             return [
                 {
                     type: 'drills',
-                    radius: ed.resource_searching_radius,
+                    radius: (ed as MiningDrillPrototype).resource_searching_radius,
                     color: 0x4ead9f,
                     alpha: VisualizationArea.ALPHA,
                 },

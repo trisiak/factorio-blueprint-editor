@@ -1,6 +1,7 @@
 import { Container } from 'pixi.js'
 import { DirectionType, IPoint } from '../types'
 import FD, { getEntitySize, getPossibleRotations } from '../core/factorioData'
+import { UndergroundBeltPrototype } from 'factorio:prototype'
 import { Entity } from '../core/Entity'
 import { EntitySprite } from './EntitySprite'
 import { VisualizationArea } from './VisualizationArea'
@@ -96,7 +97,7 @@ export class PaintEntityContainer extends PaintContainer {
                     y: this.y / 32,
                 },
                 this.direction,
-                fd.max_distance
+                (fd as UndergroundBeltPrototype).max_distance
             )
             if (otherEntity) {
                 const oe = this.bpc.bp.entities.get(otherEntity)

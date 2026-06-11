@@ -31,7 +31,13 @@ import FD, {
 import { Blueprint } from './Blueprint'
 import { getBeltWireConnectionIndex } from './spriteDataBuilder'
 import U from './generators/util'
-import { EntityWithOwnerPrototype, CombinatorPrototype } from 'factorio:prototype'
+import {
+    EntityWithOwnerPrototype,
+    CombinatorPrototype,
+    InserterPrototype,
+    LogisticContainerPrototype,
+    UndergroundBeltPrototype,
+} from 'factorio:prototype'
 
 export interface IFilter {
     /** Slot index (1 based ... not 0 like arrays) */
@@ -372,9 +378,11 @@ export class Entity extends EventEmitter<EntityEvents> {
     /** Count of filter slots */
     public get filterSlots(): number {
         if (this.type === 'splitter') return 1
-        if (this.entityData.filter_count !== undefined) return this.entityData.filter_count
-        if (this.entityData.max_logistic_slots !== undefined) {
-            return this.entityData.max_logistic_slots
+        const filterCount = (this.entityData as InserterPrototype).filter_count
+        if (filterCount !== undefined) return filterCount
+        const maxLogisticSlots = (this.entityData as LogisticContainerPrototype).max_logistic_slots
+        if (maxLogisticSlots !== undefined) {
+            return maxLogisticSlots
         }
         if (this.name === 'buffer-chest' || this.name === 'requester-chest') {
             return this.logisticChestFilters.reduce(
@@ -862,7 +870,7 @@ export class Entity extends EventEmitter<EntityEvents> {
                         this.direction,
                         this.position,
                         this.directionType === 'input' ? this.direction : (this.direction + 8) % 16,
-                        this.entityData.max_distance
+                        (this.entityData as UndergroundBeltPrototype).max_distance
                     )
                 )
                 if (otherEntity) {

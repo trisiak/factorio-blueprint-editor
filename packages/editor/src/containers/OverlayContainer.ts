@@ -15,6 +15,7 @@ import { EditorMode, BlueprintContainer } from './BlueprintContainer'
 import { EntityContainer } from './EntityContainer'
 import { CursorBoxSpecification } from 'factorio:prototype'
 import { Sprite as SpriteData } from 'factorio:prototype'
+import { MiningDrillPrototype, UndergroundBeltPrototype } from 'factorio:prototype'
 
 export class OverlayContainer extends Container {
     private readonly bpc: BlueprintContainer
@@ -284,10 +285,11 @@ export class OverlayContainer extends Container {
 
         if (entity.type === 'mining-drill' && entity.name !== 'pumpjack') {
             const arrows = new Container()
+            const drillData = entity.entityData as MiningDrillPrototype
             arrows.addChild(
                 createArrow({
-                    x: entity.entityData.vector_to_place_result[0] * 64,
-                    y: entity.entityData.vector_to_place_result[1] * 64 + 18,
+                    x: drillData.vector_to_place_result[0] * 64,
+                    y: drillData.vector_to_place_result[1] * 64 + 18,
                 })
             )
             arrows.rotation = entity.direction * Math.PI * 0.125
@@ -444,7 +446,7 @@ export class OverlayContainer extends Container {
                     fd.type === 'pipe-to-ground' ? searchDirection : direction,
                     position,
                     searchDirection,
-                    fd.max_distance || 10
+                    (fd as UndergroundBeltPrototype).max_distance || 10
                 )
             )
 
@@ -475,7 +477,7 @@ export class OverlayContainer extends Container {
                     const data =
                         fd.type === 'pipe-to-ground'
                             ? FD.utilitySprites.underground_pipe_connection
-                            : fd.underground_sprite
+                            : (fd as UndergroundBeltPrototype).underground_sprite
                     const s = new Sprite(
                         G.getTexture(data.filename, data.x, data.y, data.width, data.height)
                     )
