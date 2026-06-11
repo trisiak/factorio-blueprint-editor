@@ -15,7 +15,6 @@ import EDITOR, {
     installTestHook,
 } from '@fbe/editor'
 import { initToasts } from './toasts'
-import { initFeedbackButton } from './feedbackButton'
 import { initSettingsPane } from './settingsPane'
 import { initActionToolbar } from './actionToolbar'
 import {
@@ -56,7 +55,6 @@ console.log(
     'color: #1f79aa; font-weight: bold'
 )
 
-initFeedbackButton()
 const createToast = initToasts()
 
 // Touch support is a work in progress (pinch-to-zoom and two-finger pan are
@@ -68,7 +66,7 @@ if (isMobile.any && forceDesktopOnly) {
     createToast({
         text:
             'Application is not compatible with mobile devices.<br>' +
-            'If you think this is a mistake, feel free to report this bug on github or using the feedback button.',
+            'If you think this is a mistake, feel free to report this bug on github.',
         type: 'error',
         timeout: Infinity,
     })
@@ -93,7 +91,7 @@ if (typeof WebAssembly !== 'object' && typeof WebAssembly.instantiate !== 'funct
     createToast({
         text:
             "Current browser doesn't support WebAssembly.<br>" +
-            'If you think this is a mistake, feel free to report this bug on github or using the feedback button.',
+            'If you think this is a mistake, feel free to report this bug on github.',
         type: 'error',
         timeout: Infinity,
     })
@@ -424,7 +422,7 @@ function createErrorMessage(text: string, error: unknown, timeout = 10000): void
         text:
             `${text}<br>` +
             'Please check out the console (F12) for an error message and ' +
-            'report this bug on github or using the feedback button.',
+            'report this bug on github.',
         type: 'error',
         timeout,
     })

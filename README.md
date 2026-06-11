@@ -2,6 +2,12 @@
 
 # factorio-blueprint-editor
 
+> **This is an independent fork.** It lives separately from its upstream source,
+> [`Teoxoy/factorio-blueprint-editor`](https://github.com/Teoxoy/factorio-blueprint-editor)
+> (hosted at fbe.teoxoy.com), and is not expected to merge back. Everything below —
+> badges, hosted-demo links, and feature notes — describes **upstream** and may be
+> outdated or not apply to this fork. This fork deploys on its own via GitHub Pages.
+
 [![Website](https://img.shields.io/website-up-down-brightgreen-red/https/fbe.teoxoy.com.svg?style=flat-square)](https://fbe.teoxoy.com)
 [![Discord](https://img.shields.io/discord/540738973413408809.svg?style=flat-square&color=7289da&logo=discord&logoColor=white)](https://discord.gg/c5eXyBU)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-blue.svg?style=flat-square)](./CONTRIBUTING.md)

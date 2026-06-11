@@ -10,12 +10,13 @@ const fullReloadAlways = {
 }
 
 export default defineConfig(({ command, mode }) => {
-    const proxy = {
-        '/corsproxy': {
-            target: 'https://fbe.teoxoy.com',
-            changeOrigin: true,
-        },
-    }
+    // NOTE: blueprint-URL imports hit a server-side CORS proxy at `/corsproxy`
+    // (a Cloudflare Pages Function, `functions/corsproxy.js`). It doesn't run on
+    // this fork's GitHub Pages deploy, and we no longer proxy dev to an external
+    // host's proxy, so URL imports are inert here until the fork hosts its own —
+    // see https://github.com/trisiak/factorio-blueprint-editor/issues/17. Paste /
+    // raw `?source=<bpstring>` import still works.
+    const proxy = {}
     if (mode !== 'production') {
         proxy['/data'] = {
             target: 'http://127.0.0.1:8081',
@@ -24,7 +25,7 @@ export default defineConfig(({ command, mode }) => {
     }
     // Sub-path deploys (e.g. GitHub Pages at /factorio-blueprint-editor/, or a
     // per-PR preview under /pr-preview/pr-N/) set PUBLIC_BASE. Defaults to '/'
-    // so the root deploy (fbe.teoxoy.com) and local dev are unchanged.
+    // so a root-path deploy and local dev are unchanged.
     let base = process.env.PUBLIC_BASE ?? '/'
     if (!base.endsWith('/')) base += '/'
 
