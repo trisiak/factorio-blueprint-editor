@@ -37,15 +37,6 @@ test.describe('touch', () => {
         await expect(page.locator('#loadingScreen')).toHaveClass(/error/, { timeout: 15_000 })
     })
 
-    // TODO(slice 2): tap-to-place. `page.locator('#editor').tap()` drives the
-    // one-finger touch path (deferred press/release in BlueprintContainer).
-    // Asserting the placement needs a window-level handle to read blueprint
-    // state, which the website does not expose yet — left as fixme.
-    test.fixme('single-finger tap places the held entity', async ({ page }) => {
-        await page.goto('/')
-        await page.locator('#editor').tap()
-    })
-
     // Slice 1 pinch-zoom is two-finger. Playwright's high-level touchscreen API
     // is single-touch only, so verifying pinch needs CDP
     // Input.dispatchTouchEvent with two touch points. Entry point for that work.

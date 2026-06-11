@@ -1,4 +1,5 @@
 import { Container, Sprite } from 'pixi.js'
+import G from '../../common/globals'
 import { colors } from '../style'
 import F from './functions'
 
@@ -52,6 +53,21 @@ export abstract class Panel extends Container {
     public destroy(): void {
         window.removeEventListener('resize', this._setPosition)
         super.destroy({ children: true })
+    }
+
+    /**
+     * Place the panel's top-left at (x, y) but clamp it so the panel — at its
+     * current scale — stays fully within the viewport. Lets edge-anchored and
+     * centered panels degrade gracefully on narrow (portrait) screens instead of
+     * spilling off an edge.
+     */
+    protected clampToScreen(x: number, y: number): void {
+        const w = this.width * this.scale.x
+        const h = this.height * this.scale.y
+        this.position.set(
+            Math.max(0, Math.min(x, G.app.screen.width - w)),
+            Math.max(0, Math.min(y, G.app.screen.height - h))
+        )
     }
 
     /** Width of the Control */

@@ -190,3 +190,23 @@ test.describe('quickbar', () => {
         }
     })
 })
+
+test.describe('wires panel', () => {
+    test('fits within the viewport (sits next to the quickbar)', async ({ page }) => {
+        await page.goto('/?test')
+        await waitForAppReady(page)
+
+        const state = await readTestState(page)
+        const viewport = page.viewportSize()!
+
+        // Regression: the wires panel was anchored off the right edge of the
+        // (now scaled) quickbar via a hardcoded width, so on a phone in portrait
+        // it fell entirely off-screen.
+        expect(state.wires.visible).toBe(true)
+        const b = state.wires.bounds
+        expect(b.x).toBeGreaterThanOrEqual(0)
+        expect(b.y).toBeGreaterThanOrEqual(0)
+        expect(b.x + b.width).toBeLessThanOrEqual(viewport.width + 1)
+        expect(b.y + b.height).toBeLessThanOrEqual(viewport.height + 1)
+    })
+})

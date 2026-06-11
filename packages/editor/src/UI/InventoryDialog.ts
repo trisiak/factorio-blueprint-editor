@@ -4,6 +4,7 @@ import G from '../common/globals'
 import F from './controls/functions'
 import { Dialog } from './controls/Dialog'
 import { Button } from './controls/Button'
+import { fitToWidthScale } from './quickbarLayout'
 import { colors, styles } from './style'
 
 /*
@@ -187,11 +188,24 @@ export class InventoryDialog extends Dialog {
         recipePanel.addChild(this.m_RecipeContainer)
     }
 
-    /** Override automatically set position of dialog due to additional area for recipe */
+    /**
+     * Override the base centering: the recipe strip hangs ~78px below the 442px
+     * body (~520px total), so fit against that full extent — width *and* height —
+     * and center the scaled box, clamped on-screen.
+     */
     protected override setPosition(): void {
+        const totalHeight = 520
+        const scale = Math.min(
+            fitToWidthScale(G.app.screen.width, this.width),
+            fitToWidthScale(G.app.screen.height, totalHeight)
+        )
+        this.scale.set(scale)
+
+        const w = this.width * scale
+        const h = totalHeight * scale
         this.position.set(
-            G.app.screen.width / 2 - this.width / 2,
-            G.app.screen.height / 2 - 520 / 2
+            Math.max(0, Math.min(G.app.screen.width / 2 - w / 2, G.app.screen.width - w)),
+            Math.max(0, Math.min(G.app.screen.height / 2 - h / 2, G.app.screen.height - h))
         )
     }
 

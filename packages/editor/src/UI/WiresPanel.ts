@@ -62,6 +62,21 @@ export class WiresPanel extends Panel {
     }
 
     protected override setPosition(): void {
-        this.position.set(G.app.screen.width / 2 + 442 / 2, G.app.screen.height - this.height + 1)
+        // The wires panel belongs next to the (centered, bottom-pinned) quickbar.
+        // The quickbar scales down on narrow viewports, so anchor off its *actual*
+        // scaled bounds rather than a hardcoded 442 — otherwise this panel runs
+        // off the right edge in portrait. If there's no room beside it, stack the
+        // panel just above the quickbar's right end; clamp on-screen as a backstop.
+        const sw = G.app.screen.width
+        const sh = G.app.screen.height
+        const qb = G.UI?.quickbarPanel
+        const qbb = qb ? qb.getBounds().rectangle : null
+        const besideX = qbb ? qbb.x + qbb.width + 2 : sw / 2 + 442 / 2
+
+        if (qbb && besideX + this.width > sw) {
+            this.clampToScreen(qbb.x + qbb.width - this.width, qbb.y - this.height + 1)
+        } else {
+            this.clampToScreen(besideX, sh - this.height + 1)
+        }
     }
 }

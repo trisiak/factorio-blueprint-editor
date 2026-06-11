@@ -5,6 +5,7 @@ import util from '../common/util'
 import { Entity } from '../core/Entity'
 import F from './controls/functions'
 import { Panel } from './controls/Panel'
+import { fitToWidthScale } from './quickbarLayout'
 import { styles } from './style'
 
 function template(strings: TemplateStringsArray, ...keys: (number | string)[]) {
@@ -275,7 +276,11 @@ export class EntityInfoPanel extends Panel {
     }
 
     protected override setPosition(): void {
-        this.position.set(G.app.screen.width - this.width + 1, 0)
+        // Pin to the top-right; scale down on a viewport narrower than the panel
+        // (only sub-~290px screens) and clamp so it never spills off-screen.
+        const scale = fitToWidthScale(G.app.screen.width, this.width)
+        this.scale.set(scale)
+        this.clampToScreen(G.app.screen.width - this.width * scale + 1, 0)
     }
 
     private findNearbyBeacons(entity: Entity): Entity[] {
