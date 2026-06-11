@@ -8,6 +8,18 @@ export default tseslint.config(
         rules: {
             '@typescript-eslint/ban-ts-comment': 'off', // TODO: remove
             '@typescript-eslint/no-explicit-any': 'off', // TODO: remove
+            // Honor the `_`-prefix convention for intentionally-unused bindings
+            // (e.g. `override` method params kept for signature compatibility).
+            '@typescript-eslint/no-unused-vars': [
+                'error',
+                {
+                    argsIgnorePattern: '^_',
+                    varsIgnorePattern: '^_',
+                    caughtErrorsIgnorePattern: '^_',
+                    // `const { omitMe, ...rest } = x` — the omitted sibling is intentional.
+                    ignoreRestSiblings: true,
+                },
+            ],
         },
     },
     {
