@@ -1,0 +1,50 @@
+name: CI
+
+# Quality gates for the JS workspaces: lint, unit tests, and type-check. Runs on
+# every PR and on pushes to master. (The exporter is Rust and out of scope here.)
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+# Supersede in-flight runs for the same ref/PR.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --legacy-peer-deps
+      - run: npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --legacy-peer-deps
+      - run: npm test
+
+  type-check:
+    runs-on: ubuntu-latest
+    # The repo still carries pre-existing type errors (tracked in #11). This job
+    # runs `tsc` for visibility but is allowed to fail until they're cleared;
+    # dropping `continue-on-error` then turns it into a hard gate.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --legacy-peer-deps
+      - run: npm run type-check
