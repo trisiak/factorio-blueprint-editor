@@ -391,6 +391,10 @@ pub async fn extract(
             .unwrap(),
     );
 
+    // Every `.basis` this run is responsible for — used afterwards to prune
+    // stale sprites the current data.json no longer references.
+    let referenced: HashSet<PathBuf> = file_paths.iter().map(|(_, out)| out.clone()).collect();
+
     let file_paths = Arc::new(Mutex::new(file_paths));
 
     let tmp_dir = std::env::temp_dir().join("__FBE__");
@@ -419,9 +423,60 @@ pub async fn extract(
     progress.finish();
 
     tokio::fs::remove_dir_all(&tmp_dir).await?;
+
+    // Prune stale sprites: any `.basis` in the pack's output dir that this run
+    // didn't (re)generate is no longer referenced by data.json — e.g. spritesheet
+    // splits an earlier/imported dump produced that the current Factorio version
+    // no longer emits. Left in place they're dead weight the editor never loads;
+    // removing them keeps the committed atlas a clean 1:1 with data.json.
+    let pruned = prune_unreferenced_basis(output_dir, &referenced).await?;
+    if pruned > 0 {
+        println!("Pruned {pruned} unreferenced .basis file(s)");
+    }
+
     println!("DONE!");
 
     Ok(())
+}
+
+/// Delete every `*.basis` under `output_dir` that isn't in `referenced`, then
+/// remove any directories left empty by the deletions. Returns the count
+/// removed. Scoped to `.basis` only — `data.json`/`metadata.json` are untouched.
+async fn prune_unreferenced_basis(
+    output_dir: &Path,
+    referenced: &HashSet<PathBuf>,
+) -> Result<usize, Box<dyn Error>> {
+    let mut count = 0;
+    let mut stack = vec![output_dir.to_path_buf()];
+    let mut dirs = Vec::new();
+    while let Some(dir) = stack.pop() {
+        dirs.push(dir.clone());
+        let mut entries = tokio::fs::read_dir(&dir).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if entry.file_type().await?.is_dir() {
+                stack.push(path);
+            } else if path.extension().and_then(|e| e.to_str()) == Some("basis")
+                && !referenced.contains(&path)
+            {
+                tokio::fs::remove_file(&path).await?;
+                count += 1;
+            }
+        }
+    }
+    // Deepest dirs last in `dirs` (pushed as discovered) — drop the now-empty ones.
+    for dir in dirs.into_iter().rev() {
+        if dir != output_dir
+            && tokio::fs::read_dir(&dir)
+                .await?
+                .next_entry()
+                .await?
+                .is_none()
+        {
+            let _ = tokio::fs::remove_dir(&dir).await;
+        }
+    }
+    Ok(count)
 }
 
 async fn get_len_and_mtime(path: &Path) -> Result<(u64, u64), Box<dyn Error>> {
