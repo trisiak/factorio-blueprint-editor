@@ -11,17 +11,17 @@
         "moduleDetection": "force",
         "noEmit": true,
 
-        // Ratcheting toward full `strict`. These members are already satisfied
-        // (zero errors today) so they're on now to prevent regressions. The
-        // remaining `strict` family is staged by cost — flip each once its
-        // backlog is cleared:
-        //   "strictFunctionTypes": true,   // ~4 errors
+        // Ratcheting toward full `strict`. These members are satisfied (zero
+        // errors) so they're on now to prevent regressions. The remaining
+        // `strict` family is staged by cost — flip each once its backlog is
+        // cleared:
         //   "noImplicitAny": true,         // ~77 errors
         //   "strictNullChecks": true,      // ~777 errors (the big one)
         //   "strict": true,                // implies all of the above
         "alwaysStrict": true,
         "noImplicitThis": true,
         "strictBindCallApply": true,
+        "strictFunctionTypes": true,
         "useUnknownInCatchVariables": true,
 
         "paths": {
