@@ -1,5 +1,3 @@
-use async_recursion::async_recursion;
-use globset::{GlobBuilder, GlobMatcher};
 use indicatif::{ProgressBar, ProgressStyle};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -228,35 +226,44 @@ async fn content_to_lines(path: &Path) -> Result<String, Box<dyn Error>> {
     Ok(content)
 }
 
-#[async_recursion]
-async fn glob(
-    path: &Path,
-    matcher: &GlobMatcher,
-) -> Result<Vec<std::path::PathBuf>, Box<dyn Error>> {
-    let mut entries = tokio::fs::read_dir(path).await?;
-    let mut paths = Vec::<std::path::PathBuf>::new();
-
-    while let Some(entry) = entries.next_entry().await? {
-        let file_type = entry.file_type().await?;
-        let entry_path = entry.path();
-        if file_type.is_file() && matcher.is_match(&entry_path) {
-            paths.push(entry_path.clone())
-        } else if file_type.is_dir() {
-            let mut inner_paths = glob(&entry_path, matcher).await?;
-            paths.append(&mut inner_paths);
+/// Build the locale lookup table for exactly the mods a pack enables.
+///
+/// Only each enabled mod's top-level `locale/en/*.cfg` files are read. The
+/// previous recursive `**/locale/en/*.cfg` glob also swept up campaign/tutorial
+/// locale (which overrides entity names — e.g. the tutorial renames
+/// `crash-site-chest-1` to "Escape pod") and the locale of mods that ship on
+/// disk but are disabled for this pack (the DLC dirs bleeding into a vanilla
+/// dump) — with the winner decided by filesystem readdir order. Mods are
+/// processed as `core` + the pack's `mods` in manifest order (keep that order
+/// in `packs.json` aligned with Factorio's load order, so e.g. Space Age's
+/// renames override base just like in the game), files sorted within each mod,
+/// so duplicate keys resolve deterministically: last write wins.
+async fn generate_locale(
+    factorio_data: &Path,
+    enabled_mods: &[String],
+) -> Result<String, Box<dyn Error>> {
+    let mut paths = Vec::<PathBuf>::new();
+    for mod_name in std::iter::once("core").chain(enabled_mods.iter().map(String::as_str)) {
+        let dir = factorio_data.join(mod_name).join("locale/en");
+        let mut entries = match tokio::fs::read_dir(&dir).await {
+            Ok(entries) => entries,
+            // A mod is allowed to ship no locale at all.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(format!("failed to read {}: {e}", dir.display()).into()),
+        };
+        let mut files = Vec::<PathBuf>::new();
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) == Some("cfg") {
+                files.push(path);
+            }
         }
+        files.sort();
+        paths.append(&mut files);
     }
-
-    Ok(paths)
-}
-
-async fn generate_locale(factorio_data: &PathBuf) -> Result<String, Box<dyn Error>> {
-    let matcher = GlobBuilder::new("**/*/locale/en/*.cfg")
-        .literal_separator(true)
-        .build()?
-        .compile_matcher();
-    let paths = glob(factorio_data, &matcher).await?;
-    let content = futures::future::try_join_all(paths.iter().map(|path| content_to_lines(&path)))
+    // Parallel reads, but concatenated in `paths` order — order is what makes
+    // the override behavior deterministic.
+    let content = futures::future::try_join_all(paths.iter().map(|path| content_to_lines(path)))
         .await?
         .concat();
     Ok(format!("return {{{}}}", content))
@@ -279,7 +286,7 @@ pub async fn extract(
     let info = include_str!("export-data/info.json");
     let script = include_str!("export-data/control.lua");
     let data = include_str!("export-data/data-final-fixes.lua");
-    let locale = generate_locale(&factorio_data).await?;
+    let locale = generate_locale(&factorio_data, &pack.mods).await?;
 
     tokio::fs::create_dir_all(&scenario_dir).await?;
     tokio::fs::write(mod_dir.join("info.json"), info).await?;
@@ -292,14 +299,45 @@ pub async fn extract(
 
     println!("Generating defines.lua");
 
-    Command::new(factorio_executable)
-        .args(&["--start-server-load-scenario", "export-data/export-data"])
-        .stdout(std::process::Stdio::null())
-        .spawn()?
-        .wait()
+    // Clear out the previous run's dumps: Factorio exits via `error("!EXIT!")`
+    // (so its exit code is useless as a success signal), and a crash before
+    // on_init would otherwise leave us reading a *stale* data.json /
+    // active-mods.json from an earlier — possibly different — pack.
+    for stale in [&extracted_data_path, &active_mods_path] {
+        match tokio::fs::remove_file(stale).await {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+
+    let run = Command::new(factorio_executable)
+        .args(["--start-server-load-scenario", "export-data/export-data"])
+        .output()
         .await?;
 
-    let content = tokio::fs::read_to_string(&extracted_data_path).await?;
+    let content = match tokio::fs::read_to_string(&extracted_data_path).await {
+        Ok(content) => content,
+        // No dump means Factorio never reached on_init — usually a Lua error
+        // in our export-data mod; the tail of Factorio's log has the details.
+        Err(e) => {
+            let stdout = String::from_utf8_lossy(&run.stdout);
+            let tail = stdout
+                .lines()
+                .rev()
+                .take(25)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join("\n");
+            return Err(format!(
+                "Factorio produced no {}: {e}\n--- end of Factorio output ---\n{tail}",
+                extracted_data_path.display()
+            )
+            .into());
+        }
+    };
 
     // Fail fast on a mod mismatch, before the (long) atlas build.
     verify_active_mods(&active_mods_path, pack).await?;
@@ -407,7 +445,11 @@ async fn compress_next_img(
 ) -> Result<(), Box<dyn Error>> {
     let get_paths = || file_paths.lock().unwrap().pop();
     while let Some((in_path, out_path)) = get_paths() {
-        let (len, mtime) = get_len_and_mtime(&in_path).await?;
+        // A missing source sprite aborts the build — name the file, since the
+        // usual cause is a bad `__mod__` mapping or an incomplete install.
+        let (len, mtime) = get_len_and_mtime(&in_path)
+            .await
+            .map_err(|e| format!("{}: {e}", in_path.display()))?;
         let key = in_path.to_str().ok_or("PathBuf to &str failed")?;
 
         if old_metadata.get(key) == Some(&(len, mtime)) {
