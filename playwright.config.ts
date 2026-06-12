@@ -10,15 +10,34 @@ import { defineConfig, devices } from '@playwright/test'
  * `touchscreen` API is single-touch only — pinch-zoom (two-finger) needs raw CDP
  * `Input.dispatchTouchEvent`; see e2e/touch.spec.ts.
  */
+const CI = !!process.env.CI
+
 export default defineConfig({
     testDir: './e2e',
     fullyParallel: true,
-    forbidOnly: !!process.env.CI,
-    retries: process.env.CI ? 2 : 0,
+    forbidOnly: CI,
+    retries: CI ? 2 : 0,
+    // CI runners have no GPU, so PixiJS renders through software WebGL
+    // (SwiftShader) — markedly slower than a local GPU. Running two canvas-heavy
+    // workers on top of that made them fight over the runner's render loop: input
+    // dispatch stalled (the toolbar/touch specs hit the 30s timeout) and, once a
+    // renderer ran out of memory, the page crashed outright ("Target page/context/
+    // browser has been closed"). Serialize to one worker on CI and widen the
+    // per-test/assert budgets; local runs keep the fast parallel defaults.
+    workers: CI ? 1 : undefined,
+    timeout: CI ? 60_000 : 30_000,
+    expect: { timeout: CI ? 10_000 : 5_000 },
     reporter: 'html',
     use: {
         baseURL: 'http://localhost:8080',
         trace: 'on-first-retry',
+        // --enable-unsafe-swiftshader: allow WebGL via SwiftShader in headless
+        // Chromium that has no GPU (otherwise it can be blocklisted and the canvas
+        // never renders). --disable-dev-shm-usage: write Chromium's shared memory
+        // to /tmp instead of a possibly-tiny /dev/shm, avoiding renderer crashes.
+        launchOptions: {
+            args: ['--enable-unsafe-swiftshader', '--disable-dev-shm-usage'],
+        },
     },
     projects: [
         {
