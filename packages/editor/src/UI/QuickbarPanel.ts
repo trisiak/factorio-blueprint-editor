@@ -160,6 +160,25 @@ export class QuickbarPanel extends Panel {
         return this.slots.map(s => s.itemName)
     }
 
+    /** Whether `name` is currently in any quickbar slot. */
+    public hasItem(name: string): boolean {
+        return this.slots.some(s => s.itemName === name)
+    }
+
+    /** Pin `name` to the first empty slot (no-op if already present / full). */
+    public addItem(name: string): boolean {
+        if (this.hasItem(name)) return true
+        const empty = this.slots.find(s => !s.itemName)
+        if (!empty) return false
+        empty.assignItem(name)
+        return true
+    }
+
+    /** Unpin every slot holding `name`. */
+    public removeItem(name: string): void {
+        for (const s of this.slots) if (s.itemName === name) s.unassignItem()
+    }
+
     protected override setPosition(): void {
         // Scale to fit narrow viewports (see quickbarLayout) so the fixed-width
         // panel never runs off the edges, then center along the bottom.

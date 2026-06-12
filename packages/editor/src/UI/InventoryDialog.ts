@@ -1,6 +1,7 @@
 import { Container, Graphics, Text } from 'pixi.js'
 import FD from '../core/factorioData'
 import G from '../common/globals'
+import { inputMode } from '../common/input'
 import F from './controls/functions'
 import { Dialog } from './controls/Dialog'
 import { Button } from './controls/Button'
@@ -64,6 +65,16 @@ export class InventoryDialog extends Dialog {
     private m_tabArrows?: { left: Container; right: Container; max: number }
     private m_itemArrows?: { up: Container; down: Container }
 
+    // Long-press preview state + the bottom Confirm / Pin bar it reveals.
+    private m_selectedCallBack?: (name: string) => void
+    private m_recentsKey?: string
+    private m_previewName?: string
+    private m_previewButton?: Button<Container>
+    private m_pressTimer?: ReturnType<typeof setTimeout>
+    private m_confirmBtn?: Container
+    private m_pinBtn?: Container
+    private m_pinText?: Text
+
     public constructor(
         title = 'Inventory',
         itemsFilter?: string[],
@@ -71,6 +82,9 @@ export class InventoryDialog extends Dialog {
         recentsKey?: string
     ) {
         super(404, 442, title)
+
+        this.m_selectedCallBack = selectedCallBack
+        this.m_recentsKey = recentsKey
 
         this.m_InventoryGroups = new Container()
         this.m_InventoryGroups.position.set(12, 46)
@@ -96,21 +110,39 @@ export class InventoryDialog extends Dialog {
         const makeItemButton = (name: string): Button<Container> => {
             const button = new Button<Container>(36, 36)
             button.content = F.CreateIcon(name)
+
+            // Touch-first: a quick tap commits the selection; a long-press opens a
+            // non-committing preview (details + Confirm + Pin/Unpin). Movement off
+            // the icon or release elsewhere cancels.
             button.on('pointerdown', e => {
                 e.stopPropagation()
-                if (e.button === 0) {
-                    if (recentsKey) recordRecent(recentsKey, name)
-                    selectedCallBack?.(name)
-                    this.close()
+                if (e.button !== 0) return
+                this.clearPressTimer()
+                this.m_pressTimer = setTimeout(() => {
+                    this.m_pressTimer = undefined
+                    this.beginPreview(name, button)
+                }, 450)
+            })
+            button.on('pointerup', e => {
+                e.stopPropagation()
+                if (this.m_pressTimer) {
+                    // released before the long-press fired → quick tap = commit
+                    this.clearPressTimer()
+                    this.commitSelect(name)
                 }
             })
+            button.on('pointerupoutside', () => this.clearPressTimer())
+
+            // Recipe-on-hover is a desktop affordance; on touch a finger sliding
+            // over items would spuriously trigger it (long-press shows details).
             button.on('pointerover', () => {
+                if (inputMode.mode !== 'desktop') return
                 this.m_hoveredItem = name
                 this.updateRecipeVisualization(name)
             })
             button.on('pointerout', () => {
-                // we have to check this because pointerout can fire after pointerover
-                if (this.m_hoveredItem === name) {
+                this.clearPressTimer()
+                if (inputMode.mode === 'desktop' && this.m_hoveredItem === name) {
                     this.m_hoveredItem = undefined
                     this.updateRecipeVisualization(undefined)
                 }
@@ -279,8 +311,96 @@ export class InventoryDialog extends Dialog {
         this.m_RecipeContainer.position.set(12, 36)
         recipePanel.addChild(this.m_RecipeContainer)
 
+        // Bottom Confirm / Pin bar (top-right of the recipe strip), revealed only
+        // while an item is being long-press previewed.
+        const pin = InventoryDialog.barButton('Pin', 0x2a5a7a)
+        this.m_pinBtn = pin.container
+        this.m_pinText = pin.text
+        this.m_pinBtn.position.set(240, 446)
+        this.m_pinBtn.on('pointerup', e => {
+            e.stopPropagation()
+            const name = this.m_previewName
+            if (!name) return
+            const qb = G.UI.quickbarPanel
+            if (qb.hasItem(name)) qb.removeItem(name)
+            else qb.addItem(name)
+            this.updatePreviewBar()
+        })
+        this.addChild(this.m_pinBtn)
+
+        const confirm = InventoryDialog.barButton('✓ Confirm', 0x2f7d32)
+        this.m_confirmBtn = confirm.container
+        this.m_confirmBtn.position.set(320, 446)
+        this.m_confirmBtn.on('pointerup', e => {
+            e.stopPropagation()
+            if (this.m_previewName) this.commitSelect(this.m_previewName)
+        })
+        this.addChild(this.m_confirmBtn)
+
         this.setupTabScroll(groupIndex)
         this.setupItemScroll()
+    }
+
+    private clearPressTimer(): void {
+        if (this.m_pressTimer) {
+            clearTimeout(this.m_pressTimer)
+            this.m_pressTimer = undefined
+        }
+    }
+
+    /** Quick-tap path: record + commit the selection and close. */
+    private commitSelect(name: string): void {
+        if (this.m_recentsKey) recordRecent(this.m_recentsKey, name)
+        this.m_selectedCallBack?.(name)
+        this.close()
+    }
+
+    /** Long-press path: hold the item as a pending selection without closing. */
+    public beginPreview(name: string, button?: Button<Container>): void {
+        if (this.destroyed) return
+        if (this.m_previewButton) this.m_previewButton.active = false
+        this.m_previewName = name
+        this.m_previewButton = button
+        if (button) button.active = true
+        this.updateRecipeVisualization(name)
+        this.updatePreviewBar()
+    }
+
+    private updatePreviewBar(): void {
+        const active = !!this.m_previewName
+        if (this.m_confirmBtn) this.m_confirmBtn.visible = active
+        if (this.m_pinBtn && this.m_pinText) {
+            // The quickbar only holds items, so pinning is for the item selector.
+            const canPin = active && this.m_recentsKey === 'items'
+            this.m_pinBtn.visible = canPin
+            if (canPin) {
+                this.m_pinText.text = G.UI.quickbarPanel.hasItem(this.m_previewName)
+                    ? 'Unpin'
+                    : 'Pin'
+            }
+        }
+    }
+
+    /** A small labelled action button (Confirm / Pin); hidden until previewing. */
+    private static barButton(label: string, color: number): { container: Container; text: Text } {
+        const c = new Container()
+        const bg = new Graphics().roundRect(0, 0, 72, 26, 4).fill(color)
+        const t = new Text({
+            text: label,
+            style: {
+                fontFamily: "'Roboto', sans-serif",
+                fontSize: 13,
+                fontWeight: 'bold',
+                fill: 0xffffff,
+            },
+        })
+        t.anchor.set(0.5)
+        t.position.set(36, 13)
+        c.addChild(bg, t)
+        c.eventMode = 'static'
+        c.cursor = 'pointer'
+        c.visible = false
+        return { container: c, text: t }
     }
 
     /** Names already on the blueprint for `key`, used to seed an empty recents tab. */

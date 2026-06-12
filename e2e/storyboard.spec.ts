@@ -76,6 +76,7 @@ type Hook = {
     showEntityInfo: (name: string | null) => boolean
     openEntityEditor: (name: string) => boolean
     openInventory: () => void
+    previewInventoryItem: (name: string) => void
     closeDialogs: () => void
     centerView: () => void
 }
@@ -119,6 +120,14 @@ async function capture(page: Page): Promise<Shot[]> {
     // 4) the inventory / items view
     await page.evaluate(() => (window as WinWithHook).__FBE_TEST__!.openInventory())
     await shot('inventory')
+    await page.evaluate(() => (window as WinWithHook).__FBE_TEST__!.closeDialogs())
+
+    // 4b) long-press preview: details + Confirm / Pin bar (touch-first selection)
+    await page.evaluate(
+        name => (window as WinWithHook).__FBE_TEST__!.previewInventoryItem(name),
+        HERO
+    )
+    await shot('item preview')
     await page.evaluate(() => (window as WinWithHook).__FBE_TEST__!.closeDialogs())
 
     // 5) the assembler's editor (recipe + modules) open

@@ -92,6 +92,8 @@ export interface FbeTestHook {
     showEntityInfo: (name: string | null) => boolean
     openEntityEditor: (name: string) => boolean
     openInventory: () => void
+    /** Open the item inventory and long-press-preview `name` (Confirm/Pin bar). */
+    previewInventoryItem: (name: string) => void
     closeDialogs: () => void
     centerView: () => void
 }
@@ -126,6 +128,10 @@ export function installTestHook(win: Window = window): void {
         openInventory: () => {
             Dialog.closeAll()
             G.UI.createInventory('Inventory', undefined, undefined, 'items')
+        },
+        previewInventoryItem: name => {
+            Dialog.closeAll()
+            G.UI.createInventory('Inventory', undefined, undefined, 'items').beginPreview(name)
         },
         closeDialogs: () => Dialog.closeAll(),
         centerView: () => G.BPC.centerViewport(),
