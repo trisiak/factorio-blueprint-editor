@@ -18,13 +18,42 @@ macro_rules! get_env_var {
 /// One entry of `data/output/packs.json`: the editor reads `id`/`label`/`mods`
 /// to pick and label a pack; the exporter reads `id` (output sub-dir) and `mods`
 /// (which mods to enable for the dump). Extra fields in the manifest are ignored.
+///
+/// `versions` pins mod-portal mods to exact releases (`name -> version`). A mod
+/// with a pinned version is fetched from the portal into `<factorio>/mods/<name>/`
+/// (see `download_portal_mods`); a mod without one is expected to ship with the
+/// game under `<factorio>/data/<name>/` (base + the DLCs). That distinction also
+/// drives which download build is needed and where sprites/locale resolve from.
 #[derive(Deserialize, Clone)]
 pub struct Pack {
     pub id: String,
     #[serde(default)]
     pub mods: Vec<String>,
     #[serde(default)]
+    pub versions: HashMap<String, String>,
+    #[serde(default)]
     pub default: bool,
+}
+
+impl Pack {
+    /// The subset of `mods` that ships with the game itself (no portal pin) —
+    /// the only ones whose presence says anything about the *game* install.
+    fn game_shipped_mods(&self) -> impl Iterator<Item = &String> {
+        self.mods.iter().filter(|m| !self.versions.contains_key(*m))
+    }
+}
+
+/// Resolve a mod's on-disk root: game-shipped mods (base, the DLCs, `core`)
+/// live under `<factorio>/data/<mod>`, portal mods are extracted to
+/// `<factorio>/mods/<mod>`. Sprite refs and locale paths are mod-relative, so
+/// everything downstream funnels through this one lookup.
+fn mod_root(factorio_data: &Path, mods_root: &Path, mod_name: &str) -> PathBuf {
+    let shipped = factorio_data.join(mod_name);
+    if shipped.is_dir() {
+        shipped
+    } else {
+        mods_root.join(mod_name)
+    }
 }
 
 /// Read and parse the `packs.json` manifest.
@@ -240,11 +269,12 @@ async fn content_to_lines(path: &Path) -> Result<String, Box<dyn Error>> {
 /// so duplicate keys resolve deterministically: last write wins.
 async fn generate_locale(
     factorio_data: &Path,
+    mods_root: &Path,
     enabled_mods: &[String],
 ) -> Result<String, Box<dyn Error>> {
     let mut paths = Vec::<PathBuf>::new();
     for mod_name in std::iter::once("core").chain(enabled_mods.iter().map(String::as_str)) {
-        let dir = factorio_data.join(mod_name).join("locale/en");
+        let dir = mod_root(factorio_data, mods_root, mod_name).join("locale/en");
         let mut entries = match tokio::fs::read_dir(&dir).await {
             Ok(entries) => entries,
             // A mod is allowed to ship no locale at all.
@@ -286,7 +316,7 @@ pub async fn extract(
     let info = include_str!("export-data/info.json");
     let script = include_str!("export-data/control.lua");
     let data = include_str!("export-data/data-final-fixes.lua");
-    let locale = generate_locale(&factorio_data, &pack.mods).await?;
+    let locale = generate_locale(&factorio_data, &mods_root, &pack.mods).await?;
 
     tokio::fs::create_dir_all(&scenario_dir).await?;
     tokio::fs::write(mod_dir.join("info.json"), info).await?;
@@ -365,20 +395,23 @@ pub async fn extract(
         .map(|cap| cap[1].to_string())
         .collect();
 
-    // Sprite refs are mod-relative, e.g. `__base__/graphics/..`, `__space-age__/..`.
-    // On disk every mod's data lives under `<factorio>/data/<mod>/`, so map any
-    // `__<mod>__` token to just `<mod>` (generalizing the old core/base-only
-    // replace so DLC and future packs resolve too). The output path keeps the
-    // `__<mod>__/` form — the editor looks textures up by the data.json path
-    // with `.png` swapped for `.basis`.
+    // Sprite refs are mod-relative, e.g. `__base__/graphics/..`, `__space-age__/..`,
+    // `__space-exploration-graphics__/..`. On disk a game-shipped mod's data lives
+    // under `<factorio>/data/<mod>/` and a portal mod's under `<factorio>/mods/<mod>/`
+    // (see `mod_root`). The output path keeps the `__<mod>__/` form — the editor
+    // looks textures up by the data.json path with `.png` swapped for `.basis`.
     lazy_static! {
-        static ref MOD_REF: Regex = Regex::new(r"__([^_/][^/]*?)__").unwrap();
+        static ref MOD_REF: Regex = Regex::new(r"^__([^_/][^/]*?)__/(.+)$").unwrap();
     }
     let file_paths = file_paths
         .into_iter()
         .map(|s| {
-            let in_rel = MOD_REF.replace_all(&s, "$1");
-            let in_path = factorio_data.join(in_rel.as_ref());
+            let in_path = match MOD_REF.captures(&s) {
+                Some(cap) => mod_root(&factorio_data, &mods_root, &cap[1]).join(&cap[2]),
+                // A ref without a mod prefix shouldn't occur in practice; fall
+                // back to the data dir so a bad ref fails loudly at read time.
+                None => factorio_data.join(&s),
+            };
             let out_path = output_dir.join(s.replace(".png", ".basis").as_str());
             (in_path, out_path)
         })
@@ -567,12 +600,11 @@ pub async fn download_factorio(
     // (space-age/quality/elevated-rails); the base-game `alpha` build does not.
     // The two share a version number, so checking the version alone isn't
     // enough — an `alpha` install looks "up to date" yet is missing the DLC a
-    // pack needs. Treat the install as sufficient only if every one of this
-    // pack's mods is actually present on disk; otherwise re-download the build
-    // that has them.
+    // pack needs. Treat the install as sufficient only if every *game-shipped*
+    // mod of this pack is actually present on disk; portal mods are installed
+    // separately (download_portal_mods) and say nothing about the game build.
     let mods_present = futures::future::join_all(
-        pack.mods
-            .iter()
+        pack.game_shipped_mods()
             .map(|m| tokio::fs::try_exists(base_factorio_dir.join("data").join(m))),
     )
     .await
@@ -582,9 +614,10 @@ pub async fn download_factorio(
     if same_version && mods_present {
         println!("Downloaded Factorio version matches required version");
     } else {
-        // A pack that needs anything beyond the base game (the DLC mods ship
-        // only in the `expansion` build) requires the expansion download.
-        let build = if pack.mods.iter().any(|m| m != "base") {
+        // A pack that needs any game-shipped mod beyond the base game (the DLC
+        // mods ship only in the `expansion` build) requires the expansion
+        // download; portal mods don't factor in.
+        let build = if pack.game_shipped_mods().any(|m| m != "base") {
             "expansion"
         } else {
             "alpha"
@@ -603,6 +636,192 @@ pub async fn download_factorio(
         download(factorio_version, build, &username, &token, data_dir).await?;
     }
 
+    Ok(())
+}
+
+/// Mod-portal API types (https://wiki.factorio.com/Mod_portal_API): we only
+/// need the release list to map a pinned version to its `download_url`.
+#[derive(Deserialize)]
+struct PortalRelease {
+    version: String,
+    download_url: String,
+    file_name: String,
+}
+
+#[derive(Deserialize)]
+struct PortalModInfo {
+    releases: Vec<PortalRelease>,
+}
+
+/// Ensure every portal mod the pack pins (`versions` in packs.json) is
+/// installed at `<factorio>/mods/<name>/` at exactly the pinned version —
+/// Factorio loads directory-form mods from `mods/` by plain name, which also
+/// makes `mod_root` resolution trivial. Downloads go through a zip cache at
+/// `<data>/mod-portal-cache/`, deliberately *outside* the Factorio install:
+/// `download_factorio` wipes the install wholesale when the build is
+/// insufficient, and re-fetching multi-GB graphics mods (SE!) on every wipe
+/// would hurt; re-extraction is cheap.
+pub async fn download_portal_mods(
+    data_dir: &Path,
+    base_factorio_dir: &Path,
+    pack: &Pack,
+) -> Result<(), Box<dyn Error>> {
+    if pack.versions.is_empty() {
+        return Ok(());
+    }
+    let mods_root = base_factorio_dir.join("mods");
+    let cache_dir = data_dir.join("mod-portal-cache");
+    tokio::fs::create_dir_all(&mods_root).await?;
+    tokio::fs::create_dir_all(&cache_dir).await?;
+
+    let client = reqwest::Client::new();
+
+    // Manifest order, like everywhere else — deterministic logs, and any
+    // future order-sensitive step inherits Factorio's load order for free.
+    for name in pack.mods.iter().filter(|m| pack.versions.contains_key(*m)) {
+        let version = &pack.versions[name];
+        let dest = mods_root.join(name);
+
+        // Already installed at the pinned version? (A leftover from another
+        // pin is replaced wholesale — partial updates aren't a thing here.)
+        if let Ok(info) = get_info(&dest.join("info.json")).await {
+            if &info.version == version {
+                continue;
+            }
+        }
+
+        let zip_path = ensure_mod_zip_cached(&client, &cache_dir, name, version).await?;
+
+        if tokio::fs::try_exists(&dest).await? {
+            tokio::fs::remove_dir_all(&dest).await?;
+        }
+        extract_mod_zip(&zip_path, &dest).await?;
+
+        // The zip's info.json is the source of truth — catch a mislabeled
+        // cache file or a portal mix-up before Factorio does.
+        let installed = get_info(&dest.join("info.json")).await?;
+        if &installed.version != version {
+            return Err(format!(
+                "portal mod {name}: extracted version {} != pinned {version}",
+                installed.version
+            )
+            .into());
+        }
+        println!("Installed portal mod {name} {version}");
+    }
+
+    Ok(())
+}
+
+/// Return the path of `{name}_{version}.zip` in the cache, downloading it from
+/// the mod portal if absent. The download URL comes from the portal API; the
+/// fetch itself needs the same `FACTORIO_USERNAME`/`FACTORIO_TOKEN` credentials
+/// as the game download (resolved here, lazily — a fully cached run needs none).
+async fn ensure_mod_zip_cached(
+    client: &reqwest::Client,
+    cache_dir: &Path,
+    name: &str,
+    version: &str,
+) -> Result<PathBuf, Box<dyn Error>> {
+    // Portal release file names are `{name}_{version}.zip`; predicting it lets
+    // a warm cache skip the API round-trip entirely.
+    let zip_path = cache_dir.join(format!("{name}_{version}.zip"));
+    if tokio::fs::try_exists(&zip_path).await? {
+        return Ok(zip_path);
+    }
+
+    let api_url = format!("https://mods.factorio.com/api/mods/{name}");
+    let info: PortalModInfo = client.get(&api_url).send().await?.json().await?;
+    let release = info
+        .releases
+        .iter()
+        .find(|r| r.version == version)
+        .ok_or_else(|| format!("portal mod {name}: no release {version} on the portal"))?;
+
+    let username = get_env_var!("FACTORIO_USERNAME")?;
+    let token = get_env_var!("FACTORIO_TOKEN")?;
+    let url = format!(
+        "https://mods.factorio.com{}?username={username}&token={token}",
+        release.download_url
+    );
+
+    println!(
+        "Downloading portal mod {name} {version} ({})",
+        release.file_name
+    );
+    let res = client.get(&url).send().await?;
+    if !res.status().is_success() {
+        return Err(format!("portal mod {name}: download failed ({})", res.status()).into());
+    }
+
+    let pb = ProgressBar::new(res.content_length().unwrap_or(0));
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+            .unwrap()
+            .progress_chars("=> "),
+    );
+
+    // Stream to `<file>.part`, then rename — an interrupted download must not
+    // masquerade as a cache hit on the next run.
+    let part_path = cache_dir.join(format!("{name}_{version}.zip.part"));
+    let mut file = tokio::fs::File::create(&part_path).await?;
+    let mut stream = res.bytes_stream();
+    use futures::stream::TryStreamExt;
+    use tokio::io::AsyncWriteExt;
+    let mut first = true;
+    while let Some(chunk) = stream.try_next().await? {
+        // Bad credentials make the portal answer 200 with an HTML login page;
+        // the zip magic is the cheap tell.
+        if first && !chunk.starts_with(b"PK") {
+            return Err(format!(
+                "portal mod {name}: response is not a zip (bad FACTORIO_USERNAME/TOKEN?)"
+            )
+            .into());
+        }
+        first = false;
+        pb.inc(chunk.len() as u64);
+        file.write_all(&chunk).await?;
+    }
+    file.flush().await?;
+    pb.finish();
+    tokio::fs::rename(&part_path, &zip_path).await?;
+    Ok(zip_path)
+}
+
+/// Extract a portal mod zip into `dest`. Portal zips wrap everything in a
+/// single top-level directory (usually `name_version/`), which we strip so the
+/// install lands at `mods/<name>/` regardless of how the zip was rooted.
+async fn extract_mod_zip(zip_path: &Path, dest: &Path) -> Result<(), Box<dyn Error>> {
+    let zip_path = zip_path.to_path_buf();
+    let dest = dest.to_path_buf();
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let file = std::fs::File::open(&zip_path).map_err(|e| e.to_string())?;
+        let mut ar = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+        for i in 0..ar.len() {
+            let mut entry = ar.by_index(i).map_err(|e| e.to_string())?;
+            // enclosed_name also rejects `..`/absolute paths (zip-slip).
+            let Some(rel) = entry.enclosed_name() else {
+                return Err(format!("unsafe path in {}", zip_path.display()));
+            };
+            let stripped: PathBuf = rel.components().skip(1).collect();
+            if stripped.as_os_str().is_empty() {
+                continue; // the wrapper dir itself
+            }
+            let out = dest.join(stripped);
+            if entry.is_dir() {
+                std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+            } else {
+                if let Some(parent) = out.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                }
+                let mut out_file = std::fs::File::create(&out).map_err(|e| e.to_string())?;
+                std::io::copy(&mut entry, &mut out_file).map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(())
+    })
+    .await??;
     Ok(())
 }
 
