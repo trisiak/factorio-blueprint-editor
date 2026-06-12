@@ -89,8 +89,11 @@ class Transaction {
     /** Should actions be applied immediately */
     private applyImmediate: boolean
 
-    /** Field to store historical actions */
-    private readonly actions: Action<unknown>[] = []
+    // Heterogeneous store of actions with differing value types. `Action<V>`
+    // carries a contravariant `applyFn: (value: V) => void`, so under
+    // strictFunctionTypes a concrete `Action<T[K]>` is not assignable to
+    // `Action<unknown>`; `Action<any>` is the variance-free container type.
+    private readonly actions: Action<any>[] = []
 
     public constructor(text?: string, applyImmediate?: boolean) {
         this.text = text
@@ -132,7 +135,7 @@ class Transaction {
     }
 
     /** Add action to this transaction */
-    public push(action: Action<unknown>): void {
+    public push(action: Action<any>): void {
         if (this.text === undefined && this.actions.length === 0) {
             this.text = action.text
         }

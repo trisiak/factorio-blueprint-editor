@@ -527,7 +527,9 @@ export class WireConnections extends EventEmitter<WireConnectionsEvents> {
                     U.getAngle(0, 0, p.x - centre.x, (p.y - centre.y) * -1 /* invert Y axis */)
                 )
                 .map(angleToSector)
-                .reduce((acc, sec) => acc + sec, 0)
+                // Sum widens 0|1|2|3 to number, so pin the accumulator type
+                // (strictFunctionTypes rejects the inferred literal overload).
+                .reduce<number>((acc, sec) => acc + sec, 0)
 
             return Math.floor(sectorSum / points.length) * 4
 
