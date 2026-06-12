@@ -67,7 +67,8 @@ export function initActionToolbar(editor: Editor): void {
     const overflow = document.createElement('div')
     overflow.className = 'rail-overflow'
 
-    rail.append(primary, moreBtn, overflow)
+    // moreBtn is placed into the grid as its last cell when overflowing.
+    rail.append(primary, overflow)
 
     const closeOverflow = (): void => overflow.classList.remove('open')
 
@@ -120,36 +121,30 @@ export function initActionToolbar(editor: Editor): void {
         const stack = document.getElementById('buttons')
         const top = stack ? Math.round(stack.getBoundingClientRect().bottom) : 140
 
-        const landscape = window.innerWidth > window.innerHeight
-        let columns: number
-        let inRail: number
-        if (landscape) {
-            // Short but wide: 3 columns under the top stack (wrapping into as many
-            // rows as needed) — no overflow.
-            columns = 3
-            inRail = buttons.length
-        } else {
-            // Tall and narrow: a single column, as many as fit; rest overflow.
-            columns = 1
-            const availH = window.innerHeight - top - BTN // leave room for ⋯
-            const capacity = Math.max(1, Math.floor(availH / BTN))
-            inRail = buttons.length > capacity ? Math.max(0, capacity - 1) : buttons.length
-        }
-
-        const overflowNeeded = inRail < buttons.length
-        const railWidth = columns * BTN + MARGIN
+        // As many priority buttons as fit the height (×3 columns in landscape);
+        // the rest collapse into the ⋯ overflow so nothing falls below the
+        // viewport. The ⋯ takes the last grid cell when present.
+        const columns = window.innerWidth > window.innerHeight ? 3 : 1
+        const rows = Math.max(1, Math.floor((window.innerHeight - top - MARGIN) / BTN))
+        const capacity = rows * columns
+        const overflowNeeded = buttons.length > capacity
+        const inRail = overflowNeeded ? capacity - 1 : buttons.length
 
         primary.style.gridTemplateColumns = `repeat(${columns}, ${BTN}px)`
         primary.replaceChildren(...buttons.slice(0, inRail).map(b => b.button))
-        overflow.replaceChildren(...buttons.slice(inRail).map(b => b.button))
-        moreBtn.style.display = overflowNeeded ? '' : 'none'
-        if (!overflowNeeded) closeOverflow()
+        if (overflowNeeded) {
+            primary.appendChild(moreBtn)
+            overflow.replaceChildren(...buttons.slice(inRail).map(b => b.button))
+        } else {
+            overflow.replaceChildren()
+            closeOverflow()
+        }
 
+        const railWidth = columns * BTN + MARGIN
         rail.style.top = `${top}px`
         rail.style.width = `${railWidth}px`
         overflow.style.left = `${railWidth}px`
         overflow.style.top = `${top}px`
-
         editor.setViewportInsets({ left: railWidth })
     }
 
