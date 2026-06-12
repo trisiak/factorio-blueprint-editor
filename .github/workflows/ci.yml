@@ -1,7 +1,8 @@
 name: CI
 
-# Quality gates for the JS workspaces: lint, unit tests, and type-check. Runs on
-# every PR and on pushes to master. (The exporter is Rust and out of scope here.)
+# Quality gates for the JS workspaces: lint, format, unit tests, type-check, and
+# e2e. Runs on every PR and on pushes to master. (The exporter is Rust and out of
+# scope here.)
 
 on:
   pull_request:
@@ -44,3 +45,26 @@ jobs:
           node-version: 22
       - run: npm install --legacy-peer-deps
       - run: npm run type-check
+
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --legacy-peer-deps
+      - run: npm run format
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --legacy-peer-deps
+      # Browser + OS deps for the Playwright chromium projects. The webServer in
+      # playwright.config builds the site and serves it on :8080 automatically.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
