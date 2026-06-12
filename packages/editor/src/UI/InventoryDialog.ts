@@ -53,17 +53,23 @@ export class InventoryDialog extends Dialog {
     /** Hovered item for item pointerout check */
     private m_hoveredItem: string
 
-    // Scroll state. The group-tab row (Space Age adds enough groups to overflow
-    // the 404px body) scrolls horizontally; the active group's item grid scrolls
-    // vertically so any number of items is reachable. Both are masked to their
-    // viewport and driven by arrow buttons (drag-pan + tap-to-confirm come later).
-    private static readonly VIEW_W = 380
+    // Scroll state. The group-tab row scrolls horizontally and the active item
+    // grid vertically, each masked to its viewport and driven by arrow buttons.
+    // The body width is responsive (see computeWidth), so the tab scroll only
+    // engages when the tabs genuinely don't fit the screen.
     private static readonly TAB_H = 68
     private static readonly ITEMS_H = 304
+    /** Item grid columns, derived from the (responsive) body width. */
+    private m_cols = 10
     private m_tabScroll = 0
     private m_itemScroll = 0
     private m_tabArrows?: { left: Container; right: Container; max: number }
     private m_itemArrows?: { up: Container; down: Container }
+
+    /** Inner content/viewport width = body width minus the 12px side margins. */
+    private get viewW(): number {
+        return this.width - 24
+    }
 
     // Long-press preview state + the bottom Confirm / Pin bar it reveals.
     private m_itemsFilter?: string[]
@@ -83,8 +89,9 @@ export class InventoryDialog extends Dialog {
         selectedCallBack?: (selectedItem: string) => void,
         recentsKey?: string
     ) {
-        super(404, 442, title)
+        super(InventoryDialog.computeWidth(itemsFilter, recentsKey), 442, title)
 
+        this.m_cols = Math.floor(this.viewW / 38)
         this.m_itemsFilter = itemsFilter
         this.m_selectedCallBack = selectedCallBack
         this.m_recentsKey = recentsKey
@@ -159,7 +166,7 @@ export class InventoryDialog extends Dialog {
                 for (const item of subgroup.items) {
                     if (!this.isAllowed(item.name)) continue
 
-                    if (itemColIndex === 10) {
+                    if (itemColIndex === this.m_cols) {
                         itemColIndex = 0
                         itemRowIndex += 1
                     }
@@ -190,7 +197,7 @@ export class InventoryDialog extends Dialog {
         this.addChild(recipePanel)
 
         const recipeBackground = F.DrawRectangle(
-            404,
+            this.width,
             78,
             colors.dialog.background.color,
             colors.dialog.background.alpha,
@@ -212,7 +219,7 @@ export class InventoryDialog extends Dialog {
         const pin = InventoryDialog.barButton('Pin', 0x2a5a7a)
         this.m_pinBtn = pin.container
         this.m_pinText = pin.text
-        this.m_pinBtn.position.set(240, 446)
+        this.m_pinBtn.position.set(this.width - 164, 446)
         this.m_pinBtn.on('pointerup', e => {
             e.stopPropagation()
             const name = this.m_previewName
@@ -232,7 +239,7 @@ export class InventoryDialog extends Dialog {
 
         const confirm = InventoryDialog.barButton('✓ Confirm', 0x2f7d32)
         this.m_confirmBtn = confirm.container
-        this.m_confirmBtn.position.set(320, 446)
+        this.m_confirmBtn.position.set(this.width - 84, 446)
         this.m_confirmBtn.on('pointerup', e => {
             e.stopPropagation()
             if (this.m_previewName) this.commitSelect(this.m_previewName)
@@ -245,14 +252,36 @@ export class InventoryDialog extends Dialog {
 
     /** Filter a name to what this selector allows (filter list, or placeable). */
     private isAllowed(name: string): boolean {
-        const filter = this.m_itemsFilter
-        if (filter !== undefined) return filter.includes(name)
+        return InventoryDialog.isItemAllowed(name, this.m_itemsFilter)
+    }
+
+    private static isItemAllowed(name: string, itemsFilter?: string[]): boolean {
+        if (itemsFilter !== undefined) return itemsFilter.includes(name)
         const itemData = FD.items[name]
         if (!itemData) return false
         if (!itemData.place_result && !itemData.place_as_tile) return false
         // needed for robots/trains/cars
         if (itemData.place_result && !FD.entities[itemData.place_result]) return false
         return true
+    }
+
+    /**
+     * Body width: wide enough to show all group tabs (Space Age has many),
+     * capped to the screen, but never narrower than the 404px 10-column item
+     * grid. Keeps the tab scroll from engaging when there's room to just show
+     * them, and gives the item grid more columns on wider screens.
+     */
+    private static computeWidth(itemsFilter?: string[], recentsKey?: string): number {
+        let tabs = recentsKey ? 1 : 0
+        for (const group of FD.inventoryLayout) {
+            if (group.name === 'creative' && itemsFilter !== undefined) continue
+            const hasItems = group.subgroups.some(sg =>
+                sg.items.some(it => InventoryDialog.isItemAllowed(it.name, itemsFilter))
+            )
+            if (hasItems) tabs += 1
+        }
+        const needed = tabs * 70 + 22 // tabs (70px each, minus trailing gap) + 12px margins
+        return Math.max(404, Math.min(needed, G.app.screen.width - 16))
     }
 
     /** An item button: quick tap commits, long-press previews (Confirm/Pin bar). */
@@ -353,10 +382,10 @@ export class InventoryDialog extends Dialog {
             y += 18
             section.names.forEach((name, i) => {
                 const button = this.makeItemButton(name)
-                button.position.set((i % 10) * 38, y + Math.floor(i / 10) * 38)
+                button.position.set((i % this.m_cols) * 38, y + Math.floor(i / this.m_cols) * 38)
                 container.addChild(button)
             })
-            y += Math.ceil(section.names.length / 10) * 38 + 6
+            y += Math.ceil(section.names.length / this.m_cols) * 38 + 6
         }
     }
 
@@ -463,20 +492,15 @@ export class InventoryDialog extends Dialog {
 
     /** Clip the tab row and, when it overflows, add ◀ ▶ to scroll it. */
     private setupTabScroll(groupCount: number): void {
-        this.m_InventoryGroups.mask = this.rectMask(
-            12,
-            46,
-            InventoryDialog.VIEW_W,
-            InventoryDialog.TAB_H
-        )
+        this.m_InventoryGroups.mask = this.rectMask(12, 46, this.viewW, InventoryDialog.TAB_H)
         const contentW = groupCount > 0 ? (groupCount - 1) * 70 + 68 : 0
-        const max = Math.max(0, contentW - InventoryDialog.VIEW_W)
+        const max = Math.max(0, contentW - this.viewW)
         if (max <= 0) return
 
         const left = InventoryDialog.arrowButton('◀')
         left.position.set(12, 46 + (InventoryDialog.TAB_H - 22) / 2)
         const right = InventoryDialog.arrowButton('▶')
-        right.position.set(12 + InventoryDialog.VIEW_W - 22, 46 + (InventoryDialog.TAB_H - 22) / 2)
+        right.position.set(12 + this.viewW - 22, 46 + (InventoryDialog.TAB_H - 22) / 2)
         this.addChild(left, right)
         this.m_tabArrows = { left, right, max }
 
@@ -499,8 +523,7 @@ export class InventoryDialog extends Dialog {
         // only fully-visible tabs stay tappable.
         for (const tab of this.m_InventoryGroups.children) {
             const inView =
-                tab.x >= this.m_tabScroll - 1 &&
-                tab.x + 68 <= this.m_tabScroll + InventoryDialog.VIEW_W + 1
+                tab.x >= this.m_tabScroll - 1 && tab.x + 68 <= this.m_tabScroll + this.viewW + 1
             tab.eventMode = inView ? 'static' : 'none'
         }
         if (this.m_tabArrows) {
@@ -511,17 +534,12 @@ export class InventoryDialog extends Dialog {
 
     /** Clip the item grid and add ▲ ▼ to scroll the active group vertically. */
     private setupItemScroll(): void {
-        this.m_InventoryItems.mask = this.rectMask(
-            12,
-            126,
-            InventoryDialog.VIEW_W,
-            InventoryDialog.ITEMS_H
-        )
+        this.m_InventoryItems.mask = this.rectMask(12, 126, this.viewW, InventoryDialog.ITEMS_H)
 
         const up = InventoryDialog.arrowButton('▲')
-        up.position.set(12 + InventoryDialog.VIEW_W - 22, 126)
+        up.position.set(12 + this.viewW - 22, 126)
         const down = InventoryDialog.arrowButton('▼')
-        down.position.set(12 + InventoryDialog.VIEW_W - 22, 126 + InventoryDialog.ITEMS_H - 22)
+        down.position.set(12 + this.viewW - 22, 126 + InventoryDialog.ITEMS_H - 22)
         this.addChild(up, down)
         this.m_itemArrows = { up, down }
 
