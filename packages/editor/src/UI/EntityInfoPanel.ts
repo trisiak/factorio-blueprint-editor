@@ -1,5 +1,11 @@
 import { Container, Rectangle, Text } from 'pixi.js'
 import FD, { getModule } from '../core/factorioData'
+import {
+    BeaconPrototype,
+    CraftingMachinePrototype,
+    InserterPrototype,
+    TransportBeltConnectablePrototype,
+} from 'factorio:prototype'
 import G from '../common/globals'
 import util from '../common/util'
 import { Entity } from '../core/Entity'
@@ -139,27 +145,28 @@ export class EntityInfoPanel extends Panel {
                     if (moduleData.effect.productivity) {
                         productivity +=
                             moduleData.effect.productivity *
-                            beacon.entityData.distribution_effectivity
+                            (beacon.entityData as BeaconPrototype).distribution_effectivity
                     }
                     if (moduleData.effect.consumption) {
                         consumption +=
                             moduleData.effect.consumption *
-                            beacon.entityData.distribution_effectivity
+                            (beacon.entityData as BeaconPrototype).distribution_effectivity
                     }
                     // if (moduleData.effect.pollution) {
-                    //     pollution += moduleData.effect.pollution * beacon.entityData.distribution_effectivity
+                    //     pollution += moduleData.effect.pollution * (beacon.entityData as BeaconPrototype).distribution_effectivity
                     // }
                     if (moduleData.effect.speed) {
                         speed +=
-                            moduleData.effect.speed * beacon.entityData.distribution_effectivity
+                            moduleData.effect.speed * (beacon.entityData as BeaconPrototype).distribution_effectivity
                     }
                 }
             }
 
             consumption = consumption < -0.8 ? -0.8 : consumption
-            const newCraftingSpeed = entity.entityData.crafting_speed * (1 + speed)
+            const machineData = entity.entityData as CraftingMachinePrototype
+            const newCraftingSpeed = machineData.crafting_speed * (1 + speed)
             const newEnergyUsage =
-                parseInt(entity.entityData.energy_usage.slice(0, -2)) * (1 + consumption)
+                parseInt(machineData.energy_usage.slice(0, -2)) * (1 + consumption)
 
             const fmt = (n: number): string =>
                 `(${Math.sign(n) === 1 ? '+' : '-'}${roundToTwo(Math.abs(n) * 100)}%)`
@@ -237,7 +244,7 @@ export class EntityInfoPanel extends Panel {
         if (entity.entityData.type === 'inserter') {
             // Details for inserters
             let speed = containerToContainer(
-                entity.entityData.rotation_speed,
+                (entity.entityData as InserterPrototype).rotation_speed,
                 entity.inserterStackSize
             )
             const tiles = entity.name === 'long-handed-inserter' ? 2 : 1
@@ -253,8 +260,8 @@ export class EntityInfoPanel extends Panel {
             )
             if (to && isBelt(to)) {
                 speed = containerToBelt(
-                    entity.entityData.rotation_speed,
-                    to.entityData.speed,
+                    (entity.entityData as InserterPrototype).rotation_speed,
+                    (to.entityData as TransportBeltConnectablePrototype).speed,
                     entity.inserterStackSize
                 )
             }
@@ -268,7 +275,7 @@ export class EntityInfoPanel extends Panel {
         if (isBelt(entity)) {
             // Details for belts
             this.m_entityInfo.text = `Speed: ${roundToTwo(
-                getBeltSpeed(entity.entityData.speed)
+                getBeltSpeed((entity.entityData as TransportBeltConnectablePrototype).speed)
             )} items/s`
             this.m_entityInfo.position.set(10, nextY)
             nextY = this.m_entityInfo.position.y + this.m_entityInfo.height + 20
@@ -293,7 +300,7 @@ export class EntityInfoPanel extends Panel {
             }
 
             const beaconAura = new Rectangle(beacon.position.x, beacon.position.y, 1, 1)
-            beaconAura.pad(FD.entities.beacon.supply_area_distance + 1)
+            beaconAura.pad((FD.entities.beacon as BeaconPrototype).supply_area_distance + 1)
 
             return (
                 beaconAura.contains(entityRect.left, entityRect.top) ||
