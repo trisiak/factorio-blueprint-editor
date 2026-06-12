@@ -160,10 +160,17 @@ export class InventoryDialog extends Dialog {
             let itemColIndex = 0
             let itemRowIndex = 0
 
-            for (const subgroup of group.subgroups) {
+            // Modded dumps can carry groups with nothing placeable in them
+            // (SE's 'fluids' and 'se-spoilers'): an empty Lua table serializes
+            // as `{}` — an object, not an array — so guard on the shape, not
+            // just nullishness. The children.length check below already hides
+            // groups that end up empty.
+            const subgroups = Array.isArray(group.subgroups) ? group.subgroups : []
+            for (const subgroup of subgroups) {
                 let subgroupHasItems = false
 
-                for (const item of subgroup.items) {
+                const subgroupItems = Array.isArray(subgroup.items) ? subgroup.items : []
+                for (const item of subgroupItems) {
                     if (!this.isAllowed(item.name)) continue
 
                     if (itemColIndex === this.m_cols) {
