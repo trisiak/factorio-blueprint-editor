@@ -114,7 +114,32 @@ DOM. Loading the page with **`?test`** installs `window.__FBE_TEST__`, whose
 It's opt-in, so it's absent in normal use. See
 `packages/editor/src/common/testHook.ts`; `panels.spec.ts` and
 `touchPlacement.spec.ts` read it. To assert something the snapshot doesn't cover
-yet, extend `EditorTestState` rather than reaching into the DOM.
+yet, extend `EditorTestState` rather than reaching into the DOM. The hook also
+exposes a few **sandbox controls** (`showEntityInfo`, `openEntityEditor`,
+`openInventory`, `closeDialogs`, `centerView`) used to drive on-canvas UI into a
+given state deterministically.
+
+## Storyboards (visual layout sandbox)
+
+`storyboard.spec.ts` is **not** an assertion test — it's a visual-inspection
+tool for the mobile-layout work (see `docs/mobile-layout-inventory.md`). It loads
+one sample blueprint and, for each target platform (Pixel 7 portrait/landscape,
+a 1280 desktop reference, and a small iPhone SE), screenshots a fixed set of UI
+states — **base · settings open · entity info · inventory · entity editor** —
+then composites them into one labelled strip per platform under
+`e2e/storyboards/<platform>.png`. The committed images are the current reference;
+regenerate them (and eyeball the diff) after layout changes.
+
+It writes files and takes a few minutes, so it's **excluded from the normal
+suite** (gated behind an env flag). Generate with:
+
+```bash
+STORYBOARD=1 npx playwright test storyboard.spec.ts --project=desktop-chromium
+```
+
+To change the states or platforms, edit the `PLATFORMS` / `capture()` list; the
+sample blueprint is a `?source=` string with an assembler holding a complex
+recipe so the info/editor panels are non-trivial.
 
 ## Open work
 

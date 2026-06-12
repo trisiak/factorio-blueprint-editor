@@ -1,6 +1,7 @@
 import { Container, Graphics } from 'pixi.js'
 import { EditorMode } from '../containers/BlueprintContainer'
 import G from '../common/globals'
+import { inputMode } from '../common/input'
 import { Panel } from './controls/Panel'
 import { Slot } from './controls/Slot'
 import F from './controls/functions'
@@ -116,8 +117,11 @@ export class QuickbarPanel extends Panel {
                             G.BPC.spawnPaintContainer(quickbarSlot.itemName)
                         } else {
                             // UC3
-                            G.UI.createInventory('Inventory', undefined, item =>
-                                quickbarSlot.assignItem(item)
+                            G.UI.createInventory(
+                                'Inventory',
+                                undefined,
+                                item => quickbarSlot.assignItem(item),
+                                'items'
                             )
                         }
                     } else if (e.button === 2) {
@@ -157,7 +161,31 @@ export class QuickbarPanel extends Panel {
         return this.slots.map(s => s.itemName)
     }
 
+    /** Whether `name` is currently in any quickbar slot. */
+    public hasItem(name: string): boolean {
+        return this.slots.some(s => s.itemName === name)
+    }
+
+    /** Pin `name` to the first empty slot (no-op if already present / full). */
+    public addItem(name: string): boolean {
+        if (this.hasItem(name)) return true
+        const empty = this.slots.find(s => !s.itemName)
+        if (!empty) return false
+        empty.assignItem(name)
+        return true
+    }
+
+    /** Unpin every slot holding `name`. */
+    public removeItem(name: string): void {
+        for (const s of this.slots) if (s.itemName === name) s.unassignItem()
+    }
+
     protected override setPosition(): void {
+        // Retired on mobile: touch users build via the action rail's Items button
+        // (which leads with a Recents tab) + Pick, so the fixed bottom bar is just
+        // clutter there. Its slots/keybinds still work, so desktop is unchanged.
+        this.visible = inputMode.mode === 'desktop'
+
         // Scale to fit narrow viewports (see quickbarLayout) so the fixed-width
         // panel never runs off the edges, then center along the bottom.
         // Use the width/height getters (backed by the background sprite, which

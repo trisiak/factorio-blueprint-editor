@@ -84,29 +84,38 @@ pipelines at once made touch taps double-act via the browser's synthetic
   count, and the paint ghost's tile/direction; see
   `packages/editor/src/common/testHook.ts`. Opt-in, so it's absent in normal use.
   Extend its `EditorTestState` for any future on-canvas assertion.
+- ✅ **Mobile layout: action rail + retired quickbar** — the layout redesign
+  (PR #19). The keyboard-only actions are mirrored into a **left vertical rail**
+  (DOM, mobile-only): as many priority-ordered buttons as fit stay in the rail,
+  the rest collapse behind a ⋯ overflow sheet (1 column portrait, 3 columns
+  landscape). The rail **reserves a left canvas inset** (`Editor.setViewportInsets`
+  → `fbe:viewportchange`, which re-anchors the Pixi panels), so the canvas is
+  _restricted_ rather than covered — the first real layout authority. The top-left
+  logo + Github/Settings fold into the bar (Discord + the "Press I" hint dropped).
+  Buttons route through `EDITOR.callAction`; **Cancel** (`closeWindow` →
+  `clearCursor()`) is the keyboard-free way out of paint/copy/delete. With the rail
+  carrying the build actions, the **bottom quickbar is retired on mobile** (its
+  slots/keybinds still work; desktop unchanged), ending the bottom Pixi/DOM
+  competition; the wires panel re-centres at the bottom. `actionToolbar.ts`,
+  `index.{styl,ts,html}`, `Editor.setViewportInsets`/`onModeChange`, `Panel`;
+  e2e `actionToolbar.spec.ts` + `panels.spec.ts`. Remaining: real game-sprite
+  icons (unicode glyphs for now); touch box-select (#21).
+- ✅ **Item-selector overhaul** (`InventoryDialog`, the shared item/recipe/module
+  picker) — now touch-usable: **scrollable** group-tabs (◀▶) and item grid (▲▼),
+  masked with viewport-gated hit-testing; a **Recents tab** (first/active) with
+  three colour-coded sections — Recent / Quickbar / On-blueprint — seeded so it's
+  never empty (`recentItems.ts`, persisted per category, reused by recipes/modules
+  via `recentsKey`); **long-press preview** (quick tap commits, long-press opens a
+  non-committing preview with **✓ Confirm** + **Pin/Unpin** that edits the quickbar
+  in-dialog and refreshes live; recipe-on-hover gated to desktop, fixing the stray
+  touch-drag tooltip); and a **responsive body width** so the tab scroll only
+  engages when the tabs truly can't fit (more item columns on wider screens).
 
 ## Not done / next
 
-- 🚧 **On-screen action toolbar** — DOM toolbar mirroring the `actions.ts`
-  registry into on-screen buttons, shown only in `mobile` input mode. Prototype
-  landed: Items (inventory) / Rotate / Flip H / Flip V / Pick (pipette) / Undo /
-  Redo / Center / **Delete** (mine the selected entity — touch has no
-  right-click) / **Place** / **Cancel**. Buttons invoke actions by name via the new
-  `EDITOR.callAction(name)` seam (`actions.ts`), so they stay in lockstep with
-  the keybinds instead of duplicating logic. The Cancel button fixes the worst
-  gap — there was previously **no keyboard-free way out of paint mode** (only the
-  pipette toggle); `closeWindow`/Escape now falls through to a new
-  `BlueprintContainer.clearCursor()` (cancels paint/copy/delete), and Cancel
-  routes through it. Lives in `packages/website/src/actionToolbar.ts` (styled in
-  `index.styl`, mounted in `index.ts`); mode-awareness via the new
-  `Editor.onModeChange` / `Editor.mode` API (stable across blueprint reloads).
-  e2e in `e2e/actionToolbar.spec.ts` covers input-mode gating, button presence,
-  the `callAction` tap path, and the headline behavior — tapping **Cancel** (and
-  pressing Escape) exits paint mode. The paint-exit tests dodge the
-  tap-to-place blocker by seeding a quickbar item to enter PAINT via a keypress
-  and reading the Cancel button's `.active` class as a DOM-observable proxy for
-  cursor state. Remaining: real game-sprite icons (currently unicode glyphs —
-  blocked on `.basis`→DOM delivery) and copy/delete-select buttons.
+- ⬜ **On-screen action toolbar — remaining polish**: real game-sprite icons
+  (currently unicode glyphs — blocked on `.basis`→DOM delivery); touch box-select
+  (issue #21).
 - 🚧 **Touch placement: preview + confirm (Slice 1 done)** — desktop previews a
   placement by hovering (ghost shows orientation/validity before you click);
   touch had no such step — a tap committed blindly. Now, in `mobile` paint mode a

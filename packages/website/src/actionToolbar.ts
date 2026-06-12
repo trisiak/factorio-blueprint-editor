@@ -1,48 +1,50 @@
 import EDITOR, { Editor, EditorMode, inputMode } from '@fbe/editor'
-import type { InputMode } from '@fbe/editor'
 
-// On-screen action toolbar: a DOM (not Pixi) mirror of the keyboard-only actions
-// in the editor's action registry, so touch users — who have no keyboard — can
-// rotate / flip / undo / open the inventory and, crucially, *exit paint mode*
-// (previously only reachable via the pipette key). It's deliberately DOM-built:
-// these are stateless action buttons that need no game sprites, so they get the
-// browser's native hit-target sizing, focus and accessibility for free.
+// On-screen action rail: a DOM (not Pixi) mirror of the keyboard-only actions in
+// the editor's action registry, so touch users — who have no keyboard — can
+// rotate / flip / undo / open the inventory and, crucially, *exit paint mode*.
 //
-// Buttons invoke actions by name through `EDITOR.callAction`, so they stay in
-// lockstep with the keybind registry instead of duplicating its logic. Visibility
-// is gated on the explicit input mode (shown on mobile, hidden on desktop) to
-// respect the desktop/mobile separation owned by `input.ts`.
+// Layout is a left **gutter** (the "layout authority" for the left edge): the
+// rail claims a reserved left inset on the canvas (`editor.setViewportInsets`)
+// so the Pixi UI reflows out of it instead of being covered. It's *dynamic* —
+// as many priority-ordered buttons as fit the available height stay in the rail;
+// the rest collapse behind a ⋯ button that opens an overflow sheet over the
+// canvas. Shown only in the `mobile` input mode (desktop has the keyboard).
+//
+// Buttons invoke actions by name through `EDITOR.callAction`, staying in lockstep
+// with the keybind registry instead of duplicating its logic.
 
 interface ToolbarButton {
     /** Action registry name passed to `EDITOR.callAction`. */
     action: string
     /** Unicode glyph shown large. */
     glyph: string
-    /** Short caption under the glyph. */
+    /** Short caption (also the button `title`, which e2e locates by). */
     label: string
-    /** Extra class (e.g. the cancel button gets emphasized in paint modes). */
+    /** Extra class (cancel/confirm/delete get emphasized in the relevant modes). */
     className?: string
 }
 
+// Priority order: the buttons that fit stay in the rail; the rest spill into the
+// ⋯ overflow. Cancel / Items / Place / Rotate / Delete lead (final order TBD).
 const BUTTONS: ToolbarButton[] = [
     { action: 'inventory', glyph: '⊞', label: 'Items' },
     { action: 'rotate', glyph: '↻', label: 'Rotate' },
-    { action: 'flipHorizontal', glyph: '⇄', label: 'Flip H' },
-    { action: 'flipVertical', glyph: '⇅', label: 'Flip V' },
+    { action: 'confirmPlacement', glyph: '✓', label: 'Place', className: 'confirm' },
+    { action: 'closeWindow', glyph: '✕', label: 'Cancel', className: 'cancel' },
+    { action: 'mine', glyph: '🗑', label: 'Delete', className: 'delete' },
     { action: 'pipette', glyph: '⊙', label: 'Pick' },
     { action: 'undo', glyph: '↶', label: 'Undo' },
     { action: 'redo', glyph: '↷', label: 'Redo' },
     { action: 'focus', glyph: '⌖', label: 'Center' },
-    // Delete the selected entity. Touch has no right-click, so this is the way to
-    // "mine" a single entity; it routes through the same `mine` action and is
-    // emphasized only while an entity is selected (EDIT mode).
-    { action: 'mine', glyph: '🗑', label: 'Delete', className: 'delete' },
-    // Confirm/cancel the held cursor. On touch a tap only positions/previews the
-    // ghost; Place commits it (Cancel drops it). Both are emphasized only when
-    // they're meaningful (see applyMode).
-    { action: 'confirmPlacement', glyph: '✓', label: 'Place', className: 'confirm' },
-    { action: 'closeWindow', glyph: '✕', label: 'Cancel', className: 'cancel' },
+    { action: 'flipHorizontal', glyph: '⇄', label: 'Flip H' },
+    { action: 'flipVertical', glyph: '⇅', label: 'Flip V' },
+    { action: 'copyEntitySettings', glyph: '⧉', label: 'Copy cfg' },
+    { action: 'pasteEntitySettings', glyph: '⊟', label: 'Paste cfg' },
 ]
+
+const BTN = 44 // button square (px); flush, no gap — see index.styl
+const MARGIN = 2 // sliver between the rail and the canvas
 
 /** A cursor mode the user needs an explicit way out of (no keyboard on touch). */
 function isCancelableMode(mode: EditorMode): boolean {
@@ -50,14 +52,28 @@ function isCancelableMode(mode: EditorMode): boolean {
 }
 
 export function initActionToolbar(editor: Editor): void {
-    const toolbar = document.createElement('div')
-    toolbar.id = 'action-toolbar'
+    const rail = document.createElement('div')
+    rail.id = 'action-toolbar'
 
-    let cancelButton: HTMLButtonElement | undefined
-    let placeButton: HTMLButtonElement | undefined
-    let deleteButton: HTMLButtonElement | undefined
+    const primary = document.createElement('div')
+    primary.className = 'rail-primary'
 
-    for (const spec of BUTTONS) {
+    const moreBtn = document.createElement('button')
+    moreBtn.type = 'button'
+    moreBtn.className = 'rail-more'
+    moreBtn.title = 'More'
+    moreBtn.textContent = '⋯'
+
+    const overflow = document.createElement('div')
+    overflow.className = 'rail-overflow'
+
+    // moreBtn is placed into the grid as its last cell when overflowing.
+    rail.append(primary, overflow)
+
+    const closeOverflow = (): void => overflow.classList.remove('open')
+
+    // Build each button once; layout() re-parents them between primary/overflow.
+    const buttons = BUTTONS.map(spec => {
         const button = document.createElement('button')
         button.type = 'button'
         if (spec.className) button.classList.add(spec.className)
@@ -69,39 +85,84 @@ export function initActionToolbar(editor: Editor): void {
         button.appendChild(glyph)
 
         const label = document.createElement('span')
+        label.className = 'label'
         label.textContent = spec.label
         button.appendChild(label)
 
-        // `click` covers mouse and touch tap; the action runs through the same
-        // registry path a keypress would, so paint/edit semantics are identical.
         button.addEventListener('click', () => {
             EDITOR.callAction(spec.action)
+            closeOverflow()
         })
+        return { spec, button }
+    })
 
-        toolbar.appendChild(button)
-        if (spec.action === 'closeWindow') cancelButton = button
-        if (spec.action === 'confirmPlacement') placeButton = button
-        if (spec.action === 'mine') deleteButton = button
+    const byAction = (name: string): HTMLButtonElement | undefined =>
+        buttons.find(b => b.spec.action === name)?.button
+
+    document.body.appendChild(rail)
+
+    moreBtn.addEventListener('click', () => overflow.classList.toggle('open'))
+    // A tap outside the rail dismisses the overflow sheet.
+    window.addEventListener('pointerdown', e => {
+        if (overflow.classList.contains('open') && !rail.contains(e.target as Node)) closeOverflow()
+    })
+
+    // Lay out the rail: pick a column count by orientation, split buttons into
+    // rail vs overflow, and reserve the matching left gutter on the canvas.
+    const layout = (): void => {
+        const mobile = inputMode.mode === 'mobile'
+        rail.classList.toggle('visible', mobile)
+        if (!mobile) {
+            editor.setViewportInsets({ left: 0 })
+            return
+        }
+
+        // Sit directly below the top-left logo + folded-in corner buttons.
+        const stack = document.getElementById('buttons')
+        const top = stack ? Math.round(stack.getBoundingClientRect().bottom) : 140
+
+        // As many priority buttons as fit the height (×3 columns in landscape);
+        // the rest collapse into the ⋯ overflow so nothing falls below the
+        // viewport. The ⋯ takes the last grid cell when present.
+        const columns = window.innerWidth > window.innerHeight ? 3 : 1
+        const rows = Math.max(1, Math.floor((window.innerHeight - top - MARGIN) / BTN))
+        const capacity = rows * columns
+        const overflowNeeded = buttons.length > capacity
+        const inRail = overflowNeeded ? capacity - 1 : buttons.length
+
+        primary.style.gridTemplateColumns = `repeat(${columns}, ${BTN}px)`
+        primary.replaceChildren(...buttons.slice(0, inRail).map(b => b.button))
+        if (overflowNeeded) {
+            primary.appendChild(moreBtn)
+            overflow.replaceChildren(...buttons.slice(inRail).map(b => b.button))
+        } else {
+            overflow.replaceChildren()
+            closeOverflow()
+        }
+
+        const railWidth = columns * BTN + MARGIN
+        rail.style.top = `${top}px`
+        rail.style.width = `${railWidth}px`
+        overflow.style.left = `${railWidth}px`
+        overflow.style.top = `${top}px`
+        editor.setViewportInsets({ left: railWidth })
     }
 
-    document.body.appendChild(toolbar)
-
-    // Emphasize Place/Cancel only while they're meaningful: Place lights up when
-    // an item is held (paint mode), Cancel whenever there's a cursor to drop.
-    // Both stay clickable otherwise (harmless no-ops) — just visually calmer.
+    // Emphasize Place/Cancel/Delete only while meaningful: Place when holding,
+    // Delete in EDIT, Cancel whenever there's a cursor to drop.
     const applyMode = (mode: EditorMode): void => {
-        placeButton?.classList.toggle('active', mode === EditorMode.PAINT)
-        deleteButton?.classList.toggle('active', mode === EditorMode.EDIT)
-        cancelButton?.classList.toggle('active', isCancelableMode(mode))
+        byAction('confirmPlacement')?.classList.toggle('active', mode === EditorMode.PAINT)
+        byAction('mine')?.classList.toggle('active', mode === EditorMode.EDIT)
+        byAction('closeWindow')?.classList.toggle('active', isCancelableMode(mode))
     }
     applyMode(editor.mode)
     editor.onModeChange(applyMode)
 
-    // Touch-only affordance: show in mobile input mode, hide on desktop (which
-    // has the keyboard). Live-toggles when the input mode is switched.
-    const applyInputMode = (mode: InputMode): void => {
-        toolbar.classList.toggle('visible', mode === 'mobile')
-    }
-    applyInputMode(inputMode.mode)
-    inputMode.on('change', applyInputMode)
+    layout()
+    window.addEventListener('resize', layout)
+    inputMode.on('change', layout)
+    // The top-left stack's height changes (mobile collapses it to square icons,
+    // icons load async); re-anchor when it actually resizes, like settingsPane.
+    const stack = document.getElementById('buttons')
+    if (stack && 'ResizeObserver' in window) new ResizeObserver(layout).observe(stack)
 }

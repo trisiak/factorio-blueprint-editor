@@ -162,32 +162,30 @@ test.describe('settings pane (dat.gui)', () => {
 })
 
 test.describe('quickbar', () => {
-    test('renders and fits within the viewport', async ({ page }) => {
+    test('renders on desktop and fits; retired on mobile', async ({ page }) => {
         await page.goto('/?test')
         await waitForAppReady(page)
 
         const state = await readTestState(page)
         const viewport = page.viewportSize()!
 
-        // Regression: a NaN scale (uninitialized field during super()) left the
-        // quickbar invisible; an unscaled panel ran off the edges on narrow screens.
+        if (isMobileProject()) {
+            // Retired on mobile — touch users build via the action rail's Items
+            // (Recents) + Pick instead of a fixed bottom bar.
+            expect(state.quickbar.visible).toBe(false)
+            return
+        }
+
+        // Desktop: rendered full-size, anchored along the bottom, on-screen.
+        // (Regression: a NaN scale during super() once left it invisible.)
         expect(state.quickbar.visible).toBe(true)
-        expect(state.quickbar.scale).toBeGreaterThan(0)
-        expect(state.quickbar.scale).toBeLessThanOrEqual(1)
+        expect(state.quickbar.scale).toBe(1)
 
         const b = state.quickbar.bounds
-        // horizontally on-screen (the off-screen regression)
         expect(b.x).toBeGreaterThanOrEqual(0)
         expect(b.x + b.width).toBeLessThanOrEqual(viewport.width + 1)
-        // anchored along the bottom with its top edge on-screen
         expect(b.y).toBeGreaterThanOrEqual(0)
         expect(b.y).toBeLessThan(viewport.height)
-
-        if (isMobileProject()) {
-            expect(state.quickbar.scale).toBeLessThan(1) // narrow viewport forces scaling
-        } else {
-            expect(state.quickbar.scale).toBe(1) // wide enough to render at full size
-        }
     })
 })
 

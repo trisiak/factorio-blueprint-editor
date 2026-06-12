@@ -44,9 +44,14 @@ export class Recipe extends Slot<undefined> {
     private onSlotPointerDown(e: FederatedPointerEvent): void {
         e.stopPropagation()
         if (e.button === 0) {
-            G.UI.createInventory('Select Recipe', this.m_Entity.acceptedRecipes, name => {
-                this.m_Entity.recipe = name
-            })
+            G.UI.createInventory(
+                'Select Recipe',
+                this.m_Entity.acceptedRecipes,
+                name => {
+                    this.m_Entity.recipe = name
+                },
+                'recipes'
+            )
         } else if (e.button === 2) {
             this.m_Entity.recipe = undefined
         }

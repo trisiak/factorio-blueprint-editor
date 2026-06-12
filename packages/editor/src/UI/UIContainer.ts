@@ -35,7 +35,7 @@ export class UIContainer extends Container {
         )
     }
 
-    public updateEntityInfoPanel(entity: Entity): void {
+    public updateEntityInfoPanel(entity?: Entity): void {
         this.entityInfoPanel.updateVisualization(entity)
     }
 
@@ -57,9 +57,10 @@ export class UIContainer extends Container {
     public createInventory(
         title?: string,
         itemsFilter?: string[],
-        selectedCallBack?: (selectedItem: string) => void
+        selectedCallBack?: (selectedItem: string) => void,
+        recentsKey?: string
     ): InventoryDialog {
-        const inv = new InventoryDialog(title, itemsFilter, selectedCallBack)
+        const inv = new InventoryDialog(title, itemsFilter, selectedCallBack, recentsKey)
         this.dialogsContainer.addChild(inv)
         return inv
     }

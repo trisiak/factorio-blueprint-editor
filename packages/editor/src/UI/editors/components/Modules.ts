@@ -68,10 +68,15 @@ export class Modules extends Container<Slot<number>> {
         const slot = e.target as Slot<number>
         const index = slot.data
         if (e.button === 0) {
-            G.UI.createInventory('Select Module', this.m_Entity.acceptedModules, name => {
-                this.m_Modules[index] = name
-                this.m_Entity.modules = this.m_Modules
-            })
+            G.UI.createInventory(
+                'Select Module',
+                this.m_Entity.acceptedModules,
+                name => {
+                    this.m_Modules[index] = name
+                    this.m_Entity.modules = this.m_Modules
+                },
+                'modules'
+            )
         } else if (e.button === 2) {
             this.m_Modules[index] = undefined
             this.m_Entity.modules = this.m_Modules

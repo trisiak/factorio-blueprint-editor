@@ -70,10 +70,16 @@ export class WiresPanel extends Panel {
         const sw = G.app.screen.width
         const sh = G.app.screen.height
         const qb = G.UI?.quickbarPanel
-        const qbb = qb ? qb.getBounds().rectangle : null
-        const besideX = qbb ? qbb.x + qbb.width + 2 : sw / 2 + 442 / 2
+        // When the quickbar is retired (mobile), there's nothing to anchor to —
+        // sit centered along the bottom where it used to be.
+        const qbb = qb && qb.visible ? qb.getBounds().rectangle : null
+        if (!qbb) {
+            this.clampToScreen(sw / 2 - this.width / 2, sh - this.height + 1)
+            return
+        }
 
-        if (qbb && besideX + this.width > sw) {
+        const besideX = qbb.x + qbb.width + 2
+        if (besideX + this.width > sw) {
             this.clampToScreen(qbb.x + qbb.width - this.width, qbb.y - this.height + 1)
         } else {
             this.clampToScreen(besideX, sh - this.height + 1)
