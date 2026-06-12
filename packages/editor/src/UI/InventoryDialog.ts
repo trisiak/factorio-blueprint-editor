@@ -1,4 +1,4 @@
-import { Container, Text } from 'pixi.js'
+import { Container, Graphics, Text } from 'pixi.js'
 import FD from '../core/factorioData'
 import G from '../common/globals'
 import F from './controls/functions'
@@ -50,6 +50,18 @@ export class InventoryDialog extends Dialog {
 
     /** Hovered item for item pointerout check */
     private m_hoveredItem: string
+
+    // Scroll state. The group-tab row (Space Age adds enough groups to overflow
+    // the 404px body) scrolls horizontally; the active group's item grid scrolls
+    // vertically so any number of items is reachable. Both are masked to their
+    // viewport and driven by arrow buttons (drag-pan + tap-to-confirm come later).
+    private static readonly VIEW_W = 380
+    private static readonly TAB_H = 68
+    private static readonly ITEMS_H = 304
+    private m_tabScroll = 0
+    private m_itemScroll = 0
+    private m_tabArrows?: { left: Container; right: Container; max: number }
+    private m_itemArrows?: { up: Container; down: Container }
 
     public constructor(
         title = 'Inventory',
@@ -155,6 +167,9 @@ export class InventoryDialog extends Dialog {
                                 inventoryGroupItems.interactiveChildren =
                                     inventoryGroupItems === buttonData
                             }
+                            // New group starts scrolled to the top.
+                            this.m_itemScroll = 0
+                            this.applyItemScroll()
                         }
                     }
                 })
@@ -186,6 +201,134 @@ export class InventoryDialog extends Dialog {
         this.m_RecipeContainer = new Container()
         this.m_RecipeContainer.position.set(12, 36)
         recipePanel.addChild(this.m_RecipeContainer)
+
+        this.setupTabScroll(groupIndex)
+        this.setupItemScroll()
+    }
+
+    /** A small dark arrow button used to scroll the tabs / item grid. */
+    private static arrowButton(glyph: string): Container {
+        const c = new Container()
+        const bg = new Graphics().roundRect(0, 0, 22, 22, 3).fill({ color: 0x202225, alpha: 0.9 })
+        const t = new Text({ text: glyph, style: { fill: 0xffffff, fontSize: 15 } })
+        t.anchor.set(0.5)
+        t.position.set(11, 11)
+        c.addChild(bg, t)
+        c.eventMode = 'static'
+        c.cursor = 'pointer'
+        return c
+    }
+
+    /** Filled rect added as a clip mask for a scrollable region. */
+    private rectMask(x: number, y: number, w: number, h: number): Graphics {
+        const g = new Graphics().rect(x, y, w, h).fill(0xffffff)
+        g.eventMode = 'none'
+        this.addChild(g)
+        return g
+    }
+
+    /** Clip the tab row and, when it overflows, add ◀ ▶ to scroll it. */
+    private setupTabScroll(groupCount: number): void {
+        this.m_InventoryGroups.mask = this.rectMask(
+            12,
+            46,
+            InventoryDialog.VIEW_W,
+            InventoryDialog.TAB_H
+        )
+        const contentW = groupCount > 0 ? (groupCount - 1) * 70 + 68 : 0
+        const max = Math.max(0, contentW - InventoryDialog.VIEW_W)
+        if (max <= 0) return
+
+        const left = InventoryDialog.arrowButton('◀')
+        left.position.set(12, 46 + (InventoryDialog.TAB_H - 22) / 2)
+        const right = InventoryDialog.arrowButton('▶')
+        right.position.set(12 + InventoryDialog.VIEW_W - 22, 46 + (InventoryDialog.TAB_H - 22) / 2)
+        this.addChild(left, right)
+        this.m_tabArrows = { left, right, max }
+
+        left.on('pointerdown', e => {
+            e.stopPropagation()
+            this.m_tabScroll = Math.max(0, this.m_tabScroll - 140)
+            this.applyTabScroll()
+        })
+        right.on('pointerdown', e => {
+            e.stopPropagation()
+            this.m_tabScroll = Math.min(max, this.m_tabScroll + 140)
+            this.applyTabScroll()
+        })
+        this.applyTabScroll()
+    }
+
+    private applyTabScroll(): void {
+        this.m_InventoryGroups.x = 12 - this.m_tabScroll
+        // Pixi masks clip rendering but not hit-testing, so gate interactivity:
+        // only fully-visible tabs stay tappable.
+        for (const tab of this.m_InventoryGroups.children) {
+            const inView =
+                tab.x >= this.m_tabScroll - 1 &&
+                tab.x + 68 <= this.m_tabScroll + InventoryDialog.VIEW_W + 1
+            tab.eventMode = inView ? 'static' : 'none'
+        }
+        if (this.m_tabArrows) {
+            this.m_tabArrows.left.visible = this.m_tabScroll > 0
+            this.m_tabArrows.right.visible = this.m_tabScroll < this.m_tabArrows.max
+        }
+    }
+
+    /** Clip the item grid and add ▲ ▼ to scroll the active group vertically. */
+    private setupItemScroll(): void {
+        this.m_InventoryItems.mask = this.rectMask(
+            12,
+            126,
+            InventoryDialog.VIEW_W,
+            InventoryDialog.ITEMS_H
+        )
+
+        const up = InventoryDialog.arrowButton('▲')
+        up.position.set(12 + InventoryDialog.VIEW_W - 22, 126)
+        const down = InventoryDialog.arrowButton('▼')
+        down.position.set(12 + InventoryDialog.VIEW_W - 22, 126 + InventoryDialog.ITEMS_H - 22)
+        this.addChild(up, down)
+        this.m_itemArrows = { up, down }
+
+        up.on('pointerdown', e => {
+            e.stopPropagation()
+            this.m_itemScroll = Math.max(0, this.m_itemScroll - 152)
+            this.applyItemScroll()
+        })
+        down.on('pointerdown', e => {
+            e.stopPropagation()
+            this.m_itemScroll = Math.min(this.maxItemScroll(), this.m_itemScroll + 152)
+            this.applyItemScroll()
+        })
+        this.applyItemScroll()
+    }
+
+    private activeGroup(): Container | undefined {
+        return this.m_InventoryItems.children.find(c => c.visible)
+    }
+
+    private maxItemScroll(): number {
+        const g = this.activeGroup()
+        return g ? Math.max(0, g.height - InventoryDialog.ITEMS_H) : 0
+    }
+
+    private applyItemScroll(): void {
+        const g = this.activeGroup()
+        this.m_itemScroll = Math.min(this.m_itemScroll, this.maxItemScroll())
+        if (g) {
+            g.y = -this.m_itemScroll
+            for (const item of g.children) {
+                const top = item.y - this.m_itemScroll
+                item.eventMode =
+                    top >= -1 && top + 38 <= InventoryDialog.ITEMS_H + 1 ? 'static' : 'none'
+            }
+        }
+        if (this.m_itemArrows) {
+            const max = this.maxItemScroll()
+            this.m_itemArrows.up.visible = this.m_itemScroll > 0
+            this.m_itemArrows.down.visible = this.m_itemScroll < max
+        }
     }
 
     /**

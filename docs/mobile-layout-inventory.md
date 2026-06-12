@@ -61,11 +61,12 @@ different tech stacks, opposite edges, neither knows the other's bounds.
 **🟡 Centered modals stack by luck.** Pixi dialogs/inventory (centered) and the
 DOM info-panel (centered, z100) share the middle; they rarely coexist.
 
-**🟡 Inventory group-tab overflow (Space Age).** The inventory's group tabs are
-laid out at `groupIndex * 70` against a fixed 404px dialog body — fine for
-vanilla's ~5 groups, but Space Age adds more, so the tab row spills past the
-dialog's right edge (horizontal overflow _inside_ the panel, independent of the
-outer scale-to-fit). Surfaced by the storyboards, which load `?pack=space-age`.
+**✅ Inventory group-tab overflow (Space Age) — fixed (slice 3a).** The tab row
+and item grid are now **clipped to the dialog** (Pixi masks) and scroll: the tabs
+horizontally (◀ ▶) when they overflow, the item grid vertically (▲ ▼) for any
+number of items. Per-element interactivity is gated to the viewport so
+masked-out tabs/items aren't mis-tapped. Drag-to-pan, tap-to-select + ✓ confirm,
+and a recents tab are the next sub-slices.
 
 ## Root cause
 
