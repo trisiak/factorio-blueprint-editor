@@ -105,8 +105,19 @@ pipelines at once made touch taps double-act via the browser's synthetic
   pressing Escape) exits paint mode. The paint-exit tests dodge the
   tap-to-place blocker by seeding a quickbar item to enter PAINT via a keypress
   and reading the Cancel button's `.active` class as a DOM-observable proxy for
-  cursor state. Remaining: real game-sprite icons (currently unicode glyphs —
-  blocked on `.basis`→DOM delivery) and copy/delete-select buttons.
+  cursor state.
+    - **Left-gutter rail (slice 1 of the layout redesign):** the toolbar moved
+      from a top-center wrapping row to a **left vertical rail** that's _dynamic_
+      — as many priority-ordered buttons as fit the height stay in the rail, the
+      rest collapse behind a ⋯ overflow sheet (now incl. copy/paste entity
+      settings). Crucially the rail **reserves a left canvas inset** via the new
+      `Editor.setViewportInsets()`, so the Pixi UI (quickbar, dialogs) reflows out
+      of the gutter instead of being covered — the first bit of real layout
+      authority (see `docs/mobile-layout-inventory.md`). Portrait + desktop are
+      solid; **landscape still needs work** (the 2-col rail over-collapses under
+      the tall top-left stack; the top-right info panel clips in short heights).
+    - Remaining: landscape rail layout; real game-sprite icons (currently unicode
+      glyphs — blocked on `.basis`→DOM delivery); touch box-select (issue #21).
 - 🚧 **Touch placement: preview + confirm (Slice 1 done)** — desktop previews a
   placement by hovering (ghost shows orientation/validity before you click);
   touch had no such step — a tap committed blindly. Now, in `mobile` paint mode a

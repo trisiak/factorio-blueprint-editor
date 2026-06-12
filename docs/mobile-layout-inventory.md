@@ -28,26 +28,25 @@ Reference viewport for concrete numbers: a Pixel-7-ish **portrait** screen,
 
 ## Layer 2 — DOM overlays (on top of the canvas)
 
-| Element                                | Anchor                                          | Size                                                           | z-index | Mobile behavior                                                 |
-| -------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------- | ------- | --------------------------------------------------------------- |
-| **Action toolbar** (`#action-toolbar`) | **top-center**, `top: 8px`                      | 11 buttons × 48×48, `max-width: 100vw−16px`, **wraps to rows** | 6       | **Visible only in mobile mode**; wraps to **2–3 rows** on 412px |
-| **Corner panel** (`#corner-panel`)     | **top-left** (0,0)                              | 140 × 80                                                       | 5       | "Press I" hint; also the info-panel toggle                      |
-| **Button stack** (`#buttons`)          | **top-left**, `top: 80px`                       | desktop ~115×35 rows; **mobile 44×44 square icons**            | 5       | Discord / Github / Settings; collapses to icon column           |
-| **Settings pane** (`.dg.main`)         | **top-left**, under `#buttons` (ResizeObserver) | 320px desktop / `min(360px,100vw)` mobile                      | 5       | Starts **closed** on mobile                                     |
-| **Info panel** (`#info-panel`)         | **centered**                                    | `min(640px,90vw)` × `≤100dvh−32px`, scrolls                    | **100** | Hidden unless toggled; close ✕ top-right                        |
-| **Toasts** (`.toasts-container`)       | **bottom-right**                                | 320px wide, stacks upward                                      | 20      | Same on mobile (transient)                                      |
-| **Loading screen** (`#loadingScreen`)  | full-screen                                     | 100vw × 100vh                                                  | 10      | Boot only                                                       |
+| Element                               | Anchor                                          | Size                                                | z-index | Mobile behavior                                                                                                               |
+| ------------------------------------- | ----------------------------------------------- | --------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| **Action rail** (`#action-toolbar`)   | **left gutter** (below `#buttons`)              | 44px col(s); dynamic count, ⋯ overflow sheet        | 4       | **Mobile only**; reserves a left canvas inset (`setViewportInsets`); 1 col portrait / 2 col landscape _(landscape still WIP)_ |
+| **Corner panel** (`#corner-panel`)    | **top-left** (0,0)                              | 140 × 80                                            | 5       | "Press I" hint; also the info-panel toggle                                                                                    |
+| **Button stack** (`#buttons`)         | **top-left**, `top: 80px`                       | desktop ~115×35 rows; **mobile 44×44 square icons** | 5       | Discord / Github / Settings; collapses to icon column                                                                         |
+| **Settings pane** (`.dg.main`)        | **top-left**, under `#buttons` (ResizeObserver) | 320px desktop / `min(360px,100vw)` mobile           | 5       | Starts **closed** on mobile                                                                                                   |
+| **Info panel** (`#info-panel`)        | **centered**                                    | `min(640px,90vw)` × `≤100dvh−32px`, scrolls         | **100** | Hidden unless toggled; close ✕ top-right                                                                                      |
+| **Toasts** (`.toasts-container`)      | **bottom-right**                                | 320px wide, stacks upward                           | 20      | Same on mobile (transient)                                                                                                    |
+| **Loading screen** (`#loadingScreen`) | full-screen                                     | 100vw × 100vh                                       | 10      | Boot only                                                                                                                     |
 
 ## The competition map (portrait)
 
-**🔴 Top band — the worst conflict zone.** Four systems crowd the top:
-
-- `#action-toolbar` is **top-center** and, on a phone, **wraps into 2–3 rows** —
-  growing _down_ into the canvas and _sideways_ toward both corners.
-- Top-**left** stacks `#corner-panel` (0–80px) → `#buttons` (80px+) → settings pane.
-- Top-**right** is where the Pixi **entity-info** panel appears.
-- → The wrapped toolbar can overlap the corner panel / buttons (left) and
-  entity-info (right). Three independent systems, none aware of the others.
+**✅ Top band — largely resolved (slice 1).** The action buttons moved off the
+top-center into a **left gutter** (`#action-toolbar` is now a vertical rail), and
+the canvas is **inset** by the gutter width so the Pixi UI reflows out of it —
+the first real "layout authority". What remains top-left: `#corner-panel`
+(0–80px) → `#buttons` → settings pane (a loose stack the rail now sits below; full
+top-left consolidation is a follow-up). Top-**right** still hosts the Pixi
+**entity-info** panel (clips in short landscape — see below).
 
 **🔴 Bottom band — Pixi vs DOM with no awareness of each other.**
 

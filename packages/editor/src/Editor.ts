@@ -27,6 +27,23 @@ export class Editor {
     // once and we re-forward each new container's mode changes onto it.
     private readonly m_modeEmitter = new EventEmitter<{ mode: [EditorMode] }>()
 
+    // Viewport insets (CSS px) reserved for DOM chrome — e.g. the mobile action
+    // rail's left gutter. The canvas is sized to the remaining area and offset by
+    // the insets, so the Pixi UI (which lays out off `app.screen`) reflows out of
+    // the reserved bands instead of being covered. The "restrict the canvas" half
+    // of the gutter idea; see docs/mobile-layout-inventory.md.
+    private m_insets = { left: 0, top: 0, right: 0, bottom: 0 }
+
+    private readonly applyCanvasSize = (): void => {
+        const { left, top, right, bottom } = this.m_insets
+        const w = Math.max(1, window.innerWidth - left - right)
+        const h = Math.max(1, window.innerHeight - top - bottom)
+        G.app.renderer.resize(w, h)
+        const canvas = G.app.canvas as HTMLCanvasElement
+        canvas.style.left = `${left}px`
+        canvas.style.top = `${top}px`
+    }
+
     public async init(canvas: HTMLCanvasElement, logger?: Logger): Promise<void> {
         setBasisTranscoderPath({ jsUrl: basisTranscoderJS, wasmUrl: basisTranscoderWASM })
 
@@ -58,12 +75,8 @@ export class Editor {
 
         G.app = app
 
-        G.app.renderer.resize(window.innerWidth, window.innerHeight)
-        window.addEventListener(
-            'resize',
-            () => G.app.renderer.resize(window.innerWidth, window.innerHeight),
-            false
-        )
+        this.applyCanvasSize()
+        window.addEventListener('resize', this.applyCanvasSize, false)
 
         this.initActions()
 
@@ -90,6 +103,18 @@ export class Editor {
     /** Subscribe to editor mode changes — e.g. to show a "cancel paint" control. */
     public onModeChange(cb: (mode: EditorMode) => void): void {
         this.m_modeEmitter.on('mode', cb)
+    }
+
+    /**
+     * Reserve viewport edges (CSS px) for DOM chrome; the canvas shrinks into the
+     * remaining area and the Pixi UI reflows accordingly. Pass only the edges you
+     * want to change. Used by the mobile action rail to claim a left gutter.
+     */
+    public setViewportInsets(
+        insets: Partial<{ left: number; top: number; right: number; bottom: number }>
+    ): void {
+        this.m_insets = { ...this.m_insets, ...insets }
+        this.applyCanvasSize()
     }
 
     public get moveSpeed(): number {
