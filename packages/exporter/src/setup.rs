@@ -413,9 +413,36 @@ pub async fn extract(
                 None => factorio_data.join(&s),
             };
             let out_path = output_dir.join(s.replace(".png", ".basis").as_str());
-            (in_path, out_path)
+            (s, in_path, out_path)
         })
-        .collect::<Vec<(PathBuf, PathBuf)>>();
+        .collect::<Vec<(String, PathBuf, PathBuf)>>();
+
+    // A modded dump can reference sprites that don't exist on disk: the
+    // headless data stage never loads graphics, so e.g. SE copying base's
+    // 1.1-era nuclear-reactor connection-patch paths sails through Factorio
+    // and lands in data.json. Skip those loudly rather than aborting a
+    // multi-hour atlas build — the cost is a missing overlay texture on the
+    // affected entity, not a broken pack.
+    let mut present = Vec::with_capacity(file_paths.len());
+    let mut missing = Vec::new();
+    for (s, in_path, out_path) in file_paths {
+        if tokio::fs::try_exists(&in_path).await? {
+            present.push((in_path, out_path));
+        } else {
+            missing.push(s);
+        }
+    }
+    if !missing.is_empty() {
+        println!(
+            "WARNING: {} referenced sprite(s) missing on disk (skipped):",
+            missing.len()
+        );
+        missing.sort();
+        for s in &missing {
+            println!("  {s}");
+        }
+    }
+    let file_paths = present;
 
     let progress = ProgressBar::new(file_paths.len() as u64);
     progress.set_style(
