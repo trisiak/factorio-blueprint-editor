@@ -113,8 +113,18 @@ export class Editor {
     public setViewportInsets(
         insets: Partial<{ left: number; top: number; right: number; bottom: number }>
     ): void {
-        this.m_insets = { ...this.m_insets, ...insets }
+        const next = { ...this.m_insets, ...insets }
+        const changed =
+            next.left !== this.m_insets.left ||
+            next.top !== this.m_insets.top ||
+            next.right !== this.m_insets.right ||
+            next.bottom !== this.m_insets.bottom
+        this.m_insets = next
         this.applyCanvasSize()
+        // `renderer.resize` doesn't fire a window 'resize', and we can't redispatch
+        // 'resize' (the action rail listens to it → it sets insets → loop). So nudge
+        // the Pixi panels to re-anchor to the new canvas size via a private event.
+        if (changed) window.dispatchEvent(new Event('fbe:viewportchange'))
     }
 
     public get moveSpeed(): number {
