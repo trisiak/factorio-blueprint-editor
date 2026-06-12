@@ -124,9 +124,9 @@ export function initActionToolbar(editor: Editor): void {
         let columns: number
         let inRail: number
         if (landscape) {
-            // Short but wide: lay the full set out in 3 rows under the top stack,
-            // widening the gutter as needed — no overflow.
-            columns = Math.ceil(buttons.length / 3)
+            // Short but wide: 3 columns under the top stack (wrapping into as many
+            // rows as needed) — no overflow.
+            columns = 3
             inRail = buttons.length
         } else {
             // Tall and narrow: a single column, as many as fit; rest overflow.
