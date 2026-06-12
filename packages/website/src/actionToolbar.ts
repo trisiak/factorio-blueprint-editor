@@ -43,8 +43,8 @@ const BUTTONS: ToolbarButton[] = [
     { action: 'pasteEntitySettings', glyph: '⊟', label: 'Paste cfg' },
 ]
 
-const SLOT = 50 // px per button cell incl. gap
-const GAP = 6
+const BTN = 44 // button square (px); flush, no gap — see index.styl
+const MARGIN = 2 // sliver between the rail and the canvas
 
 /** A cursor mode the user needs an explicit way out of (no keyboard on touch). */
 function isCancelableMode(mode: EditorMode): boolean {
@@ -106,9 +106,8 @@ export function initActionToolbar(editor: Editor): void {
         if (overflow.classList.contains('open') && !rail.contains(e.target as Node)) closeOverflow()
     })
 
-    // Lay out the rail: pick a column count by orientation, compute how many cells
-    // fit the available height, split buttons into rail vs overflow, and reserve
-    // the matching left gutter on the canvas.
+    // Lay out the rail: pick a column count by orientation, split buttons into
+    // rail vs overflow, and reserve the matching left gutter on the canvas.
     const layout = (): void => {
         const mobile = inputMode.mode === 'mobile'
         rail.classList.toggle('visible', mobile)
@@ -117,22 +116,30 @@ export function initActionToolbar(editor: Editor): void {
             return
         }
 
-        const landscape = window.innerWidth > window.innerHeight
-        const columns = landscape ? 2 : 1
-        const railWidth = columns * SLOT + GAP
-
-        // Sit below the top-left button stack; keep a small bottom margin.
+        // Sit directly below the top-left logo + folded-in corner buttons.
         const stack = document.getElementById('buttons')
-        const top = (stack ? Math.round(stack.getBoundingClientRect().bottom) : 132) + GAP
-        const availH = window.innerHeight - top - GAP
-        const rows = Math.max(1, Math.floor(availH / SLOT))
-        const capacity = rows * columns
+        const top = stack ? Math.round(stack.getBoundingClientRect().bottom) : 140
 
-        const overflowNeeded = buttons.length > capacity
-        // Reserve a cell for the ⋯ button when overflowing.
-        const inRail = overflowNeeded ? Math.max(0, capacity - 1) : buttons.length
+        const landscape = window.innerWidth > window.innerHeight
+        let columns: number
+        let inRail: number
+        if (landscape) {
+            // Short but wide: lay the full set out in 3 rows under the top stack,
+            // widening the gutter as needed — no overflow.
+            columns = Math.ceil(buttons.length / 3)
+            inRail = buttons.length
+        } else {
+            // Tall and narrow: a single column, as many as fit; rest overflow.
+            columns = 1
+            const availH = window.innerHeight - top - BTN // leave room for ⋯
+            const capacity = Math.max(1, Math.floor(availH / BTN))
+            inRail = buttons.length > capacity ? Math.max(0, capacity - 1) : buttons.length
+        }
 
-        primary.style.gridTemplateColumns = `repeat(${columns}, ${SLOT - GAP}px)`
+        const overflowNeeded = inRail < buttons.length
+        const railWidth = columns * BTN + MARGIN
+
+        primary.style.gridTemplateColumns = `repeat(${columns}, ${BTN}px)`
         primary.replaceChildren(...buttons.slice(0, inRail).map(b => b.button))
         overflow.replaceChildren(...buttons.slice(inRail).map(b => b.button))
         moreBtn.style.display = overflowNeeded ? '' : 'none'
