@@ -20,16 +20,31 @@ lazy_static! {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv()?;
 
+    // Which pack to (re)generate. `--pack <id>` (or `--pack=<id>`) selects an
+    // entry from data/output/packs.json; without it we fall back to the
+    // manifest's `default: true` pack (vanilla-2.0). The pack's `mods` list
+    // drives the generated mod-list.json, and the dump lands in
+    // data/output/<id>/ alongside the other packs.
+    let pack_arg = parse_pack_arg();
+    let packs = setup::read_packs(&DATA_DIR.join("output").join("packs.json")).await?;
+    let pack = setup::select_pack(&packs, pack_arg.as_deref())?;
+    let all_mods = setup::all_known_mods(&packs);
+    println!(
+        "Exporting pack '{}' (mods: {})",
+        pack.id,
+        pack.mods.join(", ")
+    );
+
     let factorio_dir_name = match std::env::consts::OS {
         "linux" => "factorio",
         "windows" => &format!("Factorio_{FACTORIO_VERSION}"),
         _ => panic!("unsupported OS"),
     };
-    let output_dir = DATA_DIR.join("output");
+    let output_dir = DATA_DIR.join("output").join(&pack.id);
     let base_factorio_dir = DATA_DIR.join(factorio_dir_name);
 
     setup::download_factorio(&DATA_DIR, &base_factorio_dir, FACTORIO_VERSION).await?;
-    setup::extract(&output_dir, &base_factorio_dir).await?;
+    setup::extract(&output_dir, &base_factorio_dir, pack, &all_mods).await?;
 
     let static_ = Static::new(Path::new("data/output/"));
 
@@ -49,4 +64,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
+}
+
+/// Parse `--pack <id>` / `--pack=<id>` from argv; returns `None` when absent.
+fn parse_pack_arg() -> Option<String> {
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        if arg == "--pack" {
+            return args.next();
+        }
+        if let Some(value) = arg.strip_prefix("--pack=") {
+            return Some(value.to_string());
+        }
+    }
+    None
 }

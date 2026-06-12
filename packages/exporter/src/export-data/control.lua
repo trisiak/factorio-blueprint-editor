@@ -7,5 +7,8 @@ script.on_init(function()
     end
     local data = load(serialized)()
     helpers.write_file('data.json', helpers.table_to_json(data), false, 0)
+    -- Dump the actually-loaded mod set (name -> version) so the exporter can
+    -- verify it against the requested pack before building the atlas.
+    helpers.write_file('active-mods.json', helpers.table_to_json(script.active_mods), false, 0)
     error("!EXIT!")
 end)
