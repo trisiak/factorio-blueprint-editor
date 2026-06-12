@@ -2,7 +2,8 @@ node_modules
 packages/website/dist
 packages/exporter/data/*
 !packages/exporter/data/output
-packages/exporter/data/output/metadata.json
+# per-pack sprite cache (output/<pack>/metadata.json) — a local build artifact
+packages/exporter/data/output/*/metadata.json
 packages/exporter/target
 .env
 
