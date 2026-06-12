@@ -38,8 +38,11 @@ entry:
 ```
 
 The exporter reads `id` (the output sub-directory) and `mods` (which mods to
-enable for the run). The bundled packs today — `vanilla-2.0` and `space-age` —
-use mods that **ship inside the Factorio install** (the `base`/`space-age`/…
+enable for the run). **List `mods` in Factorio load order** (dependencies first,
+e.g. `base` before `space-age`): the order decides which mod wins when two
+define the same locale key — exactly as in-game — so e.g. Space Age's renames
+must come after `base`. The bundled packs today — `vanilla-2.0` and `space-age`
+— use mods that **ship inside the Factorio install** (the `base`/`space-age`/…
 data dirs), so no portal download is needed.
 
 ## Regenerating a pack
@@ -56,8 +59,13 @@ What a run does:
 2. Writes `mods/mod-list.json` enabling exactly that pack's `mods` (plus the
    injected `export-data` mod); every other known mod is explicitly disabled, so
    regenerating `vanilla-2.0` after `space-age` correctly drops the DLC.
-3. Runs Factorio headless against the `export-data` scenario, which writes
-   `data.json` **and** `active-mods.json` (the actually-loaded mod set).
+3. Runs Factorio against the `export-data` scenario (server mode, no display),
+   which writes `data.json` **and** `active-mods.json` (the actually-loaded mod
+   set). Localised names/descriptions are resolved against only the enabled
+   mods' top-level `locale/en/*.cfg` (in the `mods` load order above), so a
+   pack's strings match what it actually loads. The download is the full
+   graphical build, not the `headless` package — the sprite step (5) reads the
+   real `.png` files off disk, which `headless` doesn't ship.
 4. **Verifies** the loaded mods match the pack's declared `mods` — a mismatch
    aborts *before* the long atlas build rather than producing a mislabeled pack.
 5. Writes `data/output/<id>/data.json` and compresses each referenced sprite to
