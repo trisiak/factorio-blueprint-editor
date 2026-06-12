@@ -2,9 +2,9 @@ use async_recursion::async_recursion;
 use globset::{GlobBuilder, GlobMatcher};
 use indicatif::{ProgressBar, ProgressStyle};
 use regex::Regex;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::{collections::HashSet, env};
@@ -15,6 +15,134 @@ macro_rules! get_env_var {
     ($name:expr) => {
         env::var($name).map_err(|_| format!("{} env variable is missing", $name))
     };
+}
+
+/// One entry of `data/output/packs.json`: the editor reads `id`/`label`/`mods`
+/// to pick and label a pack; the exporter reads `id` (output sub-dir) and `mods`
+/// (which mods to enable for the dump). Extra fields in the manifest are ignored.
+#[derive(Deserialize, Clone)]
+pub struct Pack {
+    pub id: String,
+    #[serde(default)]
+    pub mods: Vec<String>,
+    #[serde(default)]
+    pub default: bool,
+}
+
+/// Read and parse the `packs.json` manifest.
+pub async fn read_packs(path: &Path) -> Result<Vec<Pack>, Box<dyn Error>> {
+    let contents = tokio::fs::read_to_string(path)
+        .await
+        .map_err(|e| format!("failed to read packs manifest {}: {e}", path.display()))?;
+    let packs: Vec<Pack> = serde_json::from_str(&contents)?;
+    Ok(packs)
+}
+
+/// Resolve the requested pack: an explicit `--pack <id>` must match a manifest
+/// entry; with no id we use the `default: true` pack (or the first one).
+pub fn select_pack<'a>(packs: &'a [Pack], id: Option<&str>) -> Result<&'a Pack, Box<dyn Error>> {
+    match id {
+        Some(id) => packs.iter().find(|p| p.id == id).ok_or_else(|| {
+            let known = packs
+                .iter()
+                .map(|p| p.id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("pack '{id}' not found in packs.json (known packs: {known})").into()
+        }),
+        None => packs
+            .iter()
+            .find(|p| p.default)
+            .or_else(|| packs.first())
+            .ok_or_else(|| "packs.json contains no packs".into()),
+    }
+}
+
+/// Union of every pack's mods — the set of mods we explicitly toggle in
+/// `mod-list.json` so that, e.g., regenerating `vanilla-2.0` after `space-age`
+/// disables the DLC mods rather than leaving them enabled.
+pub fn all_known_mods(packs: &[Pack]) -> Vec<String> {
+    let mut set = BTreeSet::new();
+    for pack in packs {
+        for m in &pack.mods {
+            set.insert(m.clone());
+        }
+    }
+    set.into_iter().collect()
+}
+
+#[derive(Serialize)]
+struct ModListEntry {
+    name: String,
+    enabled: bool,
+}
+
+#[derive(Serialize)]
+struct ModList {
+    mods: Vec<ModListEntry>,
+}
+
+/// Write `mods/mod-list.json` so Factorio loads exactly this pack's mod set:
+/// every known mod enabled iff it's in `pack.mods`, plus our `export-data` mod
+/// (always enabled — it's what produces `data.json`). `core` is implicit and
+/// never listed.
+async fn write_mod_list(
+    mods_root: &Path,
+    pack: &Pack,
+    all_mods: &[String],
+) -> Result<(), Box<dyn Error>> {
+    let mut mods: Vec<ModListEntry> = all_mods
+        .iter()
+        .map(|name| ModListEntry {
+            name: name.clone(),
+            enabled: pack.mods.contains(name),
+        })
+        .collect();
+    mods.push(ModListEntry {
+        name: "export-data".to_string(),
+        enabled: true,
+    });
+
+    let json = serde_json::to_vec_pretty(&ModList { mods })?;
+    tokio::fs::write(mods_root.join("mod-list.json"), json).await?;
+    Ok(())
+}
+
+/// Compare the mods Factorio actually loaded (`script.active_mods`, written by
+/// control.lua) against the pack's declared `mods`, so a misconfigured run is
+/// caught before the long atlas build rather than producing a mislabeled pack.
+/// `export-data` is our injected exporter mod and is excluded from the check.
+async fn verify_active_mods(path: &Path, pack: &Pack) -> Result<(), Box<dyn Error>> {
+    let contents = tokio::fs::read_to_string(path).await.map_err(|e| {
+        format!(
+            "failed to read {} for mod verification: {e}",
+            path.display()
+        )
+    })?;
+    let active: HashMap<String, String> = serde_json::from_str(&contents)?;
+
+    let active_set: HashSet<&str> = active
+        .keys()
+        .map(String::as_str)
+        .filter(|m| *m != "export-data")
+        .collect();
+    let expected: HashSet<&str> = pack.mods.iter().map(String::as_str).collect();
+
+    let missing: Vec<&str> = expected.difference(&active_set).copied().collect();
+    let extra: Vec<&str> = active_set.difference(&expected).copied().collect();
+
+    if missing.is_empty() && extra.is_empty() {
+        println!("Mod verification OK: active mods match pack '{}'", pack.id);
+        Ok(())
+    } else {
+        Err(format!(
+            "Mod set for pack '{}' does not match the produced data:\n  \
+             declared but not loaded: {missing:?}\n  \
+             loaded but not declared: {extra:?}",
+            pack.id
+        )
+        .into())
+    }
 }
 
 #[derive(Deserialize)]
@@ -134,11 +262,18 @@ async fn generate_locale(factorio_data: &PathBuf) -> Result<String, Box<dyn Erro
     Ok(format!("return {{{}}}", content))
 }
 
-pub async fn extract(output_dir: &Path, base_factorio_dir: &Path) -> Result<(), Box<dyn Error>> {
+pub async fn extract(
+    output_dir: &Path,
+    base_factorio_dir: &Path,
+    pack: &Pack,
+    all_mods: &[String],
+) -> Result<(), Box<dyn Error>> {
     let factorio_data = base_factorio_dir.join("data");
-    let mod_dir = base_factorio_dir.join("mods/export-data");
+    let mods_root = base_factorio_dir.join("mods");
+    let mod_dir = mods_root.join("export-data");
     let scenario_dir = mod_dir.join("scenarios/export-data");
     let extracted_data_path = base_factorio_dir.join("script-output/data.json");
+    let active_mods_path = base_factorio_dir.join("script-output/active-mods.json");
     let factorio_executable = base_factorio_dir.join("bin/x64/factorio");
 
     let info = include_str!("export-data/info.json");
@@ -152,6 +287,9 @@ pub async fn extract(output_dir: &Path, base_factorio_dir: &Path) -> Result<(), 
     tokio::fs::write(mod_dir.join("data-final-fixes.lua"), data).await?;
     tokio::fs::write(scenario_dir.join("control.lua"), script).await?;
 
+    // Enable exactly this pack's mods (+ our export-data mod) for the run.
+    write_mod_list(&mods_root, pack, all_mods).await?;
+
     println!("Generating defines.lua");
 
     Command::new(factorio_executable)
@@ -162,6 +300,10 @@ pub async fn extract(output_dir: &Path, base_factorio_dir: &Path) -> Result<(), 
         .await?;
 
     let content = tokio::fs::read_to_string(&extracted_data_path).await?;
+
+    // Fail fast on a mod mismatch, before the (long) atlas build.
+    verify_active_mods(&active_mods_path, pack).await?;
+
     tokio::fs::create_dir_all(&output_dir).await?;
     tokio::fs::write(output_dir.join("data.json"), &content).await?;
 
@@ -185,11 +327,20 @@ pub async fn extract(output_dir: &Path, base_factorio_dir: &Path) -> Result<(), 
         .map(|cap| cap[1].to_string())
         .collect();
 
+    // Sprite refs are mod-relative, e.g. `__base__/graphics/..`, `__space-age__/..`.
+    // On disk every mod's data lives under `<factorio>/data/<mod>/`, so map any
+    // `__<mod>__` token to just `<mod>` (generalizing the old core/base-only
+    // replace so DLC and future packs resolve too). The output path keeps the
+    // `__<mod>__/` form — the editor looks textures up by the data.json path
+    // with `.png` swapped for `.basis`.
+    lazy_static! {
+        static ref MOD_REF: Regex = Regex::new(r"__([^_/][^/]*?)__").unwrap();
+    }
     let file_paths = file_paths
         .into_iter()
         .map(|s| {
-            let in_path =
-                factorio_data.join(s.replace("__core__", "core").replace("__base__", "base"));
+            let in_rel = MOD_REF.replace_all(&s, "$1");
+            let in_path = factorio_data.join(in_rel.as_ref());
             let out_path = output_dir.join(s.replace(".png", ".basis").as_str());
             (in_path, out_path)
         })
@@ -318,8 +469,10 @@ pub async fn download_factorio(
         println!("Downloaded Factorio version matches required version");
     } else {
         println!("Downloading Factorio v{}", factorio_version);
-        if data_dir.is_dir() {
-            tokio::fs::remove_dir_all(data_dir).await?;
+        // Only blow away the Factorio install — `data_dir` also holds the
+        // committed `output/` packs (and packs.json), which a regen must keep.
+        if base_factorio_dir.is_dir() {
+            tokio::fs::remove_dir_all(base_factorio_dir).await?;
         }
         tokio::fs::create_dir_all(data_dir).await?;
 
