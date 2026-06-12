@@ -16,57 +16,54 @@ Reference viewport for concrete numbers: a Pixel-7-ish **portrait** screen,
 
 ## Layer 1 — Pixi UI (drawn _on_ the canvas, via `UIContainer`)
 
-| Element                                         | Anchor                                                  | Intrinsic size              | Scaling / behavior                                     | Portrait notes                                                       |
-| ----------------------------------------------- | ------------------------------------------------------- | --------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------- |
-| **Quickbar** (`QuickbarPanel`, 2 rows)          | bottom-center                                           | 442 × 100                   | `fitToWidthScale` (8px margin) → ~0.90 → **~396 × 90** | The one already-fixed panel; bottom-pinned                           |
-| **Wires panel** (`WiresPanel`)                  | beside quickbar's right edge, else **stacked above** it | 136 × 62                    | clamp on-screen                                        | Can't fit beside on a phone → lands **bottom-right, above quickbar** |
-| **Entity-info** (`EntityInfoPanel`)             | top-right                                               | 270 × 270 (grows w/ recipe) | fit + clamp; shown on hover/selection                  | Occupies **top-right** when active                                   |
-| **Editors** (machine/inserter/chest/splitter/…) | centered                                                | 402–**504** × 171–176       | scale-to-fit + clamp                                   | Centered modal                                                       |
-| **Inventory** (`InventoryDialog`)               | centered                                                | 404 × ~520                  | scale-to-fit (W & H) + clamp                           | Centered modal, tall                                                 |
-| **Paint ghost icon**                            | follows finger (`globalX+16`)                           | small                       | tracks pointer                                         | Not edge-anchored                                                    |
-| **Debug** (`DebugContainer`)                    | top-left (≈145, 5)                                      | text                        | hidden unless `?debug`                                 | —                                                                    |
+| Element                                         | Anchor                                  | Intrinsic size              | Scaling / behavior                                                                  | Portrait notes                                                                              |
+| ----------------------------------------------- | --------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| **Quickbar** (`QuickbarPanel`, 2 rows)          | bottom-center (desktop)                 | 442 × 100                   | `fitToWidthScale`; **retired on mobile** (hidden)                                   | **Gone on mobile** — actions live in the rail; slots/keybinds still work, desktop unchanged |
+| **Wires panel** (`WiresPanel`)                  | beside the quickbar, else bottom-center | 136 × 62                    | clamp on-screen                                                                     | With the quickbar gone it **re-centres at the bottom**                                      |
+| **Entity-info** (`EntityInfoPanel`)             | top-right                               | 270 × 270 (grows w/ recipe) | fit + clamp; re-anchors on canvas inset                                             | Occupies **top-right** when active                                                          |
+| **Editors** (machine/inserter/chest/splitter/…) | centered                                | 402–**504** × 171–176       | scale-to-fit + clamp                                                                | Centered modal                                                                              |
+| **Inventory** (`InventoryDialog`)               | centered                                | **responsive W** × ~520     | width fits the tabs (capped to screen, ≥404); tab/item **scroll** + **Recents tab** | Touch-usable: long-press preview + Pin/Unpin                                                |
+| **Paint ghost icon**                            | follows finger (`globalX+16`)           | small                       | tracks pointer                                                                      | Not edge-anchored                                                                           |
+| **Debug** (`DebugContainer`)                    | top-left (≈145, 5)                      | text                        | hidden unless `?debug`                                                              | —                                                                                           |
 
 ## Layer 2 — DOM overlays (on top of the canvas)
 
-| Element                               | Anchor                                          | Size                                        | z-index | Mobile behavior                                                                                                           |
-| ------------------------------------- | ----------------------------------------------- | ------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------- |
-| **Action rail** (`#action-toolbar`)   | **left gutter** (below the logo + corner btns)  | 44px flush squares + labels; ⋯ overflow     | 4       | **Mobile only**; reserves a left canvas inset (`setViewportInsets`); **1-col + overflow portrait / 3-row grid landscape** |
-| **Logo / info** (`#corner-panel`)     | **top-left** (0,0)                              | ~52px logo badge                            | 5       | Tap = info-panel toggle (the "Press I" hint was dropped)                                                                  |
-| **Corner buttons** (`#buttons`)       | **top-left**, under the logo                    | desktop text rows; **mobile 44×44 squares** | 5       | Github / Settings (Discord dropped); **fold into the rail** on mobile (flush dark squares)                                |
-| **Settings pane** (`.dg.main`)        | **top-left**, under `#buttons` (ResizeObserver) | 320px desktop / `min(360px,100vw)` mobile   | 5       | Starts **closed** on mobile                                                                                               |
-| **Info panel** (`#info-panel`)        | **centered**                                    | `min(640px,90vw)` × `≤100dvh−32px`, scrolls | **100** | Hidden unless toggled; close ✕ top-right                                                                                  |
-| **Toasts** (`.toasts-container`)      | **bottom-right**                                | 320px wide, stacks upward                   | 20      | Same on mobile (transient)                                                                                                |
-| **Loading screen** (`#loadingScreen`) | full-screen                                     | 100vw × 100vh                               | 10      | Boot only                                                                                                                 |
+| Element                               | Anchor                                          | Size                                        | z-index | Mobile behavior                                                                                                      |
+| ------------------------------------- | ----------------------------------------------- | ------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------- |
+| **Action rail** (`#action-toolbar`)   | **left gutter** (below the logo + corner btns)  | 44px flush squares + labels; ⋯ overflow     | 4       | **Mobile only**; reserves a left canvas inset (`setViewportInsets`); **1-col portrait / 3-col landscape**, rest in ⋯ |
+| **Logo / info** (`#corner-panel`)     | **top-left** (0,0)                              | ~52px logo badge                            | 5       | Tap = info-panel toggle (the "Press I" hint was dropped)                                                             |
+| **Corner buttons** (`#buttons`)       | **top-left**, under the logo                    | desktop text rows; **mobile 44×44 squares** | 5       | Github / Settings (Discord dropped); **fold into the rail** on mobile (flush dark squares)                           |
+| **Settings pane** (`.dg.main`)        | **top-left**, under `#buttons` (ResizeObserver) | 320px desktop / `min(360px,100vw)` mobile   | 5       | Starts **closed** on mobile                                                                                          |
+| **Info panel** (`#info-panel`)        | **centered**                                    | `min(640px,90vw)` × `≤100dvh−32px`, scrolls | **100** | Hidden unless toggled; close ✕ top-right                                                                             |
+| **Toasts** (`.toasts-container`)      | **bottom-right**                                | 320px wide, stacks upward                   | 20      | Same on mobile (transient)                                                                                           |
+| **Loading screen** (`#loadingScreen`) | full-screen                                     | 100vw × 100vh                               | 10      | Boot only                                                                                                            |
 
-## The competition map (portrait)
+## The competition map (was the problem; ✅ = now resolved)
 
-**✅ Top band — largely resolved (slice 1).** The action buttons moved off the
-top-center into a **left gutter** (`#action-toolbar` is now a vertical rail), and
-the canvas is **inset** by the gutter width so the Pixi UI reflows out of it —
-the first real "layout authority". What remains top-left: `#corner-panel`
-(0–80px) → `#buttons` → settings pane (a loose stack the rail now sits below; full
-top-left consolidation is a follow-up). Top-**right** still hosts the Pixi
-**entity-info** panel (clips in short landscape — see below).
+**✅ Top band.** The action buttons moved off the top-center into a **left gutter**
+(`#action-toolbar` is a vertical rail), the canvas is **inset** by the gutter so
+the Pixi UI is _restricted_ rather than covered (the layout authority), and the
+top-left logo + Github/Settings fold into the bar. The Pixi **entity-info** panel
+(top-right) re-anchors on the inset (`fbe:viewportchange`), so it no longer spills
+off the right edge in landscape.
 
-**🔴 Bottom band — Pixi vs DOM with no awareness of each other.**
+**✅ Bottom band.** The **quickbar is retired on mobile**, so the Pixi/DOM
+bottom-edge clash is gone; the small **wires** panel re-centres there. DOM
+**toasts** (bottom-right) can still pass over the wires panel briefly, but they're
+transient.
 
-- Pixi **quickbar** (bottom-center) + **wires** (bottom-right, above quickbar).
-- DOM **toasts** (bottom-right, z20) render _over_ that corner → **toasts overlap
-  the wires panel** and the quickbar's right end.
-
-**🟡 Two opposite "action" surfaces.** Primary touch actions are split: the
-**quickbar at the bottom (Pixi)** and the **action toolbar at the top (DOM)** —
-different tech stacks, opposite edges, neither knows the other's bounds.
+**✅ Two opposite "action" surfaces.** Resolved by the above — touch actions now
+live in one place (the left rail), and the bottom Pixi quickbar is gone.
 
 **🟡 Centered modals stack by luck.** Pixi dialogs/inventory (centered) and the
-DOM info-panel (centered, z100) share the middle; they rarely coexist.
+DOM info-panel (centered, z100) share the middle; they rarely coexist. (Unchanged
+— low priority.)
 
-**✅ Inventory group-tab overflow (Space Age) — fixed (slice 3a).** The tab row
-and item grid are now **clipped to the dialog** (Pixi masks) and scroll: the tabs
-horizontally (◀ ▶) when they overflow, the item grid vertically (▲ ▼) for any
-number of items. Per-element interactivity is gated to the viewport so
-masked-out tabs/items aren't mis-tapped. Drag-to-pan, tap-to-select + ✓ confirm,
-and a recents tab are the next sub-slices.
+**✅ Inventory group-tab overflow (Space Age).** The tab row + item grid are
+**clipped to the dialog** (Pixi masks) and scroll (◀ ▶ tabs / ▲ ▼ items), with
+viewport-gated hit-testing. The body width is now **responsive** so the tab scroll
+only engages when tabs truly can't fit, and a **Recents tab** + **long-press
+preview** (Confirm / Pin-Unpin) make the selector touch-usable.
 
 ## Root cause
 
