@@ -1,6 +1,7 @@
 import { Container, Graphics } from 'pixi.js'
 import { EditorMode } from '../containers/BlueprintContainer'
 import G from '../common/globals'
+import { inputMode } from '../common/input'
 import { Panel } from './controls/Panel'
 import { Slot } from './controls/Slot'
 import F from './controls/functions'
@@ -180,6 +181,11 @@ export class QuickbarPanel extends Panel {
     }
 
     protected override setPosition(): void {
+        // Retired on mobile: touch users build via the action rail's Items button
+        // (which leads with a Recents tab) + Pick, so the fixed bottom bar is just
+        // clutter there. Its slots/keybinds still work, so desktop is unchanged.
+        this.visible = inputMode.mode === 'desktop'
+
         // Scale to fit narrow viewports (see quickbarLayout) so the fixed-width
         // panel never runs off the edges, then center along the bottom.
         // Use the width/height getters (backed by the background sprite, which

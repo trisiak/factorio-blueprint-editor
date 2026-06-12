@@ -1,5 +1,6 @@
 import { Container, Sprite } from 'pixi.js'
 import G from '../../common/globals'
+import { inputMode } from '../../common/input'
 import { colors } from '../style'
 import F from './functions'
 
@@ -46,12 +47,16 @@ export abstract class Panel extends Container {
 
         this._setPosition = () => this.setPosition()
         window.addEventListener('resize', this._setPosition)
+        // Some panels are mode-dependent (the quickbar hides on mobile; the wires
+        // panel re-anchors when it does), so reposition on input-mode changes too.
+        inputMode.on('change', this._setPosition)
 
         this.setPosition()
     }
 
     public destroy(): void {
         window.removeEventListener('resize', this._setPosition)
+        inputMode.off('change', this._setPosition)
         super.destroy({ children: true })
     }
 

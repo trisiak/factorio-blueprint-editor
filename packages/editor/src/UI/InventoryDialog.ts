@@ -66,8 +66,10 @@ export class InventoryDialog extends Dialog {
     private m_itemArrows?: { up: Container; down: Container }
 
     // Long-press preview state + the bottom Confirm / Pin bar it reveals.
+    private m_itemsFilter?: string[]
     private m_selectedCallBack?: (name: string) => void
     private m_recentsKey?: string
+    private m_recentsContainer?: Container
     private m_previewName?: string
     private m_previewButton?: Button<Container>
     private m_pressTimer?: ReturnType<typeof setTimeout>
@@ -83,6 +85,7 @@ export class InventoryDialog extends Dialog {
     ) {
         super(404, 442, title)
 
+        this.m_itemsFilter = itemsFilter
         this.m_selectedCallBack = selectedCallBack
         this.m_recentsKey = recentsKey
 
@@ -93,62 +96,6 @@ export class InventoryDialog extends Dialog {
         this.m_InventoryItems = new Container()
         this.m_InventoryItems.position.set(12, 126)
         this.addChild(this.m_InventoryItems)
-
-        // Filter a name to what this selector allows (an explicit filter list, or
-        // any placeable item for the main inventory). Shared by the FD groups and
-        // the recents tab.
-        const isAllowed = (name: string): boolean => {
-            if (itemsFilter !== undefined) return itemsFilter.includes(name)
-            const itemData = FD.items[name]
-            if (!itemData) return false
-            if (!itemData.place_result && !itemData.place_as_tile) return false
-            // needed for robots/trains/cars
-            if (itemData.place_result && !FD.entities[itemData.place_result]) return false
-            return true
-        }
-
-        const makeItemButton = (name: string): Button<Container> => {
-            const button = new Button<Container>(36, 36)
-            button.content = F.CreateIcon(name)
-
-            // Touch-first: a quick tap commits the selection; a long-press opens a
-            // non-committing preview (details + Confirm + Pin/Unpin). Movement off
-            // the icon or release elsewhere cancels.
-            button.on('pointerdown', e => {
-                e.stopPropagation()
-                if (e.button !== 0) return
-                this.clearPressTimer()
-                this.m_pressTimer = setTimeout(() => {
-                    this.m_pressTimer = undefined
-                    this.beginPreview(name, button)
-                }, 450)
-            })
-            button.on('pointerup', e => {
-                e.stopPropagation()
-                if (this.m_pressTimer) {
-                    // released before the long-press fired → quick tap = commit
-                    this.clearPressTimer()
-                    this.commitSelect(name)
-                }
-            })
-            button.on('pointerupoutside', () => this.clearPressTimer())
-
-            // Recipe-on-hover is a desktop affordance; on touch a finger sliding
-            // over items would spuriously trigger it (long-press shows details).
-            button.on('pointerover', () => {
-                if (inputMode.mode !== 'desktop') return
-                this.m_hoveredItem = name
-                this.updateRecipeVisualization(name)
-            })
-            button.on('pointerout', () => {
-                this.clearPressTimer()
-                if (inputMode.mode === 'desktop' && this.m_hoveredItem === name) {
-                    this.m_hoveredItem = undefined
-                    this.updateRecipeVisualization(undefined)
-                }
-            })
-            return button
-        }
 
         const bindTabSwitch = (tab: Button<InventoryItems>): void => {
             tab.on('pointerdown', e => {
@@ -184,64 +131,13 @@ export class InventoryDialog extends Dialog {
 
         let groupIndex = 0
 
-        // Optional "Recents" tab (first, active): three labelled sections —
-        // recently picked, the quickbar (items only), and what's on the blueprint
-        // (so it's never empty) — each filtered to what this selector allows and
-        // colour-coded so the sources read apart. Recent + Quickbar are shown in
-        // full; "On blueprint" only adds names not already shown above.
+        // Optional "Recents" tab (first, active). Built via populateRecents so it
+        // can be refreshed live when pinning/unpinning changes the quickbar.
         if (recentsKey) {
-            const seen = new Set<string>()
-            const collect = (names: string[], dedupeAgainstShown: boolean): string[] => {
-                const out: string[] = []
-                const local = new Set<string>()
-                for (const name of names) {
-                    if (!isAllowed(name) || local.has(name)) continue
-                    if (dedupeAgainstShown && seen.has(name)) continue
-                    local.add(name)
-                    out.push(name)
-                }
-                for (const name of out) seen.add(name)
-                return out
-            }
-
-            const sections: { label: string; color: number; names: string[] }[] = []
-            const recent = collect(getRecents(recentsKey), false)
-            if (recent.length) sections.push({ label: 'Recent', color: 0xffffff, names: recent })
-            if (recentsKey === 'items') {
-                const quickbar = collect(
-                    G.UI.quickbarPanel.serialize().filter((n): n is string => !!n),
-                    false
-                )
-                if (quickbar.length)
-                    sections.push({ label: 'Quickbar', color: 0x8fd0ff, names: quickbar })
-            }
-            const onBlueprint = collect(InventoryDialog.blueprintNames(recentsKey), true)
-            if (onBlueprint.length)
-                sections.push({ label: 'On blueprint', color: 0xffcf8f, names: onBlueprint })
-
-            if (sections.length > 0) {
-                const recentsItems = new Container()
-                let y = 0
-                for (const section of sections) {
-                    const header = new Text({
-                        text: section.label,
-                        style: {
-                            fontFamily: "'Roboto', sans-serif",
-                            fontSize: 12,
-                            fontWeight: 'bold',
-                            fill: section.color,
-                        },
-                    })
-                    header.position.set(0, y)
-                    recentsItems.addChild(header)
-                    y += 18
-                    section.names.forEach((name, i) => {
-                        const button = makeItemButton(name)
-                        button.position.set((i % 10) * 38, y + Math.floor(i / 10) * 38)
-                        recentsItems.addChild(button)
-                    })
-                    y += Math.ceil(section.names.length / 10) * 38 + 6
-                }
+            const recentsItems = new Container()
+            this.populateRecents(recentsItems)
+            if (recentsItems.children.length > 0) {
+                this.m_recentsContainer = recentsItems
                 addTab(InventoryDialog.recentsIcon(), recentsItems as InventoryItems, groupIndex)
                 groupIndex += 1
             }
@@ -261,14 +157,14 @@ export class InventoryDialog extends Dialog {
                 let subgroupHasItems = false
 
                 for (const item of subgroup.items) {
-                    if (!isAllowed(item.name)) continue
+                    if (!this.isAllowed(item.name)) continue
 
                     if (itemColIndex === 10) {
                         itemColIndex = 0
                         itemRowIndex += 1
                     }
 
-                    const button = makeItemButton(item.name)
+                    const button = this.makeItemButton(item.name)
                     button.position.set(itemColIndex * 38, itemRowIndex * 38)
                     inventoryGroupItems.addChild(button)
 
@@ -325,6 +221,12 @@ export class InventoryDialog extends Dialog {
             if (qb.hasItem(name)) qb.removeItem(name)
             else qb.addItem(name)
             this.updatePreviewBar()
+            // Reflect the quickbar change in the Recents tab immediately.
+            if (this.m_recentsContainer) {
+                this.populateRecents(this.m_recentsContainer)
+                this.m_previewButton = undefined // the highlighted button may be rebuilt
+                this.applyItemScroll()
+            }
         })
         this.addChild(this.m_pinBtn)
 
@@ -339,6 +241,123 @@ export class InventoryDialog extends Dialog {
 
         this.setupTabScroll(groupIndex)
         this.setupItemScroll()
+    }
+
+    /** Filter a name to what this selector allows (filter list, or placeable). */
+    private isAllowed(name: string): boolean {
+        const filter = this.m_itemsFilter
+        if (filter !== undefined) return filter.includes(name)
+        const itemData = FD.items[name]
+        if (!itemData) return false
+        if (!itemData.place_result && !itemData.place_as_tile) return false
+        // needed for robots/trains/cars
+        if (itemData.place_result && !FD.entities[itemData.place_result]) return false
+        return true
+    }
+
+    /** An item button: quick tap commits, long-press previews (Confirm/Pin bar). */
+    private makeItemButton(name: string): Button<Container> {
+        const button = new Button<Container>(36, 36)
+        button.content = F.CreateIcon(name)
+
+        button.on('pointerdown', e => {
+            e.stopPropagation()
+            if (e.button !== 0) return
+            this.clearPressTimer()
+            this.m_pressTimer = setTimeout(() => {
+                this.m_pressTimer = undefined
+                this.beginPreview(name, button)
+            }, 450)
+        })
+        button.on('pointerup', e => {
+            e.stopPropagation()
+            if (this.m_pressTimer) {
+                // released before the long-press fired → quick tap = commit
+                this.clearPressTimer()
+                this.commitSelect(name)
+            }
+        })
+        button.on('pointerupoutside', () => this.clearPressTimer())
+
+        // Recipe-on-hover is a desktop affordance; on touch a finger sliding over
+        // items would spuriously trigger it (long-press shows details instead).
+        button.on('pointerover', () => {
+            if (inputMode.mode !== 'desktop') return
+            this.m_hoveredItem = name
+            this.updateRecipeVisualization(name)
+        })
+        button.on('pointerout', () => {
+            this.clearPressTimer()
+            if (inputMode.mode === 'desktop' && this.m_hoveredItem === name) {
+                this.m_hoveredItem = undefined
+                this.updateRecipeVisualization(undefined)
+            }
+        })
+        return button
+    }
+
+    /**
+     * (Re)fill the recents container with three colour-coded sections — Recent
+     * (white), Quickbar (blue, items only) and On blueprint (orange). Recent +
+     * Quickbar show in full; On blueprint only adds names not already shown.
+     * Rebuilt on pin/unpin so the quickbar change shows live.
+     */
+    private populateRecents(container: Container): void {
+        for (const c of container.removeChildren()) c.destroy()
+
+        const key = this.m_recentsKey
+        if (!key) return
+
+        const seen = new Set<string>()
+        const collect = (names: string[], dedupeAgainstShown: boolean): string[] => {
+            const out: string[] = []
+            const local = new Set<string>()
+            for (const name of names) {
+                if (!this.isAllowed(name) || local.has(name)) continue
+                if (dedupeAgainstShown && seen.has(name)) continue
+                local.add(name)
+                out.push(name)
+            }
+            for (const name of out) seen.add(name)
+            return out
+        }
+
+        const sections: { label: string; color: number; names: string[] }[] = []
+        const recent = collect(getRecents(key), false)
+        if (recent.length) sections.push({ label: 'Recent', color: 0xffffff, names: recent })
+        if (key === 'items') {
+            const quickbar = collect(
+                G.UI.quickbarPanel.serialize().filter((n): n is string => !!n),
+                false
+            )
+            if (quickbar.length)
+                sections.push({ label: 'Quickbar', color: 0x8fd0ff, names: quickbar })
+        }
+        const onBlueprint = collect(InventoryDialog.blueprintNames(key), true)
+        if (onBlueprint.length)
+            sections.push({ label: 'On blueprint', color: 0xffcf8f, names: onBlueprint })
+
+        let y = 0
+        for (const section of sections) {
+            const header = new Text({
+                text: section.label,
+                style: {
+                    fontFamily: "'Roboto', sans-serif",
+                    fontSize: 12,
+                    fontWeight: 'bold',
+                    fill: section.color,
+                },
+            })
+            header.position.set(0, y)
+            container.addChild(header)
+            y += 18
+            section.names.forEach((name, i) => {
+                const button = this.makeItemButton(name)
+                button.position.set((i % 10) * 38, y + Math.floor(i / 10) * 38)
+                container.addChild(button)
+            })
+            y += Math.ceil(section.names.length / 10) * 38 + 6
+        }
     }
 
     private clearPressTimer(): void {
@@ -358,7 +377,8 @@ export class InventoryDialog extends Dialog {
     /** Long-press path: hold the item as a pending selection without closing. */
     public beginPreview(name: string, button?: Button<Container>): void {
         if (this.destroyed) return
-        if (this.m_previewButton) this.m_previewButton.active = false
+        if (this.m_previewButton && !this.m_previewButton.destroyed)
+            this.m_previewButton.active = false
         this.m_previewName = name
         this.m_previewButton = button
         if (button) button.active = true
