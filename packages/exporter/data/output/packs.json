@@ -10,6 +10,6 @@
         "id": "space-age",
         "label": "Space Age (2.0)",
         "factorioVersion": "2.0",
-        "mods": ["base", "space-age", "quality", "elevated-rails"]
+        "mods": ["base", "elevated-rails", "quality", "space-age"]
     }
 ]

@@ -10,7 +10,7 @@ mod setup;
 #[macro_use]
 extern crate lazy_static;
 
-static FACTORIO_VERSION: &str = "2.0.68";
+static FACTORIO_VERSION: &str = "2.0.76";
 
 lazy_static! {
     static ref DATA_DIR: PathBuf = PathBuf::from("./data");
@@ -43,7 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let output_dir = DATA_DIR.join("output").join(&pack.id);
     let base_factorio_dir = DATA_DIR.join(factorio_dir_name);
 
-    setup::download_factorio(&DATA_DIR, &base_factorio_dir, FACTORIO_VERSION).await?;
+    setup::download_factorio(&DATA_DIR, &base_factorio_dir, FACTORIO_VERSION, pack).await?;
     setup::extract(&output_dir, &base_factorio_dir, pack, &all_mods).await?;
 
     let static_ = Static::new(Path::new("data/output/"));

@@ -59,23 +59,48 @@ end
 
 local locale = require('locale')
 
-local function localise(obj, typeArg)
-    local function localiseTemplate(t)
-        local template = locale[t[1]]
-        local args = t[2]
-        if type(args) == "string" then
-            template = template:gsub('__1__', args)
-        elseif args ~= nil then
-            for i = 1, #args do
-                template = template:gsub('__' .. i .. '__', locale[args[i]])
-            end
-        end
-        return template
+-- Resolve a Factorio LocalisedString (https://lua-api.factorio.com/latest/concepts/LocalisedString.html):
+-- a plain string/number is literal text; a table is {key, param1, param2, ...}
+-- where each param is itself a LocalisedString substituted into the template's
+-- __1__, __2__, ... placeholders. Key '' concatenates its params; key '?'
+-- takes the first param that resolves. Unknown keys resolve to nil so callers
+-- can fall back (the game has fallback chains we don't replicate).
+local function resolveLocalised(ls)
+    if type(ls) ~= 'table' then
+        if ls == nil then return nil end
+        return tostring(ls)
     end
+    local key = ls[1]
+    if key == '' then
+        local parts = {}
+        for i = 2, #ls do
+            parts[#parts + 1] = resolveLocalised(ls[i]) or ''
+        end
+        return table.concat(parts)
+    end
+    if key == '?' then
+        for i = 2, #ls do
+            local alt = resolveLocalised(ls[i])
+            if alt ~= nil then return alt end
+        end
+        return nil
+    end
+    local template = locale[key]
+    if template == nil then
+        log('export-data: no locale entry for key ' .. tostring(key))
+        return nil
+    end
+    for i = 2, #ls do
+        local param = resolveLocalised(ls[i]) or ''
+        -- '%' is magic in a gsub replacement; locale text must stay literal.
+        template = template:gsub('__' .. (i - 1) .. '__', (param:gsub('%%', '%%%%')))
+    end
+    return template
+end
 
-    if obj.localised_name ~= nil then
-        obj.localised_name = localiseTemplate(obj.localised_name)
-    else
+local function localise(obj, typeArg)
+    obj.localised_name = resolveLocalised(obj.localised_name)
+    if obj.localised_name == nil then
         local str = locale[typeArg .. '-name.' .. obj.name]
         if str ~= nil then
             obj.localised_name = str
@@ -84,13 +109,9 @@ local function localise(obj, typeArg)
         end
     end
 
-    if obj.localised_description ~= nil then
-        obj.localised_description = localiseTemplate(obj.localised_description)
-    else
-        local str = locale[typeArg .. '-description.' .. obj.name]
-        if str ~= nil then
-            obj.localised_description = str
-        end
+    obj.localised_description = resolveLocalised(obj.localised_description)
+    if obj.localised_description == nil then
+        obj.localised_description = locale[typeArg .. '-description.' .. obj.name]
     end
 
     if obj.limitation_message_key ~= nil then
