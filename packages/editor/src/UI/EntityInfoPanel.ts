@@ -157,7 +157,8 @@ export class EntityInfoPanel extends Panel {
                     // }
                     if (moduleData.effect.speed) {
                         speed +=
-                            moduleData.effect.speed * (beacon.entityData as BeaconPrototype).distribution_effectivity
+                            moduleData.effect.speed *
+                            (beacon.entityData as BeaconPrototype).distribution_effectivity
                     }
                 }
             }
