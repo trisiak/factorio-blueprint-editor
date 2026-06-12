@@ -399,7 +399,8 @@ export class Editor {
                             G.UI.createInventory(
                                 'Inventory',
                                 undefined,
-                                G.BPC.spawnPaintContainer.bind(G.BPC)
+                                G.BPC.spawnPaintContainer.bind(G.BPC),
+                                'items'
                             )
                         }
                         return true

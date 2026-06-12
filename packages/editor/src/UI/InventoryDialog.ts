@@ -5,6 +5,7 @@ import F from './controls/functions'
 import { Dialog } from './controls/Dialog'
 import { Button } from './controls/Button'
 import { fitToWidthScale } from './quickbarLayout'
+import { getRecents, recordRecent } from './recentItems'
 import { colors, styles } from './style'
 
 /*
@@ -66,7 +67,8 @@ export class InventoryDialog extends Dialog {
     public constructor(
         title = 'Inventory',
         itemsFilter?: string[],
-        selectedCallBack?: (selectedItem: string) => void
+        selectedCallBack?: (selectedItem: string) => void,
+        recentsKey?: string
     ) {
         super(404, 442, title)
 
@@ -78,7 +80,104 @@ export class InventoryDialog extends Dialog {
         this.m_InventoryItems.position.set(12, 126)
         this.addChild(this.m_InventoryItems)
 
+        // Filter a name to what this selector allows (an explicit filter list, or
+        // any placeable item for the main inventory). Shared by the FD groups and
+        // the recents tab.
+        const isAllowed = (name: string): boolean => {
+            if (itemsFilter !== undefined) return itemsFilter.includes(name)
+            const itemData = FD.items[name]
+            if (!itemData) return false
+            if (!itemData.place_result && !itemData.place_as_tile) return false
+            // needed for robots/trains/cars
+            if (itemData.place_result && !FD.entities[itemData.place_result]) return false
+            return true
+        }
+
+        const makeItemButton = (name: string): Button<Container> => {
+            const button = new Button<Container>(36, 36)
+            button.content = F.CreateIcon(name)
+            button.on('pointerdown', e => {
+                e.stopPropagation()
+                if (e.button === 0) {
+                    if (recentsKey) recordRecent(recentsKey, name)
+                    selectedCallBack?.(name)
+                    this.close()
+                }
+            })
+            button.on('pointerover', () => {
+                this.m_hoveredItem = name
+                this.updateRecipeVisualization(name)
+            })
+            button.on('pointerout', () => {
+                // we have to check this because pointerout can fire after pointerover
+                if (this.m_hoveredItem === name) {
+                    this.m_hoveredItem = undefined
+                    this.updateRecipeVisualization(undefined)
+                }
+            })
+            return button
+        }
+
+        const bindTabSwitch = (tab: Button<InventoryItems>): void => {
+            tab.on('pointerdown', e => {
+                e.stopPropagation()
+                if (e.button !== 0) return
+                if (!tab.active) {
+                    for (const t of this.m_InventoryGroups.children) t.active = t === tab
+                }
+                if (!tab.data.visible) {
+                    for (const c of this.m_InventoryItems.children) {
+                        c.visible = c === tab.data
+                        c.interactiveChildren = c === tab.data
+                    }
+                    // New group starts scrolled to the top.
+                    this.m_itemScroll = 0
+                    this.applyItemScroll()
+                }
+            })
+        }
+
+        const addTab = (content: Container, items: InventoryItems, groupIndex: number): void => {
+            items.visible = groupIndex === 0
+            this.m_InventoryItems.addChild(items)
+
+            const tab = new Button<InventoryItems>(68, 68, 3)
+            tab.active = groupIndex === 0
+            tab.position.set(groupIndex * 70, 0)
+            tab.content = content
+            tab.data = items
+            bindTabSwitch(tab)
+            this.m_InventoryGroups.addChild(tab)
+        }
+
         let groupIndex = 0
+
+        // Optional "Recents" tab (first, active): recently-selected names, then
+        // what's already on the blueprint — so it isn't empty on first use —
+        // filtered to what this selector allows.
+        if (recentsKey) {
+            const seen = new Set<string>()
+            const recents: string[] = []
+            for (const name of [
+                ...getRecents(recentsKey),
+                ...InventoryDialog.blueprintNames(recentsKey),
+            ]) {
+                if (seen.has(name) || !isAllowed(name)) continue
+                seen.add(name)
+                recents.push(name)
+            }
+            if (recents.length > 0) {
+                const recentsItems = new Container<Button<Container>>()
+                recents.forEach((name, i) => {
+                    const button = makeItemButton(name)
+                    button.position.set((i % 10) * 38, Math.floor(i / 10) * 38)
+                    recentsItems.addChild(button)
+                })
+                addTab(InventoryDialog.recentsIcon(), recentsItems, groupIndex)
+                groupIndex += 1
+            }
+        }
+
         for (const group of FD.inventoryLayout) {
             // Make creative entities available only in the main inventory
             if (group.name === 'creative' && itemsFilter !== undefined) {
@@ -93,48 +192,19 @@ export class InventoryDialog extends Dialog {
                 let subgroupHasItems = false
 
                 for (const item of subgroup.items) {
-                    if (itemsFilter === undefined) {
-                        const itemData = FD.items[item.name]
-                        if (!itemData) continue
-                        if (!itemData.place_result && !itemData.place_as_tile) continue
-                        // needed for robots/trains/cars
-                        if (itemData.place_result && !FD.entities[itemData.place_result]) continue
-                    } else {
-                        if (!itemsFilter.includes(item.name)) continue
-                    }
+                    if (!isAllowed(item.name)) continue
 
                     if (itemColIndex === 10) {
                         itemColIndex = 0
                         itemRowIndex += 1
                     }
 
-                    const button = new Button<Container>(36, 36)
+                    const button = makeItemButton(item.name)
                     button.position.set(itemColIndex * 38, itemRowIndex * 38)
-                    button.content = F.CreateIcon(item.name)
-                    button.on('pointerdown', e => {
-                        e.stopPropagation()
-                        if (e.button === 0) {
-                            selectedCallBack(item.name)
-                            this.close()
-                        }
-                    })
-                    button.on('pointerover', () => {
-                        this.m_hoveredItem = item.name
-                        this.updateRecipeVisualization(item.name)
-                    })
-                    button.on('pointerout', () => {
-                        // we have to check this because pointerout can fire after pointerover
-                        if (this.m_hoveredItem === item.name) {
-                            this.m_hoveredItem = undefined
-                            this.updateRecipeVisualization(undefined)
-                        }
-                    })
-
                     inventoryGroupItems.addChild(button)
 
                     itemColIndex += 1
                     subgroupHasItems = true
-                    // }
                 }
 
                 if (subgroupHasItems) {
@@ -144,38 +214,8 @@ export class InventoryDialog extends Dialog {
             }
 
             if (inventoryGroupItems.children.length > 0) {
-                inventoryGroupItems.visible = groupIndex === 0
-                this.m_InventoryItems.addChild(inventoryGroupItems)
-
-                const button = new Button<Container<Button<Container>>>(68, 68, 3)
-                button.active = groupIndex === 0
-                button.position.set(groupIndex * 70, 0)
-                button.content = F.CreateIcon(group.name, group.name === 'creative' ? 32 : 64)
-                button.data = inventoryGroupItems
-                button.on('pointerdown', e => {
-                    e.stopPropagation()
-                    if (e.button === 0) {
-                        if (!button.active) {
-                            for (const inventoryGroup of this.m_InventoryGroups.children) {
-                                inventoryGroup.active = inventoryGroup === button
-                            }
-                        }
-                        const buttonData = button.data
-                        if (!buttonData.visible) {
-                            for (const inventoryGroupItems of this.m_InventoryItems.children) {
-                                inventoryGroupItems.visible = inventoryGroupItems === buttonData
-                                inventoryGroupItems.interactiveChildren =
-                                    inventoryGroupItems === buttonData
-                            }
-                            // New group starts scrolled to the top.
-                            this.m_itemScroll = 0
-                            this.applyItemScroll()
-                        }
-                    }
-                })
-
-                this.m_InventoryGroups.addChild(button)
-
+                const icon = F.CreateIcon(group.name, group.name === 'creative' ? 32 : 64)
+                addTab(icon, inventoryGroupItems, groupIndex)
                 groupIndex += 1
             }
         }
@@ -204,6 +244,23 @@ export class InventoryDialog extends Dialog {
 
         this.setupTabScroll(groupIndex)
         this.setupItemScroll()
+    }
+
+    /** Names already on the blueprint for `key`, used to seed an empty recents tab. */
+    private static blueprintNames(key: string): string[] {
+        const ents = G.bp.entities.valuesArray()
+        if (key === 'recipes') return ents.map(e => e.recipe).filter((r): r is string => !!r)
+        if (key === 'modules') return ents.flatMap(e => e.modules).filter((m): m is string => !!m)
+        return ents.map(e => e.name)
+    }
+
+    /** ★ glyph icon for the synthetic Recents tab. */
+    private static recentsIcon(): Container {
+        const c = new Container()
+        const t = new Text({ text: '★', style: { fill: 0xffe6c0, fontSize: 44 } })
+        t.anchor.set(0.5)
+        c.addChild(t)
+        return c
     }
 
     /** A small dark arrow button used to scroll the tabs / item grid. */

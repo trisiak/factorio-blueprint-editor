@@ -125,7 +125,7 @@ export function installTestHook(win: Window = window): void {
         },
         openInventory: () => {
             Dialog.closeAll()
-            G.UI.createInventory('Inventory')
+            G.UI.createInventory('Inventory', undefined, undefined, 'items')
         },
         closeDialogs: () => Dialog.closeAll(),
         centerView: () => G.BPC.centerViewport(),

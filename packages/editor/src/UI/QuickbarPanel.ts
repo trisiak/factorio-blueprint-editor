@@ -116,8 +116,11 @@ export class QuickbarPanel extends Panel {
                             G.BPC.spawnPaintContainer(quickbarSlot.itemName)
                         } else {
                             // UC3
-                            G.UI.createInventory('Inventory', undefined, item =>
-                                quickbarSlot.assignItem(item)
+                            G.UI.createInventory(
+                                'Inventory',
+                                undefined,
+                                item => quickbarSlot.assignItem(item),
+                                'items'
                             )
                         }
                     } else if (e.button === 2) {
