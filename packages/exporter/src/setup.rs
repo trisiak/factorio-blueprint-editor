@@ -499,6 +499,7 @@ pub async fn download_factorio(
     data_dir: &Path,
     base_factorio_dir: &Path,
     factorio_version: &str,
+    pack: &Pack,
 ) -> Result<(), Box<dyn Error>> {
     let info_path = base_factorio_dir.join("data/base/info.json");
 
@@ -507,10 +508,33 @@ pub async fn download_factorio(
         .map(|info| info.version == factorio_version)
         .unwrap_or(false);
 
-    if same_version {
+    // The graphical `expansion` build bundles the Space Age DLC data dirs
+    // (space-age/quality/elevated-rails); the base-game `alpha` build does not.
+    // The two share a version number, so checking the version alone isn't
+    // enough — an `alpha` install looks "up to date" yet is missing the DLC a
+    // pack needs. Treat the install as sufficient only if every one of this
+    // pack's mods is actually present on disk; otherwise re-download the build
+    // that has them.
+    let mods_present = futures::future::join_all(
+        pack.mods
+            .iter()
+            .map(|m| tokio::fs::try_exists(base_factorio_dir.join("data").join(m))),
+    )
+    .await
+    .into_iter()
+    .all(|r| matches!(r, Ok(true)));
+
+    if same_version && mods_present {
         println!("Downloaded Factorio version matches required version");
     } else {
-        println!("Downloading Factorio v{}", factorio_version);
+        // A pack that needs anything beyond the base game (the DLC mods ship
+        // only in the `expansion` build) requires the expansion download.
+        let build = if pack.mods.iter().any(|m| m != "base") {
+            "expansion"
+        } else {
+            "alpha"
+        };
+        println!("Downloading Factorio v{factorio_version} ({build} build)");
         // Only blow away the Factorio install — `data_dir` also holds the
         // committed `output/` packs (and packs.json), which a regen must keep.
         if base_factorio_dir.is_dir() {
@@ -521,7 +545,7 @@ pub async fn download_factorio(
         let username = get_env_var!("FACTORIO_USERNAME")?;
         let token = get_env_var!("FACTORIO_TOKEN")?;
 
-        download(factorio_version, &username, &token, data_dir).await?;
+        download(factorio_version, build, &username, &token, data_dir).await?;
     }
 
     Ok(())
@@ -529,6 +553,7 @@ pub async fn download_factorio(
 
 async fn download(
     version: &str,
+    build: &str,
     username: &str,
     token: &str,
     out_dir: &Path,
@@ -539,7 +564,7 @@ async fn download(
         // "macos" => "osx",
         _ => panic!("unsupported OS"),
     };
-    let url = format!("https://www.factorio.com/get-download/{version}/alpha/{os}?username={username}&token={token}");
+    let url = format!("https://www.factorio.com/get-download/{version}/{build}/{os}?username={username}&token={token}");
 
     let client = reqwest::Client::new();
     let res = client.get(&url).send().await?;

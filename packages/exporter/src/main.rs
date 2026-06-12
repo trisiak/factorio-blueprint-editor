@@ -43,7 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let output_dir = DATA_DIR.join("output").join(&pack.id);
     let base_factorio_dir = DATA_DIR.join(factorio_dir_name);
 
-    setup::download_factorio(&DATA_DIR, &base_factorio_dir, FACTORIO_VERSION).await?;
+    setup::download_factorio(&DATA_DIR, &base_factorio_dir, FACTORIO_VERSION, pack).await?;
     setup::extract(&output_dir, &base_factorio_dir, pack, &all_mods).await?;
 
     let static_ = Static::new(Path::new("data/output/"));
