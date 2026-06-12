@@ -152,28 +152,65 @@ export class InventoryDialog extends Dialog {
 
         let groupIndex = 0
 
-        // Optional "Recents" tab (first, active): recently-selected names, then
-        // what's already on the blueprint — so it isn't empty on first use —
-        // filtered to what this selector allows.
+        // Optional "Recents" tab (first, active): three labelled sections —
+        // recently picked, the quickbar (items only), and what's on the blueprint
+        // (so it's never empty) — each filtered to what this selector allows and
+        // colour-coded so the sources read apart. Recent + Quickbar are shown in
+        // full; "On blueprint" only adds names not already shown above.
         if (recentsKey) {
             const seen = new Set<string>()
-            const recents: string[] = []
-            for (const name of [
-                ...getRecents(recentsKey),
-                ...InventoryDialog.blueprintNames(recentsKey),
-            ]) {
-                if (seen.has(name) || !isAllowed(name)) continue
-                seen.add(name)
-                recents.push(name)
+            const collect = (names: string[], dedupeAgainstShown: boolean): string[] => {
+                const out: string[] = []
+                const local = new Set<string>()
+                for (const name of names) {
+                    if (!isAllowed(name) || local.has(name)) continue
+                    if (dedupeAgainstShown && seen.has(name)) continue
+                    local.add(name)
+                    out.push(name)
+                }
+                for (const name of out) seen.add(name)
+                return out
             }
-            if (recents.length > 0) {
-                const recentsItems = new Container<Button<Container>>()
-                recents.forEach((name, i) => {
-                    const button = makeItemButton(name)
-                    button.position.set((i % 10) * 38, Math.floor(i / 10) * 38)
-                    recentsItems.addChild(button)
-                })
-                addTab(InventoryDialog.recentsIcon(), recentsItems, groupIndex)
+
+            const sections: { label: string; color: number; names: string[] }[] = []
+            const recent = collect(getRecents(recentsKey), false)
+            if (recent.length) sections.push({ label: 'Recent', color: 0xffffff, names: recent })
+            if (recentsKey === 'items') {
+                const quickbar = collect(
+                    G.UI.quickbarPanel.serialize().filter((n): n is string => !!n),
+                    false
+                )
+                if (quickbar.length)
+                    sections.push({ label: 'Quickbar', color: 0x8fd0ff, names: quickbar })
+            }
+            const onBlueprint = collect(InventoryDialog.blueprintNames(recentsKey), true)
+            if (onBlueprint.length)
+                sections.push({ label: 'On blueprint', color: 0xffcf8f, names: onBlueprint })
+
+            if (sections.length > 0) {
+                const recentsItems = new Container()
+                let y = 0
+                for (const section of sections) {
+                    const header = new Text({
+                        text: section.label,
+                        style: {
+                            fontFamily: "'Roboto', sans-serif",
+                            fontSize: 12,
+                            fontWeight: 'bold',
+                            fill: section.color,
+                        },
+                    })
+                    header.position.set(0, y)
+                    recentsItems.addChild(header)
+                    y += 18
+                    section.names.forEach((name, i) => {
+                        const button = makeItemButton(name)
+                        button.position.set((i % 10) * 38, y + Math.floor(i / 10) * 38)
+                        recentsItems.addChild(button)
+                    })
+                    y += Math.ceil(section.names.length / 10) * 38 + 6
+                }
+                addTab(InventoryDialog.recentsIcon(), recentsItems as InventoryItems, groupIndex)
                 groupIndex += 1
             }
         }

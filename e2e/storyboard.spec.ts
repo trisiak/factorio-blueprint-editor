@@ -196,6 +196,13 @@ test.describe('layout storyboard (visual sandbox)', () => {
                 localStorage.setItem('fbe:touchToastSeen', 'true')
                 localStorage.setItem('firstRun', 'false')
                 localStorage.setItem('dat.gui.closed', 'true')
+                // Seed the quickbar + recents so the inventory's Recents tab shows
+                // all three sources (recent / quickbar / on-blueprint) distinctly.
+                localStorage.setItem('quickbarItemNames', JSON.stringify(['transport-belt']))
+                localStorage.setItem(
+                    'fbe:recent:items',
+                    JSON.stringify(['assembling-machine-3', 'fast-inserter'])
+                )
             })
 
             const page = await context.newPage()
