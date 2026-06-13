@@ -1506,7 +1506,6 @@ export class BlueprintContainer extends Container {
         }
 
         this.updateHoverContainer(true)
-        this.setMode(EditorMode.PAINT)
         this.cursor = 'pointer'
         // Fresh cursor: the first touch tap should position, not commit; and a
         // held item supersedes any pending entity-edit selection.
@@ -1549,6 +1548,11 @@ export class BlueprintContainer extends Container {
             this.cursor = 'inherit'
             return
         }
+
+        // Enter PAINT only once paintContainer is set, so mode-change consumers
+        // (the rail's cursor-aware gates, e.g. Flip for a flippable paste ghost)
+        // see the real cursor rather than a stale/undefined one.
+        this.setMode(EditorMode.PAINT)
 
         if (!this.isPointerInside) {
             this.paintContainer.hide()

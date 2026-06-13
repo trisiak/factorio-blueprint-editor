@@ -2,18 +2,13 @@ import { test, expect, type Page } from '@playwright/test'
 
 // The on-screen action toolbar (packages/website/src/actionToolbar.ts) is a
 // touch affordance: it mirrors the editor's keyboard action registry into DOM
-// buttons, shown only in the `mobile` input mode. Its headline job is giving
-// touch users a way to exit paint mode, which was otherwise keyboard-only.
+// buttons, shown only in the `mobile` input mode. The rail is **mode-gated**
+// (#33): a button is only in the DOM when its action is useful in the current
+// editor mode, so non-live buttons are absent (count 0), not just hidden.
 // See docs/mobile-controls.md.
 
-// Buttons are located by their `title` (set to the action's label) so the
-// assertions don't depend on the decorative unicode glyph in the button text.
-const BUTTON_TITLES = ['Items', 'Rotate', 'Flip H', 'Flip V', 'Pick', 'Undo', 'Redo', 'Center']
-
 // A self-contained vanilla-2.0 blueprint (a single wooden chest). Starts with
-// '0', so the loader decodes it locally — no `/corsproxy` round-trip (which the
-// preview server doesn't provide). Gives the "New" confirm a non-empty blueprint
-// to guard. Mirrors the strings in persistence.spec.ts.
+// '0', so the loader decodes it locally — no `/corsproxy` round-trip.
 const CHEST =
     '0eJxtjs0OgjAQhN9lztUgoRD6KsYYfjbapGwJLSohfXcX9ODBy2x2M9/MrmjdTONkOcKssJEGmJ+bwoOmYD3D6DKvi7rWRZ5VVVEquKYlJ+5xc4R4iCTS3UUFs53nAHOWTO7pBXNSCPbGjdt6uBlIyKf3PfGXSemiQBxttPQh92W58jy0NO0J/ziF0QeBth9XSFN21ArLPiUzpTfn9ku6'
 
@@ -31,12 +26,23 @@ async function waitForLoaded(page: Page): Promise<void> {
     await expect(page.locator('#loadingScreen')).not.toHaveClass(/active/, { timeout: 60_000 })
 }
 
-// Enter paint mode deterministically without clipboard or canvas hit-testing:
-// seed a quickbar item (the website loads `quickbarItemNames` from localStorage
-// on boot), then press the slot-1 key, which spawns the paint cursor for that
-// item. The toolbar surfaces PAINT by activating its Cancel button (via
-// Editor.onModeChange), so `button[title="Cancel"].active` is our DOM-observable
-// proxy for "the cursor is holding something".
+// Tap a rail action — directly if it's in the rail, else via the ⋯ overflow.
+// (With mode-gating the rail is short enough that the blueprint actions usually
+// sit directly in it rather than the overflow.) Force-click: the rail re-flows
+// (ResizeObserver / mode changes) so elements aren't "stable".
+async function tapRail(page: Page, title: string): Promise<void> {
+    const toolbar = page.locator('#action-toolbar')
+    const btn = toolbar.locator(`button[title="${title}"]`)
+    if (!(await btn.isVisible())) {
+        const more = toolbar.locator('button.rail-more')
+        if (await more.count()) await more.click({ force: true })
+    }
+    await btn.click({ force: true })
+}
+
+// Enter paint mode deterministically: seed a quickbar item (loaded from
+// localStorage on boot), then press the slot-1 key to pick it up. In PAINT the
+// rail surfaces the Cancel button, our DOM-observable proxy for "holding a cursor".
 async function gotoAndEnterPaint(page: Page): Promise<void> {
     await page.addInitScript(() => {
         window.localStorage.setItem('quickbarItemNames', JSON.stringify(['transport-belt']))
@@ -44,12 +50,13 @@ async function gotoAndEnterPaint(page: Page): Promise<void> {
     await page.goto('/')
     await waitForLoaded(page)
 
+    // Cancel is mode-gated: absent while idle (NONE).
     const cancel = page.locator('#action-toolbar button[title="Cancel"]')
-    await expect(cancel).not.toHaveClass(/active/)
+    await expect(cancel).toHaveCount(0)
 
     await page.locator('#editor').focus()
     await page.keyboard.press('1') // code 'Digit1' -> quickbar slot 1 -> paint
-    await expect(cancel).toHaveClass(/active/)
+    await expect(cancel).toBeVisible()
 }
 
 test.describe('action toolbar', () => {
@@ -79,7 +86,9 @@ test.describe('action toolbar', () => {
             )
         })
 
-        test('is visible and exposes the action buttons', async ({ page }) => {
+        test('shows the global actions and hides mode-specific ones while idle', async ({
+            page,
+        }) => {
             await page.goto('/')
             await waitForLoaded(page)
 
@@ -87,67 +96,87 @@ test.describe('action toolbar', () => {
             await expect(toolbar).toBeVisible()
             await expect(toolbar).toHaveClass(/visible/)
 
-            for (const title of [...BUTTON_TITLES, 'Cancel']) {
+            // Global actions are always present.
+            for (const title of ['Items', 'Undo', 'Redo', 'Center']) {
                 await expect(toolbar.locator(`button[title="${title}"]`)).toBeVisible()
             }
-            // Cancel is styled apart so it reads as the "get me out" control.
-            await expect(toolbar.locator('button[title="Cancel"]')).toHaveClass(/cancel/)
+            // Cursor/selection actions are no-ops while idle (NONE) → absent.
+            for (const title of ['Rotate', 'Flip H', 'Flip V', 'Delete', 'Copy cfg', 'Cancel']) {
+                await expect(toolbar.locator(`button[title="${title}"]`)).toHaveCount(0)
+            }
+            // Select needs something to select — hidden on an empty blueprint.
+            await expect(toolbar.locator('button[title="Select"]')).toHaveCount(0)
         })
 
-        test('buttons route through the action registry without throwing', async ({ page }) => {
+        test('the Select button appears once the blueprint is non-empty', async ({ page }) => {
+            await page.goto(`/?test&source=${encodeURIComponent(CHEST)}`)
+            await waitForLoaded(page)
+            await expect.poll(() => entityCount(page)).toBeGreaterThan(0)
+
+            await expect(page.locator('#action-toolbar button[title="Select"]')).toBeVisible()
+        })
+
+        test('PAINT mode surfaces rotate/pick/cancel; flip is cursor-aware', async ({ page }) => {
+            await gotoAndEnterPaint(page) // holding a single item (transport-belt)
+
+            const toolbar = page.locator('#action-toolbar')
+            for (const title of ['Rotate', 'Pick', 'Cancel']) {
+                await expect(toolbar.locator(`button[title="${title}"]`)).toBeVisible()
+            }
+            // Flip only works on a pasted-blueprint ghost, not a single held item,
+            // so it's hidden here; EDIT-only actions are hidden too.
+            for (const title of ['Flip H', 'Flip V', 'Delete', 'Copy cfg', 'Paste cfg']) {
+                await expect(toolbar.locator(`button[title="${title}"]`)).toHaveCount(0)
+            }
+        })
+
+        test('Flip buttons appear when holding a pasted-blueprint ghost', async ({ page }) => {
+            // A paste ghost (PaintBlueprintContainer) is flippable; spawn one via
+            // the test hook from a loaded blueprint.
+            await page.goto(`/?test&source=${encodeURIComponent(CHEST)}`)
+            await waitForLoaded(page)
+            await expect.poll(() => entityCount(page)).toBeGreaterThan(0)
+            await page.evaluate(() =>
+                (
+                    window as unknown as { __FBE_TEST__: { spawnPasteGhost: () => boolean } }
+                ).__FBE_TEST__.spawnPasteGhost()
+            )
+
+            const toolbar = page.locator('#action-toolbar')
+            await expect(toolbar.locator('button[title="Flip H"]')).toBeVisible()
+            await expect(toolbar.locator('button[title="Flip V"]')).toBeVisible()
+        })
+
+        test('global + paint buttons route through the registry without throwing', async ({
+            page,
+        }) => {
             const fatal: string[] = []
             page.on('pageerror', err => fatal.push(err.message))
 
-            await page.goto('/')
-            await waitForLoaded(page)
+            await gotoAndEnterPaint(page)
 
+            // PAINT-mode rail actions exist now; exercise the callAction seam.
             const toolbar = page.locator('#action-toolbar')
-            // On an empty blueprint these are safe no-ops, but clicking them
-            // exercises the EDITOR.callAction(...) seam end to end; nothing should
-            // throw (e.g. an unbound action name or a null cursor). Use force
-            // clicks: this test is purely about the handler firing, the sibling
-            // test already covers visibility/tappability, and the actionability
-            // wait on every button is what makes a 7-tap loop blow the test
-            // timeout when several specs run in parallel against one render loop.
-            // (Place + the nudge arrows moved to the bottom paint d-pad; they're
-            // covered by touchPlacement*.spec.ts.)
-            for (const title of [
-                'Rotate',
-                'Flip H',
-                'Flip V',
-                'Undo',
-                'Redo',
-                'Center',
-                'Cancel',
-            ]) {
+            for (const title of ['Rotate', 'Pick', 'Undo', 'Redo', 'Center']) {
                 await toolbar.locator(`button[title="${title}"]`).click({ force: true })
             }
 
             expect(fatal.join('\n')).toBe('')
         })
 
-        // Blueprint-level actions (clipboard / new / export) live in the ⋯
-        // overflow; they're keyboard-only otherwise, so the rail is the only touch
-        // path. Open the sheet, confirm they're there, and that tapping them routes
-        // (copyBlueprint via a handler, the rest via the action registry) without
+        // Blueprint-level actions (clipboard / new / export) are global and, with
+        // the rail mode-gated short, usually sit directly in it. Tapping them
+        // routes (copyBlueprint via a handler, the rest via the registry) without
         // throwing on an empty blueprint.
-        test('overflow exposes the blueprint actions and they route without throwing', async ({
-            page,
-        }) => {
+        test('the blueprint actions route without throwing', async ({ page }) => {
             const fatal: string[] = []
             page.on('pageerror', err => fatal.push(err.message))
 
             await page.goto('/')
             await waitForLoaded(page)
 
-            const toolbar = page.locator('#action-toolbar')
-
-            // Force clicks throughout: the rail re-lays-out (ResizeObserver on the
-            // button stack) so elements aren't "stable" for the actionability wait.
-            // A button click closes the sheet, so re-open ⋯ before each.
             for (const title of ['Copy BP', 'Paste BP', 'Export', 'New']) {
-                await toolbar.locator('button.rail-more').click({ force: true })
-                await toolbar.locator(`button[title="${title}"]`).click({ force: true })
+                await tapRail(page, title)
             }
 
             expect(fatal.join('\n')).toBe('')
@@ -163,9 +192,7 @@ test.describe('action toolbar', () => {
             await waitForLoaded(page)
             await expect.poll(() => entityCount(page)).toBeGreaterThan(0)
 
-            const toolbar = page.locator('#action-toolbar')
-            await toolbar.locator('button.rail-more').click({ force: true })
-            await toolbar.locator('button[title="New"]').click({ force: true })
+            await tapRail(page, 'New')
 
             // The confirm toast appears; the blueprint is untouched until confirmed.
             const confirm = page.getByRole('button', { name: /^Clear$/ })
@@ -177,13 +204,14 @@ test.describe('action toolbar', () => {
         })
 
         // The headline behavior: a touch user can get out of paint mode. Cancel
-        // routes through closeWindow -> BlueprintContainer.clearCursor().
+        // routes through closeWindow -> BlueprintContainer.clearCursor(). Leaving
+        // PAINT also removes Cancel (mode-gated).
         test('Cancel button exits paint mode', async ({ page }) => {
             await gotoAndEnterPaint(page)
 
             const cancel = page.locator('#action-toolbar button[title="Cancel"]')
             await cancel.tap()
-            await expect(cancel).not.toHaveClass(/active/)
+            await expect(cancel).toHaveCount(0)
         })
 
         // Escape gains the same fall-through (close dialog if open, else clear the
@@ -192,9 +220,7 @@ test.describe('action toolbar', () => {
             await gotoAndEnterPaint(page)
 
             await page.keyboard.press('Escape')
-            await expect(page.locator('#action-toolbar button[title="Cancel"]')).not.toHaveClass(
-                /active/
-            )
+            await expect(page.locator('#action-toolbar button[title="Cancel"]')).toHaveCount(0)
         })
     })
 })

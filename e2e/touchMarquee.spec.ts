@@ -124,6 +124,18 @@ test.describe('touch marquee select', () => {
         expect((await getState(page)).infoPanelVisible).toBe(false)
     })
 
+    test('Rotate is hidden for a multi-entity selection (group rotation unsupported)', async ({
+        page,
+    }) => {
+        await gotoWithBlueprint(page)
+        await selectAll(page)
+        // The box covers the whole blueprint → a multi-entity selection.
+        expect((await getState(page)).marquee.count).toBeGreaterThan(1)
+        // Rotating a group isn't supported yet (#52), so the rail Rotate hides
+        // rather than offering a no-op (it returns for a single-entity selection).
+        await expect(page.locator('#action-toolbar button[title="Rotate"]')).toHaveCount(0)
+    })
+
     test('the nudge d-pad moves the selection in place (entities, not a ghost)', async ({
         page,
     }) => {
