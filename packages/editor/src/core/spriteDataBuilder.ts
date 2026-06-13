@@ -163,9 +163,16 @@ function getSpriteData(data: IDrawData): readonly ExtendedSpriteData[] {
         generatorCache.set(data.name, failedGenerator)
         return SPRITE_GENERATION_FAILED as any
     }
-    const graphicsFn = generateGraphics(entity)
+    // graphicsFn is built lazily *inside* the try below — building it runs the
+    // draw_* function, whose top-level code can throw on an unexpected modded
+    // prototype shape (e.g. a furnace whose graphics_set has no `animation`).
+    // Building it here, outside the try, would let that throw escape getSpriteData
+    // and abort the whole blueprint render instead of degrading this one entity
+    // to the box fallback — which silently dropped entire pasted blueprints (#38).
+    let graphicsFn: ((data: IDrawData) => readonly SpriteData[]) | undefined
     const generator = (data: IDrawData): readonly ExtendedSpriteData[] => {
         try {
+            graphicsFn ??= generateGraphics(entity)
             // Normalize at the seam: a draw_* function may emit a raw
             // prototype field that is still a `{layers}` wrapper (modded
             // shapes, see layersOf) — EntitySprite would silently drop it
@@ -1463,15 +1470,21 @@ function draw_fluid_wagon(e: FluidWagonPrototype): (data: IDrawData) => readonly
     }
 }
 function draw_furnace(e: FurnacePrototype): (data: IDrawData) => readonly SpriteData[] {
-    const anim = e.graphics_set.animation as any
-    if (anim.layers) {
-        return () => anim.layers
+    // Vanilla furnaces draw `graphics_set.animation`; SE's turbines (big/
+    // condenser) have no `animation` and instead carry `idle_animation`
+    // (graphics_set is also optional in general). Resolve whichever exists —
+    // and never read `.layers` off undefined, which previously threw at
+    // build time and escaped the sprite-gen guard (#38).
+    const gs = (e as { graphics_set?: { animation?: unknown; idle_animation?: unknown } })
+        .graphics_set
+    const anim = (gs?.animation ?? gs?.idle_animation) as
+        | (Animation & Record<string, { layers?: SpriteData[] }>)
+        | undefined
+    if (anim?.layers) {
+        return () => anim.layers as readonly SpriteData[]
     }
     // Directional animation (e.g. recycler has {north, east, south, west})
-    return (data: IDrawData) => {
-        const dirAnim = anim[util.getDirName(data.dir)]
-        return dirAnim?.layers || []
-    }
+    return (data: IDrawData) => anim?.[util.getDirName(data.dir)]?.layers || []
 }
 function draw_fusion_generator(
     e: FusionGeneratorPrototype
