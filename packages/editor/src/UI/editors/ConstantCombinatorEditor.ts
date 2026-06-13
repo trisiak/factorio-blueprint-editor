@@ -70,7 +70,7 @@ export class ConstantCombinatorEditor extends Editor {
         if (this.m_filters[i] === undefined) {
             G.UI.createSignalPicker(
                 'Select a signal',
-                signal => this.setSlot(i, signal),
+                choice => this.setSlot(i, choice.signal),
                 false // constant combinators can't hold each/everything/anything
             )
         } else {

@@ -1,6 +1,8 @@
 import { Container, Graphics, Text } from 'pixi.js'
 import FD from '../core/factorioData'
 import { ISignal, SignalType } from '../types'
+import { TextInput } from './controls/TextInput'
+import G from '../common/globals'
 import F from './controls/functions'
 import { Button } from './controls/Button'
 import { Dialog } from './controls/Dialog'
@@ -8,43 +10,53 @@ import { styles } from './style'
 
 type Category = 'item' | 'fluid' | 'virtual'
 
+/** What the picker resolves to: a signal, or (for combinator operands) a constant. */
+export interface SignalChoice {
+    signal?: ISignal
+    constant?: number
+}
+
 /**
  * Signal selection dialog for circuit editing. Unlike the item-only
- * `InventoryDialog` (which is driven by `inventoryLayout` and so can't show
- * fluids or virtual signals), this presents the full signal universe — items,
- * fluids and virtual signals — read live from `FD`, so it adapts to whatever the
- * active data pack defines (mod-safe by construction).
+ * `InventoryDialog` (driven by `inventoryLayout`, so it can't show fluids or
+ * virtual signals), this presents the full signal universe — items, fluids and
+ * virtual signals — read live from `FD`, so it adapts to whatever data pack is
+ * active (mod-safe by construction).
  *
- * Touch-first: big 36px tap targets, a scrollable masked grid driven by both the
- * mouse wheel and explicit ▲/▼ buttons (no keyboard or precise drag needed), and
- * it scales to narrow viewports via the base `Dialog` fit-to-width logic.
+ * Styled to match `InventoryDialog`: a selection is *previewed* (highlighted +
+ * its name shown in the bottom bar) and only committed via **✓ Confirm** — so
+ * picking always takes a deliberate confirm, consistent with the inventory
+ * dialog. Combinator operands additionally get a Constant field in that bar
+ * (Factorio puts the constant in the same chooser), which is why the operand
+ * itself is a single slot rather than a slot + inline number box.
  */
 export class SignalPicker extends Dialog {
     private static readonly W = 404
-    private static readonly H = 470
+    private static readonly H = 500
     private static readonly PAD = 12
     private static readonly TAB_Y = 40
-    private static readonly TAB_H = 34
     private static readonly GRID_Y = 84
     private static readonly STEP = 38
+    private static readonly BAR_Y = SignalPicker.H - 40
 
-    private readonly viewW = SignalPicker.W - SignalPicker.PAD * 2 - 24 // leave room for arrows
-    private readonly viewH = SignalPicker.H - SignalPicker.GRID_Y - SignalPicker.PAD
+    private readonly viewW = SignalPicker.W - SignalPicker.PAD * 2 - 24
+    private readonly viewH = SignalPicker.BAR_Y - SignalPicker.GRID_Y - 8
 
     private readonly grid = new Container()
     private scroll = 0
     private maxScroll = 0
 
-    /**
-     * @param title - dialog header
-     * @param onSelect - called with the chosen signal `{ name, type }`
-     * @param allowSpecial - include the combinator-only `each`/`everything`/
-     *   `anything` virtual signals (valid for combinators, not constant combinators)
-     */
+    private preview: SignalChoice = {}
+    private selectedButton?: Button
+    private readonly nameLabel: Text
+    private readonly confirmBtn: Container
+    private constantInput?: TextInput
+
     public constructor(
         title: string,
-        private readonly onSelect: (signal: ISignal) => void,
-        private readonly allowSpecial = true
+        private readonly onConfirm: (choice: SignalChoice) => void,
+        private readonly allowSpecial = true,
+        private readonly allowConstant = false
     ) {
         super(SignalPicker.W, SignalPicker.H, title)
 
@@ -58,7 +70,7 @@ export class SignalPicker extends Dialog {
         ]
         const tabButtons: Button<Category>[] = []
         cats.forEach((cat, i) => {
-            const tab = new Button<Category>(112, SignalPicker.TAB_H)
+            const tab = new Button<Category>(112, 34)
             tab.data = cat.id
             const label = new Text({ text: cat.label, style: styles.dialog.label })
             label.anchor.set(0.5)
@@ -78,17 +90,34 @@ export class SignalPicker extends Dialog {
         this.grid.mask = mask
         this.addChild(this.grid)
 
-        // Scroll arrows
-        const up = this.arrow('▲', () => this.scrollBy(-SignalPicker.STEP * 3))
+        // Scroll arrows — same look as InventoryDialog's arrow buttons.
+        const up = SignalPicker.arrowButton('▲', () => this.scrollBy(-SignalPicker.STEP * 3))
         up.position.set(SignalPicker.W - SignalPicker.PAD - 22, SignalPicker.GRID_Y)
-        const down = this.arrow('▼', () => this.scrollBy(SignalPicker.STEP * 3))
+        const down = SignalPicker.arrowButton('▼', () => this.scrollBy(SignalPicker.STEP * 3))
         down.position.set(
             SignalPicker.W - SignalPicker.PAD - 22,
             SignalPicker.GRID_Y + this.viewH - 22
         )
         this.addChild(up, down)
 
-        // Wheel scrolling over the body
+        // Bottom bar: preview name (left), optional constant field, ✓ Confirm (right).
+        this.nameLabel = new Text({ text: '', style: styles.dialog.label })
+        this.nameLabel.position.set(SignalPicker.PAD, SignalPicker.BAR_Y + 6)
+        this.addChild(this.nameLabel)
+
+        if (this.allowConstant) {
+            this.constantInput = new TextInput(G.app.renderer, 64, '', 12)
+            this.constantInput.restrict = /^-?\d*$/
+            this.constantInput.position.set(SignalPicker.W - 180, SignalPicker.BAR_Y + 6)
+            this.constantInput.on('changed', () => this.onConstantTyped())
+            this.addChild(this.constantInput)
+        }
+
+        this.confirmBtn = SignalPicker.barButton('✓ Confirm', 0x2f7d32, () => this.confirm())
+        this.confirmBtn.position.set(SignalPicker.W - SignalPicker.PAD - 80, SignalPicker.BAR_Y + 2)
+        this.confirmBtn.visible = false
+        this.addChild(this.confirmBtn)
+
         this.eventMode = 'static'
         this.on('wheel', e => {
             e.preventDefault?.()
@@ -98,18 +127,84 @@ export class SignalPicker extends Dialog {
         this.showCategory('item', tabButtons, tabButtons[0], cols)
     }
 
-    private arrow(glyph: string, onTap: () => void): Button {
-        const b = new Button(22, 22)
-        const t = new Text({ text: glyph, style: styles.dialog.label })
+    private static arrowButton(glyph: string, onTap: () => void): Container {
+        const c = new Container()
+        const bg = new Graphics().roundRect(0, 0, 22, 22, 3).fill({ color: 0x202225, alpha: 0.9 })
+        const t = new Text({ text: glyph, style: { fill: 0xffffff, fontSize: 15 } })
         t.anchor.set(0.5)
-        b.content = t
-        b.on('pointertap', onTap)
-        return b
+        t.position.set(11, 11)
+        c.addChild(bg, t)
+        c.eventMode = 'static'
+        c.cursor = 'pointer'
+        c.on('pointertap', onTap)
+        return c
+    }
+
+    private static barButton(label: string, color: number, onTap: () => void): Container {
+        const c = new Container()
+        const bg = new Graphics().roundRect(0, 0, 80, 26, 4).fill(color)
+        const t = new Text({
+            text: label,
+            style: {
+                fontFamily: "'Roboto', sans-serif",
+                fontSize: 13,
+                fontWeight: 'bold',
+                fill: 0xffffff,
+            },
+        })
+        t.anchor.set(0.5)
+        t.position.set(40, 13)
+        c.addChild(bg, t)
+        c.eventMode = 'static'
+        c.cursor = 'pointer'
+        c.on('pointertap', onTap)
+        return c
+    }
+
+    private static nameOf(name: string): string {
+        const ln =
+            FD.items[name]?.localised_name ??
+            FD.fluids[name]?.localised_name ??
+            FD.signals[name]?.localised_name
+        return typeof ln === 'string' ? ln : name
     }
 
     private scrollBy(dy: number): void {
         this.scroll = Math.max(0, Math.min(this.maxScroll, this.scroll + dy))
         this.grid.position.y = SignalPicker.GRID_Y - this.scroll
+    }
+
+    private selectSignal(name: string, type: Category, button: Button): void {
+        if (this.selectedButton) this.selectedButton.active = false
+        this.selectedButton = button
+        button.active = true
+        if (this.constantInput) this.constantInput.text = ''
+        this.preview = { signal: { name, type: type as SignalType } }
+        this.nameLabel.text = SignalPicker.nameOf(name)
+        this.confirmBtn.visible = true
+    }
+
+    private onConstantTyped(): void {
+        if (this.selectedButton) {
+            this.selectedButton.active = false
+            this.selectedButton = undefined
+        }
+        const text = this.constantInput!.text
+        if (text === '' || text === '-') {
+            this.preview = {}
+            this.nameLabel.text = ''
+            this.confirmBtn.visible = false
+            return
+        }
+        this.preview = { constant: parseInt(text, 10) }
+        this.nameLabel.text = `Constant: ${this.preview.constant}`
+        this.confirmBtn.visible = true
+    }
+
+    private confirm(): void {
+        if (this.preview.signal === undefined && this.preview.constant === undefined) return
+        this.onConfirm(this.preview)
+        this.close()
     }
 
     private showCategory(
@@ -119,6 +214,7 @@ export class SignalPicker extends Dialog {
         cols: number
     ): void {
         for (const t of tabs) t.active = t === active
+        this.selectedButton = undefined
 
         for (const c of this.grid.removeChildren()) c.destroy()
         this.scroll = 0
@@ -127,8 +223,6 @@ export class SignalPicker extends Dialog {
         const names = SignalPicker.namesFor(cat, this.allowSpecial)
         names.forEach((name, i) => {
             const button = new Button(36, 36)
-            // Some names can lack an icon in oddly-shaped modded dumps; guard so
-            // one bad entry can't blank the whole picker.
             try {
                 button.content = F.CreateIcon(name)
             } catch {
@@ -140,16 +234,12 @@ export class SignalPicker extends Dialog {
                 (i % cols) * SignalPicker.STEP,
                 Math.floor(i / cols) * SignalPicker.STEP
             )
-            button.on('pointertap', () => {
-                this.onSelect({ name, type: cat as SignalType })
-                this.close()
-            })
+            button.on('pointertap', () => this.selectSignal(name, cat, button))
             this.grid.addChild(button)
         })
 
         const rows = Math.ceil(names.length / cols)
-        const gridH = rows * SignalPicker.STEP
-        this.maxScroll = Math.max(0, gridH - this.viewH)
+        this.maxScroll = Math.max(0, rows * SignalPicker.STEP - this.viewH)
     }
 
     /** Build the ordered name list for a category from the active data pack. */
@@ -159,7 +249,6 @@ export class SignalPicker extends Dialog {
             const special = new Set(['signal-each', 'signal-everything', 'signal-anything'])
             return Object.keys(FD.signals).filter(n => allowSpecial || !special.has(n))
         }
-        // Items, in inventory/group order, then any stragglers not in a group.
         const seen = new Set<string>()
         const out: string[] = []
         for (const group of FD.inventoryLayout) {

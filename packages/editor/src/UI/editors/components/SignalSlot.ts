@@ -55,9 +55,9 @@ export class SignalSlot extends Slot<undefined> {
         if (e.button === 0) {
             G.UI.createSignalPicker(
                 this.title,
-                signal => {
-                    this.signal = signal
-                    this.onChange(signal)
+                choice => {
+                    this.signal = choice.signal
+                    this.onChange(choice.signal)
                 },
                 this.allowSpecial
             )

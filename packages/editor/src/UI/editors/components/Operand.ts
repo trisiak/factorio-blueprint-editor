@@ -1,8 +1,9 @@
-import { Container } from 'pixi.js'
+import { FederatedPointerEvent, Text } from 'pixi.js'
 import G from '../../../common/globals'
 import { ISignal } from '../../../types'
-import { TextInput } from '../../controls/TextInput'
-import { SignalSlot } from './SignalSlot'
+import { Slot } from '../../controls/Slot'
+import { styles } from '../../style'
+import F from '../../controls/functions'
 
 export interface OperandValue {
     signal?: ISignal
@@ -10,56 +11,59 @@ export interface OperandValue {
 }
 
 /**
- * One combinator operand: a signal slot and a numeric (signed) constant field
- * that are mutually exclusive — picking a signal clears the number, typing a
- * number clears the signal — mirroring how Factorio stores `*_signal` vs
- * `*_constant`. Kept side-by-side and compact so two of them plus an operator fit
- * on one row even on a phone.
+ * One combinator operand as a single slot — it shows either the chosen signal's
+ * icon or the constant value. Tapping it opens the signal picker (which carries
+ * a Constant field), so a signal and a constant are mutually exclusive by
+ * construction, matching Factorio's single-slot operand chooser and how it
+ * stores `*_signal` vs `*_constant`. Right-click clears it.
  */
-export class Operand extends Container {
-    private readonly slot: SignalSlot
-    private readonly input: TextInput
+export class Operand extends Slot<undefined> {
+    private m_value: OperandValue
 
     public constructor(
         value: OperandValue,
         private readonly onChange: (value: OperandValue) => void,
-        allowSpecial = true
+        private readonly allowSpecial = true,
+        private readonly title = 'Select a signal or enter a constant'
     ) {
-        super()
-
-        this.slot = new SignalSlot(
-            value.signal,
-            signal => {
-                if (signal) {
-                    this.input.text = ''
-                    this.onChange({ signal })
-                } else {
-                    this.onChange({ constant: this.parseConstant() })
-                }
-            },
-            allowSpecial
-        )
-        this.addChild(this.slot)
-
-        this.input = new TextInput(
-            G.app.renderer,
-            52,
-            value.signal ? '' : value.constant !== undefined ? String(value.constant) : '',
-            12
-        )
-        this.input.restrict = /^-?\d*$/
-        this.input.position.set(42, 8)
-        this.input.on('changed', () => {
-            if (this.input.text !== '') {
-                this.slot.signal = undefined
-            }
-            this.onChange({ constant: this.parseConstant() })
-        })
-        this.addChild(this.input)
+        super(36, 36)
+        this.m_value = { ...value }
+        this.updateContent()
+        this.on('pointerdown', this.onPointerDown, this)
     }
 
-    private parseConstant(): number {
-        const n = parseInt(this.input.text, 10)
-        return Number.isNaN(n) ? 0 : n
+    private updateContent(): void {
+        if (this.m_value.signal?.name) {
+            try {
+                this.content = F.CreateIcon(this.m_value.signal.name)
+                return
+            } catch {
+                // fall through for an iconless signal name
+            }
+        }
+        const text = this.m_value.constant !== undefined ? String(this.m_value.constant) : '+'
+        const label = new Text({ text, style: styles.dialog.label })
+        label.anchor.set(0.5)
+        this.content = label
+    }
+
+    private onPointerDown(e: FederatedPointerEvent): void {
+        e.stopPropagation()
+        if (e.button === 0) {
+            G.UI.createSignalPicker(
+                this.title,
+                choice => {
+                    this.m_value = choice
+                    this.updateContent()
+                    this.onChange(choice)
+                },
+                this.allowSpecial,
+                true // operands can be a constant
+            )
+        } else if (e.button === 2) {
+            this.m_value = {}
+            this.updateContent()
+            this.onChange({})
+        }
     }
 }

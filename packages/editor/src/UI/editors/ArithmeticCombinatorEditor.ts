@@ -26,7 +26,7 @@ export class ArithmeticCombinatorEditor extends Editor {
     private readonly cond: IArithmeticCondition
 
     public constructor(entity: Entity) {
-        super(480, 196, entity)
+        super(360, 196, entity)
 
         // Local working copy; every control writes the whole condition back
         // through the entity setter (history + undo for free).
@@ -54,7 +54,7 @@ export class ArithmeticCombinatorEditor extends Editor {
                 this.commit()
             }
         )
-        op.position.set(x + 100, 66)
+        op.position.set(x + 44, 66)
         this.addChild(op)
 
         const second = new Operand(
@@ -65,7 +65,7 @@ export class ArithmeticCombinatorEditor extends Editor {
                 this.commit()
             }
         )
-        second.position.set(x + 156, 66)
+        second.position.set(x + 98, 66)
         this.addChild(second)
 
         this.addLabel(x, 120, 'Output')

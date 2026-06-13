@@ -4,10 +4,9 @@ import { DebugContainer } from './DebugContainer'
 import { QuickbarPanel } from './QuickbarPanel'
 import { EntityInfoPanel } from './EntityInfoPanel'
 import { InventoryDialog } from './InventoryDialog'
-import { SignalPicker } from './SignalPicker'
+import { SignalPicker, SignalChoice } from './SignalPicker'
 import { WiresPanel } from './WiresPanel'
 import { createEditor } from './editors/factory'
-import { ISignal } from '../types'
 
 export class UIContainer extends Container {
     private debugContainer: DebugContainer
@@ -69,10 +68,11 @@ export class UIContainer extends Container {
 
     public createSignalPicker(
         title: string,
-        onSelect: (signal: ISignal) => void,
-        allowSpecial = true
+        onConfirm: (choice: SignalChoice) => void,
+        allowSpecial = true,
+        allowConstant = false
     ): SignalPicker {
-        const picker = new SignalPicker(title, onSelect, allowSpecial)
+        const picker = new SignalPicker(title, onConfirm, allowSpecial, allowConstant)
         this.dialogsContainer.addChild(picker)
         return picker
     }

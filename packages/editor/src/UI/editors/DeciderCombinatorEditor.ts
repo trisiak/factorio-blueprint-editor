@@ -21,7 +21,7 @@ export class DeciderCombinatorEditor extends Editor {
     private out: DeciderCombinatorOutput
 
     public constructor(entity: Entity) {
-        super(480, 210, entity)
+        super(360, 210, entity)
 
         const dc = entity.deciderConditions
         this.cond = { ...(dc.conditions?.[0] ?? {}) }
