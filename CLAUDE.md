@@ -158,9 +158,9 @@ in the **same change** that lands the work (don't leave it for "later"):
   avoid.
 - **Close on completion, or say why not.** When an issue's work is fully done,
   close it (`state: completed`) with a one-line pointer to the commit/PR. For a
-  *tracking* issue, close only when every box is ticked; otherwise leave it open
+  _tracking_ issue, close only when every box is ticked; otherwise leave it open
   and the unchecked boxes are the remaining backlog.
-- **Mind orphaned tickets.** Work often lands under a *different* PR/issue number
+- **Mind orphaned tickets.** Work often lands under a _different_ PR/issue number
   than the one that filed it (e.g. #7's follow-up shipped under #38). When that
   happens, cross-link and close the original rather than letting it linger.
 - **Cross-link docs ↔ issues.** A tracking issue and its companion doc
