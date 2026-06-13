@@ -39,6 +39,11 @@ export class UIContainer extends Container {
         this.entityInfoPanel.updateVisualization(entity)
     }
 
+    /** Whether the top-right entity info panel is currently shown (for e2e). */
+    public get entityInfoPanelVisible(): boolean {
+        return this.entityInfoPanel.visible
+    }
+
     public addPaintIcon(icon: Container): void {
         this.paintIconContainer.addChild(icon)
     }

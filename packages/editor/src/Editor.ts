@@ -95,7 +95,7 @@ export class Editor {
         G.BPC.on('mode', (mode: EditorMode) => this.m_modeEmitter.emit('mode', mode))
     }
 
-    /** Current editor mode (NONE / EDIT / PAINT / PAN / COPY / DELETE). */
+    /** Current editor mode (NONE / EDIT / PAINT / PAN / COPY / DELETE / SELECT). */
     public get mode(): EditorMode {
         return G.BPC.mode
     }
@@ -103,6 +103,29 @@ export class Editor {
     /** Subscribe to editor mode changes — e.g. to show a "cancel paint" control. */
     public onModeChange(cb: (mode: EditorMode) => void): void {
         this.m_modeEmitter.on('mode', cb)
+    }
+
+    // --- Touch marquee (#21) — thin delegators for the website's Select button
+    // and the Copy/Cut/Delete bar (the gesture itself lives in BlueprintContainer).
+    /** Arm the marquee: the next one-finger drag draws a selection box (mobile). */
+    public armMarquee(): void {
+        G.BPC.armMarquee()
+    }
+    /** Entities in the held marquee selection (0 when not in SELECT mode). */
+    public get marqueeCount(): number {
+        return G.BPC.marqueeCount
+    }
+    public copyMarquee(): void {
+        G.BPC.copyMarquee()
+    }
+    public cutMarquee(): void {
+        G.BPC.cutMarquee()
+    }
+    public deleteMarquee(): void {
+        G.BPC.deleteMarquee()
+    }
+    public cancelMarquee(): void {
+        G.BPC.cancelMarquee()
     }
 
     /**

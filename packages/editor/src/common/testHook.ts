@@ -51,6 +51,13 @@ export interface EditorTestState {
      * editor, so tests read this to confirm the overlay didn't pop on first touch.
      */
     dialogOpen: boolean
+    /**
+     * Touch box-select (#21): entities under the held marquee selection (0 unless
+     * a selection is held, i.e. mode SELECT with the Copy/Cut/Delete bar showing).
+     */
+    marquee: { count: number }
+    /** Whether the top-right entity info panel is showing (hover/tap-select). */
+    infoPanelVisible: boolean
 }
 
 export function getEditorTestState(): EditorTestState {
@@ -89,6 +96,8 @@ export function getEditorTestState(): EditorTestState {
                     : null,
         },
         dialogOpen: Dialog.anyOpen(),
+        marquee: { count: G.BPC.marqueeCount },
+        infoPanelVisible: G.UI.entityInfoPanelVisible,
     }
 }
 

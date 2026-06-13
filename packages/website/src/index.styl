@@ -576,3 +576,53 @@ body.mobile
         background: #2f9e3f
         &:active
             background: #37b94a
+
+// Marquee action bar: a fixed bottom-center row shown only while a touch
+// box-selection is held (mode SELECT). Same band/z-index as the paint d-pad
+// (they never coexist) so it clears the toasts and the rail's ⋯ overflow.
+#marquee-bar
+    position: fixed
+    bottom: 12px
+    left: 0
+    right: 0
+    width: max-content
+    max-width: calc(100vw - 16px)
+    margin: 0 auto
+    z-index: 21
+    display: none
+    gap: 6px
+    user-select: none
+    -webkit-user-select: none
+    touch-action: manipulation
+    &.visible
+        display: flex
+    button
+        display: flex
+        flex-direction: column
+        align-items: center
+        justify-content: center
+        width: 64px
+        height: 52px
+        padding: 0
+        border: none
+        border-radius: 8px
+        background: rgba(58, 58, 58, 0.95)
+        color: #eee
+        font: 500 10px 'Roboto', sans-serif
+        cursor: pointer
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4)
+        .glyph
+            font-size: 18px
+            line-height: 1
+        .label
+            margin-top: 2px
+        &:active
+            background: rgba(90, 90, 90, 0.98)
+    button.delete
+        background: #5a3320
+        &:active
+            background: #c8641e
+    button.cancel
+        background: #5a2a2a
+        &:active
+            background: #b03030

@@ -63,6 +63,13 @@ export enum EditorMode {
     COPY,
     /** Active when selecting multiple entities for deletion */
     DELETE,
+    /**
+     * Active when a touch marquee selection is *held* — the box is drawn, the
+     * entities under it are highlighted, and the on-screen Copy/Cut/Delete bar is
+     * waiting for the user to choose. (Desktop's copy/delete commit on
+     * mouse-release; touch defers the choice, so the selection persists.)
+     */
+    SELECT,
 }
 
 export class BlueprintContainer extends Container {
@@ -131,6 +138,15 @@ export class BlueprintContainer extends Container {
     private copyModeUpdateFn: (endX: number, endY: number) => void
     private deleteModeUpdateFn: (endX: number, endY: number) => void
     private copySettingsActive = false
+    /**
+     * Touch marquee (#21). `marqueeArmed` = the rail's Select button was tapped
+     * and the next one-finger drag should draw a selection box (instead of
+     * panning). `marqueeEntities` is what the drawn box currently covers; while
+     * the selection is *held* (mode SELECT) it drives the Copy/Cut/Delete bar.
+     */
+    private marqueeArmed = false
+    private marqueeEntities: Entity[] = []
+    private marqueeUpdateFn?: (endX: number, endY: number) => void
     private readonly pointerGestures = new PinchPanRecognizer()
     /** in-progress single-finger touch, pending a tap-vs-drag decision */
     private touchPan: {
@@ -144,10 +160,11 @@ export class BlueprintContainer extends Container {
         /**
          * What the drag steers, decided once when the move threshold is crossed:
          * `pan` scrolls the camera; `ghost` grabs a held paste ghost (the drag
-         * started on it) and moves it around the world instead. Tap-or-drag is
+         * started on it) and moves it around the world instead; `marquee` draws a
+         * selection box (when armed via the Select button). Tap-or-drag is
          * unknown until then, so this stays undefined while `moved` is false.
          */
-        target?: 'pan' | 'ghost'
+        target?: 'pan' | 'ghost' | 'marquee'
         /**
          * Ghost drags preserve the grab point: the ghost's center stays
          * `grabOffset` away from the finger (in screen px) instead of teleporting
@@ -256,6 +273,10 @@ export class BlueprintContainer extends Container {
 
         const onUpdate32 = (): void => {
             // Instead of decreasing the global interactionFrequency, call the over and out entity events here
+            // ...but not while a marquee selection is being drawn or held: the
+            // box drag moves the grid cursor across entities, and churning the
+            // hover/info panel would pop it up over the box you're drawing.
+            if (this.marqueeUpdateFn || this.mode === EditorMode.SELECT) return
             this.updateHoverContainer()
         }
 
@@ -481,6 +502,12 @@ export class BlueprintContainer extends Container {
                 // applyPinchPan drive the viewport
                 G.actions.releaseAll()
                 this.touchPan = null
+                // If a marquee box was mid-draw, a second finger means the user
+                // wants to pan/zoom — abandon the half-drawn selection cleanly so
+                // it can't get stuck (re-tap Select to start over). A *held*
+                // selection (mode SELECT) is left alone: panning to look around
+                // shouldn't drop it.
+                if (this.marqueeUpdateFn) this.cancelMarquee()
                 return
             }
             // Touch has no hover, so on touchdown we can't yet tell a tap
@@ -508,20 +535,30 @@ export class BlueprintContainer extends Container {
                 const travel = Math.hypot(e.global.x - tp.startX, e.global.y - tp.startY)
                 if (travel > TOUCH_TAP_MOVE_THRESHOLD) {
                     tp.moved = true
-                    // Classify the drag once, by where it *started*: on a held
-                    // paste ghost it grabs and moves the ghost; anywhere else it
-                    // pans the camera (so you can still scroll to check alignment
-                    // while holding a paste — two-finger pan/pinch also works).
-                    tp.target = this.grabsPaintGhost(tp.startX, tp.startY) ? 'ghost' : 'pan'
-                    if (tp.target === 'ghost') {
+                    // Classify the drag once, by where it *started*: when armed via
+                    // the Select button it draws a marquee; on a held paste ghost
+                    // it grabs and moves the ghost; anywhere else it pans the camera
+                    // (so you can still scroll while holding a paste — two-finger
+                    // pan/pinch also works).
+                    if (this.marqueeArmed) {
+                        tp.target = 'marquee'
+                        this.beginMarqueeDrag(tp.startX, tp.startY)
+                    } else if (this.grabsPaintGhost(tp.startX, tp.startY)) {
+                        tp.target = 'ghost'
                         const t = this.viewport.getTransform()
                         tp.grabOffsetX = this.paintContainer.x * t.a + t.tx - tp.startX
                         tp.grabOffsetY = this.paintContainer.y * t.d + t.ty - tp.startY
+                    } else {
+                        tp.target = 'pan'
                     }
                 }
             }
             if (tp.moved) {
-                if (tp.target === 'ghost') {
+                if (tp.target === 'marquee') {
+                    // Grow the selection box: moving the grid cursor fires the
+                    // update events the rect + entity-collection listen on.
+                    this.gridData.moveTo(e.global.x, e.global.y)
+                } else if (tp.target === 'ghost') {
                     // Steer the grid cursor (which the ghost follows, tile-snapped)
                     // to the finger, offset by the original grab point.
                     this.gridData.moveTo(e.global.x + tp.grabOffsetX, e.global.y + tp.grabOffsetY)
@@ -539,6 +576,12 @@ export class BlueprintContainer extends Container {
             const tp = this.touchPan
             if (!tp || e.pointerId !== tp.pointerId) return
             this.touchPan = null
+            if (tp.moved && tp.target === 'marquee') {
+                // The box is drawn; hold the selection and let the user pick
+                // Copy / Cut / Delete from the on-screen bar.
+                this.endMarqueeDrag()
+                return
+            }
             if (tp.moved && tp.target === 'ghost' && this.mode === EditorMode.PAINT) {
                 // The drag settled the ghost on a tile. Treat that tile as the
                 // last previewed one, so a follow-up tap on the ghost's (visible)
@@ -548,6 +591,15 @@ export class BlueprintContainer extends Container {
             }
             const wasTap = !tp.moved && performance.now() - tp.startTime < TOUCH_TAP_MAX_DURATION
             if (wasTap) {
+                // While a marquee selection is held, a tap on the canvas (outside
+                // the action bar, which swallows its own taps) dismisses it.
+                if (this.mode === EditorMode.SELECT) {
+                    this.cancelMarquee()
+                    return
+                }
+                // A stray tap while armed (before dragging) just stays armed —
+                // don't place/select; the user still needs to drag a box.
+                if (this.marqueeArmed) return
                 // A tap while a dialog (entity editor, inventory, …) is open
                 // dismisses it. Dialogs swallow taps that land on them, so a tap
                 // reaching here is necessarily *outside* the dialog — this is the
@@ -713,11 +765,11 @@ export class BlueprintContainer extends Container {
     }
 
     /**
-     * Cancel whatever the cursor is currently doing — painting, or a copy/delete
-     * selection — and return to NONE. Desktop reaches this by toggling the
-     * trigger off (e.g. pipette again); this is the single explicit "stop" that
-     * the Escape key and the on-screen toolbar's cancel button both route
-     * through, since touch has no keyboard to bail out with.
+     * Cancel whatever the cursor is currently doing — painting, a copy/delete
+     * drag, or a held touch marquee selection — and return to NONE. Desktop
+     * reaches this by toggling the trigger off (e.g. pipette again); this is the
+     * single explicit "stop" that the Escape key and the on-screen toolbar's
+     * cancel button both route through, since touch has no keyboard to bail with.
      */
     public clearCursor(): void {
         if (this.mode === EditorMode.PAINT) {
@@ -725,6 +777,7 @@ export class BlueprintContainer extends Container {
         }
         this.exitCopyMode(true)
         this.exitDeleteMode(true)
+        this.cancelMarquee()
     }
 
     /**
@@ -920,6 +973,154 @@ export class BlueprintContainer extends Container {
         }
 
         this.deleteModeEntities = []
+    }
+
+    // --- Touch marquee (#21) ---------------------------------------------------
+    // Desktop area-select is modifier+drag, committing on mouse-release (copy →
+    // paste ghost, delete → remove). Touch has no modifier and wants to *choose*
+    // the action after seeing the selection, so the flow is: arm (Select button)
+    // → one-finger drag draws the box → release holds the selection (mode SELECT)
+    // → the on-screen Copy/Cut/Delete bar commits. Reuses the same selection
+    // rectangle + area query + cursor-box highlight as the desktop modes.
+
+    /** Arm the marquee: the next one-finger drag draws a selection box. */
+    public armMarquee(): void {
+        if (inputMode.mode !== 'mobile') return
+        // Drop any in-flight cursor / prior selection so the drag is unambiguous.
+        this.clearCursor()
+        this.cancelMarquee()
+        // Clear any showing hover/info panel (e.g. from a prior tap-select, or if
+        // the marquee starts on an entity): hover updates are suppressed during
+        // the drag, so a lingering panel would otherwise never go away.
+        this.updateHoverContainer(true)
+        this.marqueeArmed = true
+        G.logger({ text: 'Drag a box to select entities', type: 'info' })
+    }
+
+    /** Begin drawing the box: seed the start tile, show the rect, track coverage. */
+    private beginMarqueeDrag(screenX: number, screenY: number): void {
+        this.marqueeArmed = false
+        this.gridData.moveTo(screenX, screenY)
+        // Neutral (blue) box — the action (copy/cut/delete) is chosen afterwards.
+        this.overlayContainer.showSelectionArea(0x3b9eff)
+
+        const startPos = { x: this.gridData.x32, y: this.gridData.y32 }
+        this.marqueeUpdateFn = (endX: number, endY: number) => {
+            const X = Math.min(startPos.x, endX)
+            const Y = Math.min(startPos.y, endY)
+            const W = Math.abs(endX - startPos.x) + 1
+            const H = Math.abs(endY - startPos.y) + 1
+
+            for (const e of this.marqueeEntities) {
+                const m = EntityContainer.mappings.get(e.entityNumber)
+                if (m) m.cursorBox = undefined
+            }
+            this.marqueeEntities = this.bp.entityPositionGrid.getEntitiesInArea({
+                x: X + W / 2,
+                y: Y + H / 2,
+                w: W,
+                h: H,
+            })
+            for (const e of this.marqueeEntities) {
+                const m = EntityContainer.mappings.get(e.entityNumber)
+                if (m) m.cursorBox = 'copy'
+            }
+        }
+        this.marqueeUpdateFn(startPos.x, startPos.y)
+        this.gridData.on('update32', this.marqueeUpdateFn, this)
+        // The seeding moveTo above fires update32 before the suppression guard is
+        // in place, so starting the box on an entity can flash its info panel —
+        // clear it now (updates stay suppressed for the rest of the drag).
+        this.updateHoverContainer(true)
+    }
+
+    /** Finish drawing: freeze the box and hold the selection (or cancel if empty). */
+    private endMarqueeDrag(): void {
+        if (this.marqueeUpdateFn) {
+            this.gridData.off('update32', this.marqueeUpdateFn, this)
+            this.marqueeUpdateFn = undefined
+        }
+        // Stop the rectangle from following later grid updates (a tap would
+        // otherwise redraw it), but keep it visible as the held selection.
+        this.overlayContainer.freezeSelectionArea()
+        if (this.marqueeEntities.length === 0) {
+            this.cancelMarquee()
+            return
+        }
+        this.setMode(EditorMode.SELECT)
+    }
+
+    /** Number of entities in the held marquee selection (0 when none). */
+    public get marqueeCount(): number {
+        return this.mode === EditorMode.SELECT ? this.marqueeEntities.length : 0
+    }
+
+    /** Copy the selection into a paste ghost (originals stay), previewed in place. */
+    public copyMarquee(): void {
+        if (this.mode !== EditorMode.SELECT) return
+        const entities = this.marqueeEntities
+        this.clearMarqueeVisuals()
+        this.setMode(EditorMode.NONE)
+        if (entities.length !== 0) this.spawnGhostAtSource(entities)
+    }
+
+    /** Cut: pick the selection up as a paste ghost *and* remove the originals. */
+    public cutMarquee(): void {
+        if (this.mode !== EditorMode.SELECT) return
+        const entities = this.marqueeEntities
+        this.clearMarqueeVisuals()
+        this.setMode(EditorMode.NONE)
+        if (entities.length !== 0) {
+            // Serialize into the ghost first, then drop the originals.
+            this.spawnGhostAtSource(entities)
+            this.bp.removeEntities(entities)
+        }
+    }
+
+    /**
+     * Spawn a paste ghost from the given entities and position it over their
+     * *original* location, shown immediately — so a marquee Copy/Cut previews
+     * where it came from (intuitive for cut = move-in-place) instead of jumping
+     * under the finger. The user then taps to place, or drags/nudges it elsewhere.
+     */
+    private spawnGhostAtSource(entities: Entity[]): void {
+        this.spawnPaintContainer(entities)
+        const pc = this.paintContainer
+        if (pc instanceof PaintBlueprintContainer) {
+            const c = pc.getSourceCenter()
+            pc.show()
+            this.gridData.moveToWorld(c.x * 32, c.y * 32)
+            this.lastPaintTapTile = pc.getGridPosition()
+        }
+    }
+
+    /** Delete the selected entities. */
+    public deleteMarquee(): void {
+        if (this.mode !== EditorMode.SELECT) return
+        const entities = this.marqueeEntities
+        this.clearMarqueeVisuals()
+        this.setMode(EditorMode.NONE)
+        if (entities.length !== 0) this.bp.removeEntities(entities)
+    }
+
+    /** Drop the marquee (armed, drawing, or held) without acting on it. */
+    public cancelMarquee(): void {
+        this.marqueeArmed = false
+        if (this.marqueeUpdateFn) {
+            this.gridData.off('update32', this.marqueeUpdateFn, this)
+            this.marqueeUpdateFn = undefined
+        }
+        this.clearMarqueeVisuals()
+        if (this.mode === EditorMode.SELECT) this.setMode(EditorMode.NONE)
+    }
+
+    private clearMarqueeVisuals(): void {
+        this.overlayContainer.hideSelectionArea()
+        for (const e of this.marqueeEntities) {
+            const m = EntityContainer.mappings.get(e.entityNumber)
+            if (m) m.cursorBox = undefined
+        }
+        this.marqueeEntities = []
     }
 
     public zoom(zoomIn = true): void {
