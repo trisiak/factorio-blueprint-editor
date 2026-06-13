@@ -1023,14 +1023,17 @@ export class Entity extends EventEmitter<EntityEvents> {
     public get assemblerHasFluidInputs(): boolean {
         if (!this.recipe) return false
         const recipe = FD.recipes[this.recipe]
-        if (!recipe || !recipe.ingredients) return false
+        // A recipe with no ingredients serializes the empty Lua table as `{}`
+        // (object, not array) — guard the shape, not just nullishness, or
+        // `.find` throws and aborts rendering the entity (#35).
+        if (!recipe || !Array.isArray(recipe.ingredients)) return false
         return !!recipe.ingredients.find(ingredient => ingredient.type === 'fluid')
     }
 
     public get assemblerHasFluidOutputs(): boolean {
         if (!this.recipe) return false
         const recipe = FD.recipes[this.recipe]
-        if (!recipe || !recipe.results) return false
+        if (!recipe || !Array.isArray(recipe.results)) return false
         return !!recipe.results.find(result => result.type === 'fluid')
     }
 

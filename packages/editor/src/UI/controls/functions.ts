@@ -7,7 +7,7 @@ import {
     CanvasTextMetrics,
     RenderTexture,
 } from 'pixi.js'
-import FD, { ColorWithAlpha, getColor } from '../../core/factorioData'
+import FD, { ColorWithAlpha, getColor, getRecipeIconSourceName } from '../../core/factorioData'
 import { styles } from '../style'
 import G from '../../common/globals'
 import { IngredientPrototype, IconData, ProductPrototype } from 'factorio:prototype'
@@ -218,13 +218,24 @@ function CreateIcon(
         // inventory group icon is not present in FD.items
         FD.inventoryLayout.find(g => g.name === itemName)
 
-    if (item.icons) {
+    if (item?.icons) {
         return generateIcons(item.icons)
-    } else if (item.icon) {
+    } else if (item?.icon) {
         return generateIcon(item.icon, item.icon_size)
-    } else {
-        throw new Error('Internal Error!')
     }
+
+    // A recipe may define no icon of its own — in Factorio it then shows its
+    // main_product's (or sole result's) icon. Resolve and render that. Without
+    // this, picking such a recipe (SE's *-alt recipes, se-pulverised-sand, SA's
+    // fluoroketone, …) threw here, which aborted the editor's recipe-slot icon
+    // update mid-way and left the entity in a state where its editor could no
+    // longer be opened — the recipe stays set, so every reopen re-threw (#35).
+    const recipeIconSource = getRecipeIconSourceName(itemName)
+    if (recipeIconSource) {
+        return CreateIcon(recipeIconSource, maxSize, setAnchor, darkBackground)
+    }
+
+    throw new Error(`CreateIcon: no renderable icon for '${itemName}'`)
 
     function generateIcon(filename: string, icon_size: number = 64): Sprite {
         const texture = G.getTexture(filename, 0, 0, icon_size, icon_size)

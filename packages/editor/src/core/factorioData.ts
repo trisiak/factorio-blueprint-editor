@@ -730,9 +730,26 @@ const FD: {
     getModulesFor: (entityName: string) => ModulePrototype[]
 } = {}
 
+/**
+ * The item/fluid whose icon stands in for a recipe that defines no icon of its
+ * own. Factorio falls back to the recipe's `main_product` (the result it names
+ * as representative), or to its sole result when there's exactly one. Returns
+ * undefined when the recipe has its own icon, isn't found, or has no single
+ * fallback. `main_product` is a runtime-style field the exporter emits and is
+ * not in the prototype types, hence the cast.
+ */
+export function getRecipeIconSourceName(recipeName: string): string | undefined {
+    const recipe = FD.recipes[recipeName] as
+        | (RecipePrototype & { main_product?: string; results?: { name?: string }[] })
+        | undefined
+    if (!recipe || recipe.icon || recipe.icons) return undefined
+    if (recipe.main_product) return recipe.main_product
+    const results = recipe.results ?? []
+    return results.length === 1 ? results[0].name : undefined
+}
+
 export function loadData(str: string): void {
     const data = JSON.parse(str)
-    console.log(data)
     FD.items = data.items
     FD.fluids = data.fluids
     FD.signals = data.signals
