@@ -4,7 +4,7 @@ import { Entity } from '../../core/Entity'
 import { ISignal, LogisticFilter } from '../../types'
 import FD from '../../core/factorioData'
 import { Slot } from '../controls/Slot'
-import { TextInput } from '../controls/TextInput'
+import { NumericField } from '../controls/NumericField'
 import { Editor } from './Editor'
 import F from '../controls/functions'
 
@@ -23,7 +23,7 @@ const STEP = 38
 export class ConstantCombinatorEditor extends Editor {
     private readonly m_filters: (LogisticFilter | undefined)[] = new Array(SLOTS).fill(undefined)
     private readonly slots: Slot<number>[] = []
-    private readonly countInput: TextInput
+    private readonly countField: NumericField
     private selected = -1
 
     public constructor(entity: Entity) {
@@ -46,12 +46,15 @@ export class ConstantCombinatorEditor extends Editor {
             this.slots.push(slot)
         }
 
-        this.addLabel(x, y + ROWS * STEP + 6, 'Value:')
-        this.countInput = new TextInput(G.app.renderer, 70, '', 12)
-        this.countInput.restrict = /^-?\d*$/
-        this.countInput.position.set(x + 52, y + ROWS * STEP + 6)
-        this.countInput.on('changed', () => this.onCountChanged())
-        this.addChild(this.countInput)
+        this.addLabel(x, y + ROWS * STEP + 8, 'Value:')
+        this.countField = new NumericField(
+            undefined,
+            v => this.onCountChanged(v),
+            'Signal value',
+            70
+        )
+        this.countField.position.set(x + 52, y + ROWS * STEP + 4)
+        this.addChild(this.countField)
 
         this.refreshSlots()
     }
@@ -99,13 +102,12 @@ export class ConstantCombinatorEditor extends Editor {
     private select(i: number): void {
         this.selected = i
         for (const [idx, slot] of this.slots.entries()) slot.active = idx === i
-        this.countInput.text = i >= 0 && this.m_filters[i] ? String(this.m_filters[i]!.count) : ''
+        this.countField.value = i >= 0 && this.m_filters[i] ? this.m_filters[i]!.count : undefined
     }
 
-    private onCountChanged(): void {
+    private onCountChanged(value: number): void {
         if (this.selected < 0 || !this.m_filters[this.selected]) return
-        const n = parseInt(this.countInput.text, 10)
-        this.m_filters[this.selected]!.count = Number.isNaN(n) ? 0 : n
+        this.m_filters[this.selected]!.count = value
         this.commit()
         this.refreshSlots()
     }

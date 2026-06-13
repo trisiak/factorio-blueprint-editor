@@ -1,8 +1,7 @@
 import { Container, Graphics, Text } from 'pixi.js'
 import FD from '../core/factorioData'
 import { ISignal, SignalType } from '../types'
-import { TextInput } from './controls/TextInput'
-import G from '../common/globals'
+import { NumericField } from './controls/NumericField'
 import F from './controls/functions'
 import { Button } from './controls/Button'
 import { Dialog } from './controls/Dialog'
@@ -50,7 +49,7 @@ export class SignalPicker extends Dialog {
     private selectedButton?: Button
     private readonly nameLabel: Text
     private readonly confirmBtn: Container
-    private constantInput?: TextInput
+    private constantField?: NumericField
 
     public constructor(
         title: string,
@@ -106,11 +105,16 @@ export class SignalPicker extends Dialog {
         this.addChild(this.nameLabel)
 
         if (this.allowConstant) {
-            this.constantInput = new TextInput(G.app.renderer, 64, '', 12)
-            this.constantInput.restrict = /^-?\d*$/
-            this.constantInput.position.set(SignalPicker.W - 180, SignalPicker.BAR_Y + 6)
-            this.constantInput.on('changed', () => this.onConstantTyped())
-            this.addChild(this.constantInput)
+            const hint = new Text({ text: 'or constant', style: styles.dialog.label })
+            hint.position.set(SignalPicker.W - 196, SignalPicker.BAR_Y - 14)
+            this.addChild(hint)
+            this.constantField = new NumericField(
+                undefined,
+                v => this.onConstantSet(v),
+                'Enter a constant'
+            )
+            this.constantField.position.set(SignalPicker.W - 196, SignalPicker.BAR_Y + 4)
+            this.addChild(this.constantField)
         }
 
         this.confirmBtn = SignalPicker.barButton('✓ Confirm', 0x2f7d32, () => this.confirm())
@@ -178,26 +182,19 @@ export class SignalPicker extends Dialog {
         if (this.selectedButton) this.selectedButton.active = false
         this.selectedButton = button
         button.active = true
-        if (this.constantInput) this.constantInput.text = ''
+        if (this.constantField) this.constantField.value = undefined
         this.preview = { signal: { name, type: type as SignalType } }
         this.nameLabel.text = SignalPicker.nameOf(name)
         this.confirmBtn.visible = true
     }
 
-    private onConstantTyped(): void {
+    private onConstantSet(value: number): void {
         if (this.selectedButton) {
             this.selectedButton.active = false
             this.selectedButton = undefined
         }
-        const text = this.constantInput!.text
-        if (text === '' || text === '-') {
-            this.preview = {}
-            this.nameLabel.text = ''
-            this.confirmBtn.visible = false
-            return
-        }
-        this.preview = { constant: parseInt(text, 10) }
-        this.nameLabel.text = `Constant: ${this.preview.constant}`
+        this.preview = { constant: value }
+        this.nameLabel.text = `Constant: ${value}`
         this.confirmBtn.visible = true
     }
 
