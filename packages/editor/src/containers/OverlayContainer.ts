@@ -1,4 +1,4 @@
-import { Container, Graphics, Sprite } from 'pixi.js'
+import { Container, Graphics, Sprite, Text, TextStyle } from 'pixi.js'
 import { IPoint } from '../types'
 import FD, {
     getFluidBoxes,
@@ -16,6 +16,17 @@ import { EntityContainer } from './EntityContainer'
 import { CursorBoxSpecification } from 'factorio:prototype'
 import { Sprite as SpriteData } from 'factorio:prototype'
 import { MiningDrillPrototype, UndergroundBeltPrototype } from 'factorio:prototype'
+
+// Glyph drawn between a combinator's input signals so the overlay reads like the
+// base game (e.g. `[iron] + [copper]`). White with a heavy outline so it stays
+// legible over the dark combinator sprite at any zoom.
+const combinatorOperatorStyle = new TextStyle({
+    fill: 0xffffff,
+    fontFamily: 'sans-serif',
+    fontSize: 28,
+    fontWeight: '700' as TextStyle['fontWeight'],
+    stroke: { color: 0x000000, width: 4 },
+})
 
 export class OverlayContainer extends Container {
     private readonly bpc: BlueprintContainer
@@ -230,6 +241,18 @@ export class OverlayContainer extends Container {
             }
             if (cOS && cOS.name) {
                 createIconWithBackground(filterInfo, cOS.name, { x: 0, y: 16 })
+            }
+            // Show the operation glyph (e.g. `+`, `>`) between the input signals,
+            // matching the base game. Selector combinators use word operations
+            // ('select', 'count', …) which are too wide for the sprite, so skip them.
+            if (entity.type === 'arithmetic-combinator' || entity.type === 'decider-combinator') {
+                const opText = new Text({
+                    text: String(entity.operator ?? ''),
+                    style: combinatorOperatorStyle,
+                })
+                opText.anchor.set(0.5)
+                opText.position.set(0, 0)
+                filterInfo.addChild(opText)
             }
             filterInfo.scale.set(0.5, 0.5)
             if (filterInfo.children.length !== 0) {

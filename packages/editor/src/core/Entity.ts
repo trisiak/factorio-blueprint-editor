@@ -8,6 +8,7 @@ import {
     ComparatorString,
     ArithmeticOperation,
     ISignal,
+    ICondition,
     SelectorCombinatorOperation,
 } from '../types'
 import util from '../common/util'
@@ -674,6 +675,48 @@ export class Entity extends EventEmitter<EntityEvents> {
                 first_signal: this.m_rawEntity.control_behavior?.index_signal,
             }
         }
+    }
+
+    /**
+     * Read-only: the second operand of an arithmetic/decider combinator when it
+     * is a constant rather than a signal (the signals are exposed by
+     * `combinatorConditions`). Used by the info panel to render e.g. `[each] > 100`.
+     */
+    public get combinatorConstant(): number | undefined {
+        if (this.type === 'arithmetic-combinator') {
+            return this.m_rawEntity.control_behavior?.arithmetic_conditions?.constant
+        }
+        if (this.type === 'decider-combinator') {
+            return this.m_rawEntity.control_behavior?.decider_conditions?.conditions?.[0]?.constant
+        }
+        return undefined
+    }
+
+    /**
+     * Read-only: the enable/disable circuit condition (post-2.0 `circuit_condition`),
+     * present on inserters, belts, pumps, mining drills, lamps, power switches, etc.
+     * The `second_signal`/`constant` split mirrors the combinator conditions.
+     */
+    public get circuitCondition(): ICondition | undefined {
+        return this.m_rawEntity.control_behavior?.circuit_condition
+    }
+
+    /** Read-only: whether the entity is set to enable/disable based on the circuit network. */
+    public get circuitEnabled(): boolean {
+        return !!this.m_rawEntity.control_behavior?.circuit_enabled
+    }
+
+    /**
+     * Read-only: constant-combinator contents in the post-2.0 `sections` format,
+     * flattened to `{ name, count, quality }` across every section. Unlike
+     * `constantCombinatorFilters` (names only) this keeps the counts so the info
+     * panel can render each signal with its value.
+     */
+    public get constantCombinatorSignals(): { name: string; count: number; quality?: string }[] {
+        return (this.m_rawEntity.control_behavior?.sections?.sections || [])
+            .flatMap(s => s.filters || [])
+            .filter(f => f?.name)
+            .map(f => ({ name: f.name, count: f.count, quality: f.quality }))
     }
 
     public get generateConnector(): boolean {
