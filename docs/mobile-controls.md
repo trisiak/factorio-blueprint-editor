@@ -174,15 +174,21 @@ pipelines at once made touch taps double-act via the browser's synthetic
   selection box**, and releasing **holds** the selection (new `EditorMode.SELECT`)
   while a fixed bottom-center **Copy / Cut / Delete / Cancel** bar waits. **Copy** →
   paste ghost (originals stay); **Cut** → ghost + remove originals; **Delete** →
-  remove; **Cancel** / Escape / tap-away / rail-Cancel drop it. The result of Copy
-  or Cut is exactly the paste ghost that the placement work (#30) makes
-  drag/nudge/center-placeable, closing the cut/copy/paste loop on touch. Reuses the
-  desktop selection rectangle + `getEntitiesInArea` + cursor-box highlight;
-  `OverlayContainer.freezeSelectionArea()` pins the box on release. Seams:
-  `BlueprintContainer` (`armMarquee`/`begin`/`end`/`copy`/`cut`/`delete`/`cancelMarquee`,
-  `touchPan.target = 'marquee'`), `Editor` delegators, the Select button + marquee
-  bar (`actionToolbar.ts`, `index.styl`). Covered by `e2e/touchMarquee.spec.ts`
-  (CDP box-drag → Copy/Cut/Delete/Cancel) via the `?test` hook (`marquee.count`).
+  remove; **Cancel** / Escape / tap-away / rail-Cancel drop it. Copy/Cut spawn the
+  ghost **over the source tiles** (`GridData.moveToWorld` to the selection's
+  bounding-box center) so it previews _in place_ — for Cut this reads as
+  move-in-place; the ghost is then the same paste ghost the placement work (#30)
+  makes drag/nudge/center-placeable, closing the cut/copy/paste loop on touch.
+  Reuses the desktop selection rectangle + `getEntitiesInArea` + cursor-box
+  highlight; `OverlayContainer.freezeSelectionArea()` pins the box on release.
+  While the box is drawn/held the hover/info panel is suppressed (it would
+  obscure the box), and a second finger mid-draw cleanly **abandons** the box so
+  pinch/zoom can't strand it. Seams: `BlueprintContainer`
+  (`armMarquee`/`begin`/`end`/`copy`/`cut`/`delete`/`cancelMarquee`,
+  `touchPan.target = 'marquee'`), `GridData.moveToWorld`, `Editor` delegators, the
+  Select button + marquee bar (`actionToolbar.ts`, `index.styl`). Covered by
+  `e2e/touchMarquee.spec.ts` (CDP box-drag → Copy/Cut/Delete/Cancel, plus Cut →
+  Place restoring the originals in place) via the `?test` hook (`marquee.count`).
 - 🚧 **e2e coverage gaps**: pinch needs CDP `Input.dispatchTouchEvent` (the
   high-level touch API is single-touch). Tap-to-place is now covered —
   `EditorTestState` was extended with `paint` + `blueprint.entityCount` and

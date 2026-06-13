@@ -87,6 +87,11 @@ async function tapMarquee(page: Page, title: string): Promise<void> {
     await page.locator(`#marquee-bar button[title="${title}"]`).click({ force: true })
 }
 
+// Tap a button in the paint d-pad (shown after Copy/Cut spawns a ghost).
+async function tapDpad(page: Page, title: string): Promise<void> {
+    await page.locator(`#paint-dpad button[title="${title}"]`).click({ force: true })
+}
+
 // A big box across the open canvas — covers the (centered) blueprint. Start clear
 // of the left rail gutter and the top chrome.
 const BOX_FROM = { x: 70, y: 180 }
@@ -138,6 +143,22 @@ test.describe('touch marquee select', () => {
 
         await expect.poll(async () => (await getState(page)).paint.kind).toBe('blueprint')
         await expect.poll(() => entityCount(page)).toBeLessThan(original) // originals removed
+    })
+
+    test('Cut previews the ghost in place — placing it restores the originals', async ({
+        page,
+    }) => {
+        const original = await gotoWithBlueprint(page)
+        await selectAll(page)
+
+        await tapMarquee(page, 'Cut')
+        await expect.poll(() => entityCount(page)).toBeLessThan(original)
+
+        // The ghost spawns over the source tiles, so committing it without moving
+        // puts the cut entities back exactly where they were (no collision, since
+        // the originals were removed) — the count returns to the original.
+        await tapDpad(page, 'Place')
+        await expect.poll(() => entityCount(page)).toBe(original)
     })
 
     test('Delete removes the selected entities', async ({ page }) => {

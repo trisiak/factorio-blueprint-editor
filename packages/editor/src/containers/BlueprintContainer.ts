@@ -273,6 +273,10 @@ export class BlueprintContainer extends Container {
 
         const onUpdate32 = (): void => {
             // Instead of decreasing the global interactionFrequency, call the over and out entity events here
+            // ...but not while a marquee selection is being drawn or held: the
+            // box drag moves the grid cursor across entities, and churning the
+            // hover/info panel would pop it up over the box you're drawing.
+            if (this.marqueeUpdateFn || this.mode === EditorMode.SELECT) return
             this.updateHoverContainer()
         }
 
@@ -498,6 +502,12 @@ export class BlueprintContainer extends Container {
                 // applyPinchPan drive the viewport
                 G.actions.releaseAll()
                 this.touchPan = null
+                // If a marquee box was mid-draw, a second finger means the user
+                // wants to pan/zoom — abandon the half-drawn selection cleanly so
+                // it can't get stuck (re-tap Select to start over). A *held*
+                // selection (mode SELECT) is left alone: panning to look around
+                // shouldn't drop it.
+                if (this.marqueeUpdateFn) this.cancelMarquee()
                 return
             }
             // Touch has no hover, so on touchdown we can't yet tell a tap
@@ -1037,13 +1047,13 @@ export class BlueprintContainer extends Container {
         return this.mode === EditorMode.SELECT ? this.marqueeEntities.length : 0
     }
 
-    /** Copy the selection into a paste ghost (originals stay). */
+    /** Copy the selection into a paste ghost (originals stay), previewed in place. */
     public copyMarquee(): void {
         if (this.mode !== EditorMode.SELECT) return
         const entities = this.marqueeEntities
         this.clearMarqueeVisuals()
         this.setMode(EditorMode.NONE)
-        if (entities.length !== 0) this.spawnPaintContainer(entities)
+        if (entities.length !== 0) this.spawnGhostAtSource(entities)
     }
 
     /** Cut: pick the selection up as a paste ghost *and* remove the originals. */
@@ -1054,8 +1064,25 @@ export class BlueprintContainer extends Container {
         this.setMode(EditorMode.NONE)
         if (entities.length !== 0) {
             // Serialize into the ghost first, then drop the originals.
-            this.spawnPaintContainer(entities)
+            this.spawnGhostAtSource(entities)
             this.bp.removeEntities(entities)
+        }
+    }
+
+    /**
+     * Spawn a paste ghost from the given entities and position it over their
+     * *original* location, shown immediately — so a marquee Copy/Cut previews
+     * where it came from (intuitive for cut = move-in-place) instead of jumping
+     * under the finger. The user then taps to place, or drags/nudges it elsewhere.
+     */
+    private spawnGhostAtSource(entities: Entity[]): void {
+        this.spawnPaintContainer(entities)
+        const pc = this.paintContainer
+        if (pc instanceof PaintBlueprintContainer) {
+            const c = pc.getSourceCenter()
+            pc.show()
+            this.gridData.moveToWorld(c.x * 32, c.y * 32)
+            this.lastPaintTapTile = pc.getGridPosition()
         }
     }
 
