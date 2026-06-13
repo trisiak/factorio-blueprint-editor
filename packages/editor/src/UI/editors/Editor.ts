@@ -5,6 +5,7 @@ import { Preview } from './components/Preview'
 import { Recipe } from './components/Recipe'
 import { Modules } from './components/Modules'
 import { Filters } from './components/Filters'
+import { CircuitCondition } from './components/CircuitCondition'
 
 /** Editor */
 export abstract class Editor extends Dialog {
@@ -80,6 +81,18 @@ export abstract class Editor extends Dialog {
 
         // Return component in case extension wants to use it
         return filters
+    }
+
+    /**
+     * Add the enable/disable circuit-condition control. Shared by every editor
+     * whose entity can be gated by the circuit network (inserters, pumps, belts,
+     * mining drills, …).
+     */
+    protected addCircuitCondition(x: number, y: number): CircuitCondition {
+        const cc = new CircuitCondition(this.m_Entity)
+        cc.position.set(x, y)
+        this.addChild(cc)
+        return cc
     }
 
     protected onEntityChange<T extends EventEmitter.EventNames<EntityEvents>>(

@@ -6,7 +6,7 @@ import { Editor } from './Editor'
 /** Inserter Editor */
 export class InserterEditor extends Editor {
     public constructor(entity: Entity) {
-        super(446, 171, entity)
+        super(446, 300, entity)
 
         if (this.m_Entity.filterSlots > 0) {
             const filterMode = this.m_Entity.filterMode
@@ -46,5 +46,8 @@ export class InserterEditor extends Editor {
                 filterModeBlacklist.active = filterMode === 'blacklist'
             })
         }
+
+        this.addLabel(12, 170, 'Circuit network')
+        this.addCircuitCondition(12, 190)
     }
 }

@@ -11,6 +11,8 @@ import { TrainStopEditor } from './TrainStopEditor'
 import { ArithmeticCombinatorEditor } from './ArithmeticCombinatorEditor'
 import { DeciderCombinatorEditor } from './DeciderCombinatorEditor'
 import { ConstantCombinatorEditor } from './ConstantCombinatorEditor'
+import { SelectorCombinatorEditor } from './SelectorCombinatorEditor'
+import { CircuitConditionEditor } from './CircuitConditionEditor'
 
 /**
  * Which editor an entity gets — or `undefined` for an entity with nothing to
@@ -29,6 +31,8 @@ export type EditorKind =
     | 'arithmetic-combinator'
     | 'decider-combinator'
     | 'constant-combinator'
+    | 'selector-combinator'
+    | 'circuit-condition'
 
 export function editorKindFor(entity: Entity): EditorKind | undefined {
     // Circuit entities route off `entity.type`, not name, so any modded prototype
@@ -41,6 +45,15 @@ export function editorKindFor(entity: Entity): EditorKind | undefined {
             return 'decider-combinator'
         case 'constant-combinator':
             return 'constant-combinator'
+        case 'selector-combinator':
+            return 'selector-combinator'
+        // Entities whose only configurable circuit feature is an enable/disable
+        // condition and which have no other editor. Inserters and mining drills
+        // are handled by their own (richer) editors below.
+        case 'pump':
+        case 'offshore-pump':
+        case 'transport-belt':
+            return 'circuit-condition'
     }
     switch (entity.name) {
         case 'assembling-machine-1':
@@ -137,6 +150,10 @@ export function createEditor(entity: Entity): Editor {
             return new DeciderCombinatorEditor(entity)
         case 'constant-combinator':
             return new ConstantCombinatorEditor(entity)
+        case 'selector-combinator':
+            return new SelectorCombinatorEditor(entity)
+        case 'circuit-condition':
+            return new CircuitConditionEditor(entity)
         default:
             return undefined
     }
