@@ -94,3 +94,24 @@ Total: **35 mods** — 2 ship with the game (expansion build), 33 from the mod p
     ]
 }
 ```
+
+## Per-mod impact on the data pack (A/B verified)
+
+Each verdict comes from disabling the mod(s) and byte-diffing the regenerated
+`data.json` against the full-modset baseline (the dump is deterministic, so
+`IDENTICAL` is a proof, not a heuristic).
+
+| Mod | Verdict |
+| --- | --- |
+| `EvenDistributionLite`, `InserterFuelLeech`, `BottleneckLite`, `rocket-log` | **No impact** — dump byte-identical without them (runtime-only QoL) |
+| `space-exploration-official-modpack` | **No impact on data**, but it's the meta mod pinning the canonical SE mod set — keep it |
+| `DiscoScience` (−304 B), `RecipeBook` (+5.8 KB) | Real data impact — keep |
+| `alien-biomes` (+`-graphics`), `bullet-trails`, `robot_attrition`, `space-exploration-menu-simulations` | Hard dependencies of `space-exploration` — unprunable |
+| `ModuleInserterSimplified`, `Milestones` | Hard dependencies of `official-modpack` — unprunable while it stays |
+
+Sprite attribution (refs per `__mod__` prefix in `data.json`): ~46% of the
+pack's 4478 sprite refs come from portal mods, led by `textplates` (944),
+`space-exploration-graphics` (860) and `aai-industry` (235). The known gap:
+4 refs to base's 1.1-era `nuclear-reactor/connection-patch-*.png` (copied by
+SE's energy-transmitter/antimatter-reactor, removed in base 2.0) are skipped
+by the exporter with a warning — a missing heat-pipe overlay at worst.
