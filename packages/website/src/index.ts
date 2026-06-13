@@ -118,7 +118,10 @@ editor
         }
 
         registerActions()
-        initActionToolbar(editor, { copyBlueprint: copyBlueprintToClipboard })
+        initActionToolbar(editor, {
+            copyBlueprint: copyBlueprintToClipboard,
+            clear: confirmClearBlueprint,
+        })
 
         // Opt-in e2e probe for on-canvas state that the DOM can't expose.
         if (new URLSearchParams(window.location.search).has('test')) {
@@ -289,6 +292,31 @@ document.addEventListener('copy', (e: ClipboardEvent) => {
     copyBlueprintToClipboard()
 })
 
+// Reset to a blank blueprint and drop the autosave. This swaps in a fresh
+// Blueprint (with its own History), so it's NOT undoable.
+function clearBlueprint(): void {
+    clearSavedBlueprint()
+    loadBp(new Blueprint())
+}
+
+// The mobile action rail's "New" button. Because clearing can't be undone, gate
+// the one-tap button behind a confirm toast (tap "Clear" to go through; tapping
+// the toast body or letting it sit cancels). A no-op on an already-empty
+// blueprint just resets silently — there's nothing to lose. The desktop
+// `shift+N` keybind stays immediate: it's a deliberate two-key combo.
+function confirmClearBlueprint(): void {
+    if (book === undefined && bp.isEmpty()) {
+        clearBlueprint()
+        return
+    }
+    createToast({
+        text: 'Clear the blueprint? This cannot be undone.',
+        type: 'warning',
+        timeout: Infinity,
+        action: { text: 'Clear', callback: clearBlueprint },
+    })
+}
+
 document.addEventListener('paste', (e: ClipboardEvent) => {
     if (document.activeElement !== CANVAS) return
     e.preventDefault()
@@ -311,8 +339,7 @@ function registerActions(): void {
         modifiers: { shift: true },
         callbacks: {
             onPress: () => {
-                clearSavedBlueprint()
-                loadBp(new Blueprint())
+                clearBlueprint()
                 return true
             },
         },

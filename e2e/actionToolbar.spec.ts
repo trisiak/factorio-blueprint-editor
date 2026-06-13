@@ -10,6 +10,21 @@ import { test, expect, type Page } from '@playwright/test'
 // assertions don't depend on the decorative unicode glyph in the button text.
 const BUTTON_TITLES = ['Items', 'Rotate', 'Flip H', 'Flip V', 'Pick', 'Undo', 'Redo', 'Center']
 
+// A self-contained vanilla-2.0 blueprint (a single wooden chest). Starts with
+// '0', so the loader decodes it locally — no `/corsproxy` round-trip (which the
+// preview server doesn't provide). Gives the "New" confirm a non-empty blueprint
+// to guard. Mirrors the strings in persistence.spec.ts.
+const CHEST =
+    '0eJxtjs0OgjAQhN9lztUgoRD6KsYYfjbapGwJLSohfXcX9ODBy2x2M9/MrmjdTONkOcKssJEGmJ+bwoOmYD3D6DKvi7rWRZ5VVVEquKYlJ+5xc4R4iCTS3UUFs53nAHOWTO7pBXNSCPbGjdt6uBlIyKf3PfGXSemiQBxttPQh92W58jy0NO0J/ziF0QeBth9XSFN21ArLPiUzpTfn9ku6'
+
+type TestHookWindow = {
+    __FBE_TEST__: { getState(): { blueprint: { entityCount: number } } }
+}
+const entityCount = (page: Page): Promise<number> =>
+    page.evaluate(
+        () => (window as unknown as TestHookWindow).__FBE_TEST__.getState().blueprint.entityCount
+    )
+
 async function waitForLoaded(page: Page): Promise<void> {
     await expect(page.locator('#editor')).toBeVisible()
     // loadingScreen starts with .active and loses it once data + atlas load.
@@ -135,6 +150,29 @@ test.describe('action toolbar', () => {
             }
 
             expect(fatal.join('\n')).toBe('')
+        })
+
+        // "New" (clear) swaps in a fresh blueprint — it can't be undone — so on a
+        // non-empty blueprint it must ask first: the tap surfaces a confirm toast
+        // and leaves the blueprint untouched until "Clear" is pressed.
+        test('New asks for confirmation before clearing a non-empty blueprint', async ({
+            page,
+        }) => {
+            await page.goto(`/?test&source=${encodeURIComponent(CHEST)}`)
+            await waitForLoaded(page)
+            await expect.poll(() => entityCount(page)).toBeGreaterThan(0)
+
+            const toolbar = page.locator('#action-toolbar')
+            await toolbar.locator('button.rail-more').click({ force: true })
+            await toolbar.locator('button[title="New"]').click({ force: true })
+
+            // The confirm toast appears; the blueprint is untouched until confirmed.
+            const confirm = page.getByRole('button', { name: /^Clear$/ })
+            await expect(confirm).toBeVisible()
+            expect(await entityCount(page)).toBeGreaterThan(0)
+
+            await confirm.click()
+            await expect.poll(() => entityCount(page)).toBe(0)
         })
 
         // The headline behavior: a touch user can get out of paint mode. Cancel
