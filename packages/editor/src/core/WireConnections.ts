@@ -298,6 +298,72 @@ export class WireConnections extends EventEmitter<WireConnectionsEvents> {
         return this.connections.getEntityConnections(entityNumber)
     }
 
+    /**
+     * Assign a stable per-colour id to every circuit network — i.e. each
+     * connected component of red (or green) wires over `(entityNumber, side)`
+     * nodes (a combinator's input side 1 and output side 2 are separate nodes,
+     * so they land on separate networks). Ids are numbered deterministically
+     * (1..N per colour) by sorted node order so the same wiring always yields the
+     * same ids. Recomputed on demand — cheap relative to how rarely the info
+     * panel / editor open. Mirrors what the game shows as the red/green network id.
+     */
+    private circuitNetworkIds(color: 'red' | 'green'): Map<string, number> {
+        const adj = new Map<string, Set<string>>()
+        const node = (cp: IConnectionPoint): string => `${cp.entityNumber}-${cp.entitySide ?? 1}`
+        const link = (a: string, b: string): void => {
+            if (!adj.has(a)) adj.set(a, new Set())
+            if (!adj.has(b)) adj.set(b, new Set())
+            adj.get(a).add(b)
+            adj.get(b).add(a)
+        }
+        this.forEach(conn => {
+            if (conn.color !== color) return
+            link(node(conn.cps[0]), node(conn.cps[1]))
+        })
+
+        const ids = new Map<string, number>()
+        let nextId = 1
+        for (const start of [...adj.keys()].sort()) {
+            if (ids.has(start)) continue
+            const id = nextId++
+            const stack = [start]
+            ids.set(start, id)
+            while (stack.length) {
+                const n = stack.pop()
+                for (const m of adj.get(n)) {
+                    if (!ids.has(m)) {
+                        ids.set(m, id)
+                        stack.push(m)
+                    }
+                }
+            }
+        }
+        return ids
+    }
+
+    /** The red/green circuit network ids an entity's sides belong to. */
+    public getEntityCircuitNetworks(
+        entityNumber: number
+    ): { color: 'red' | 'green'; side: number; id: number }[] {
+        const out: { color: 'red' | 'green'; side: number; id: number }[] = []
+        for (const color of ['red', 'green'] as const) {
+            const sides = new Set<number>()
+            for (const conn of this.getEntityConnections(entityNumber)) {
+                if (conn.color !== color) continue
+                for (const cp of conn.cps) {
+                    if (cp.entityNumber === entityNumber) sides.add(cp.entitySide ?? 1)
+                }
+            }
+            if (sides.size === 0) continue
+            const ids = this.circuitNetworkIds(color)
+            for (const side of [...sides].sort((a, b) => a - b)) {
+                const id = ids.get(`${entityNumber}-${side}`)
+                if (id !== undefined) out.push({ color, side, id })
+            }
+        }
+        return out
+    }
+
     // post 2.0
     public serializeBpWires(): BlueprintWire[] {
         const wires = []

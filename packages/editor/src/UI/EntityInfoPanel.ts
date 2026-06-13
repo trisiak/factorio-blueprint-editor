@@ -10,6 +10,7 @@ import G from '../common/globals'
 import util from '../common/util'
 import { ISignal } from '../types'
 import { Entity } from '../core/Entity'
+import { createCircuitNetworkBadges } from './circuitNetworkBadges'
 import F from './controls/functions'
 import { Panel } from './controls/Panel'
 import { fitToWidthScale } from './quickbarLayout'
@@ -315,7 +316,15 @@ export class EntityInfoPanel extends Panel {
         const isConstant = entity.type === 'constant-combinator'
         const hasEnableCond = entity.circuitCondition !== undefined
         const modeLines = entity.circuitModeSummary
-        if (!isCombinator && !isConstant && !hasEnableCond && modeLines.length === 0) return startY
+        const networks = entity.circuitNetworks
+        if (
+            !isCombinator &&
+            !isConstant &&
+            !hasEnableCond &&
+            modeLines.length === 0 &&
+            networks.length === 0
+        )
+            return startY
 
         const hasIcon = (name?: string): boolean =>
             !!name && !!(FD.items[name] || FD.fluids[name] || FD.recipes[name] || FD.signals[name])
@@ -353,6 +362,18 @@ export class EntityInfoPanel extends Panel {
         header.position.set(10, y)
         container.addChild(header)
         y += header.height + 6
+
+        // Network ids (red/green numbers, like the game) when wired.
+        if (networks.length > 0) {
+            const row = new Container()
+            const lbl = placeText(row, 0, 'Networks:')
+            const badges = createCircuitNetworkBadges(entity)
+            badges.position.set(lbl, 2)
+            row.addChild(badges)
+            row.position.set(10, y)
+            container.addChild(row)
+            y += ROW_H
+        }
 
         if (entity.type === 'selector-combinator') {
             // Selectors are word-operations ('select', 'count', 'random', …); the

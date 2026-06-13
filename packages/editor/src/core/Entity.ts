@@ -908,6 +908,15 @@ export class Entity extends EventEmitter<EntityEvents> {
         }, 'Edit enable condition')
     }
 
+    /**
+     * The red/green circuit network ids this entity's connection points belong
+     * to (combinator input = side 1, output = side 2). Empty when not wired into
+     * a circuit network. Used to surface the network id in the info panel/editor.
+     */
+    public get circuitNetworks(): { color: 'red' | 'green'; side: number; id: number }[] {
+        return this.m_BP.wireConnections.getEntityCircuitNetworks(this.entityNumber)
+    }
+
     public get generateConnector(): boolean {
         return this.hasConnections || this.connectToLogisticNetwork
     }

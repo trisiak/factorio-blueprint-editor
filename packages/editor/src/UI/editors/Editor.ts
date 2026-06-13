@@ -6,6 +6,7 @@ import { Recipe } from './components/Recipe'
 import { Modules } from './components/Modules'
 import { Filters } from './components/Filters'
 import { CircuitCondition } from './components/CircuitCondition'
+import { createCircuitNetworkBadges } from '../circuitNetworkBadges'
 
 /** Editor */
 export abstract class Editor extends Dialog {
@@ -32,6 +33,13 @@ export abstract class Editor extends Dialog {
         this.m_Preview = new Preview(this.m_Entity, 114)
         this.m_Preview.position.set(12, 45)
         this.addChild(this.m_Preview)
+
+        // Red/green circuit-network ids (top-right, by the title) when wired.
+        const badges = createCircuitNetworkBadges(this.m_Entity)
+        if (badges.children.length > 0) {
+            badges.position.set(this.width - badges.width - 12, 14)
+            this.addChild(badges)
+        }
 
         // Close on entity destroy
         this.m_Entity.once('destroy', () => this.close())
