@@ -543,6 +543,8 @@ export class OverlayContainer extends Container {
     }
 
     public showSelectionArea(color: number): void {
+        // Reset any offset left by a previous selection's in-place nudges.
+        this.selectionArea.position.set(0, 0)
         const startPos = { x: this.bpc.gridData.x, y: this.bpc.gridData.y }
 
         this.selectionAreaUpdateFn = (endX: number, endY: number) => {
@@ -577,6 +579,12 @@ export class OverlayContainer extends Container {
      */
     public freezeSelectionArea(): void {
         this.bpc.gridData.off('update', this.selectionAreaUpdateFn, this)
+    }
+
+    /** Shift the frozen selection box by a tile offset (follows in-place nudges). */
+    public shiftSelectionArea(dxTiles: number, dyTiles: number): void {
+        this.selectionArea.position.x += dxTiles * 32
+        this.selectionArea.position.y += dyTiles * 32
     }
 
     /**

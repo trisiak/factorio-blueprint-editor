@@ -53,9 +53,16 @@ export interface EditorTestState {
     dialogOpen: boolean
     /**
      * Touch box-select (#21): entities under the held marquee selection (0 unless
-     * a selection is held, i.e. mode SELECT with the Copy/Cut/Delete bar showing).
+     * a selection is held, i.e. mode SELECT with the action controls showing).
+     * `origin` is the selection's top-left tile — lets tests assert in-place
+     * nudging actually moved the entities.
      */
-    marquee: { count: number }
+    marquee: {
+        count: number
+        origin: { x: number; y: number } | null
+        /** Direction of the first selected entity (for the rotate-in-select test). */
+        direction: number | null
+    }
     /** Whether the top-right entity info panel is showing (hover/tap-select). */
     infoPanelVisible: boolean
 }
@@ -96,7 +103,11 @@ export function getEditorTestState(): EditorTestState {
                     : null,
         },
         dialogOpen: Dialog.anyOpen(),
-        marquee: { count: G.BPC.marqueeCount },
+        marquee: {
+            count: G.BPC.marqueeCount,
+            origin: G.BPC.marqueeOrigin ?? null,
+            direction: G.BPC.marqueeDirection ?? null,
+        },
         infoPanelVisible: G.UI.entityInfoPanelVisible,
     }
 }
@@ -126,6 +137,12 @@ export interface FbeTestHook {
      * or the (not-yet-built) touch marquee. Returns false on an empty blueprint.
      */
     spawnPasteGhost: () => boolean
+    /**
+     * Screen-space (canvas-relative, CSS px) position of a named entity, or null
+     * if absent — lets touch tests tap an entity deterministically (e.g. to enter
+     * EDIT mode) without guessing coordinates.
+     */
+    entityScreenPos: (name: string) => { x: number; y: number } | null
     /**
      * Count rendered wire pixels per colour by extracting the wires container in
      * isolation (so combinator/pole sprites can't be mistaken for a wire). Backs
@@ -186,6 +203,16 @@ export function installTestHook(win: Window = window): void {
             if (entities.length === 0) return false
             G.BPC.spawnPaintContainer(entities)
             return true
+        },
+        entityScreenPos: name => {
+            const e = findEntity(name)
+            if (!e) return null
+            // World px → screen: the BlueprintContainer carries the viewport
+            // transform (position + scale), so screen = world*scale + offset.
+            return {
+                x: e.position.x * 32 * G.BPC.scale.x + G.BPC.x,
+                y: e.position.y * 32 * G.BPC.scale.y + G.BPC.y,
+            }
         },
         wireColorPixelCounts: () => {
             // Extract the wires container on its own — it holds only wire sprites,

@@ -731,6 +731,15 @@ export class BlueprintContainer extends Container {
             } else {
                 this.paintContainer.rotate(ccw)
             }
+        } else if (this.mode === EditorMode.SELECT) {
+            // A single held entity rotates in place (no pivot to worry about).
+            // Rotating a multi-entity group needs a proper pivot + collision/wire
+            // handling — deferred (see #47); a lone-entity rotate is the common case.
+            if (this.marqueeEntities.length === 1) {
+                const brokenBefore = this.countOverReach()
+                this.marqueeEntities[0].rotate(ccw, true)
+                this.warnNewOverReach(brokenBefore)
+            }
         }
     }
 
@@ -1055,6 +1064,21 @@ export class BlueprintContainer extends Container {
         return this.mode === EditorMode.SELECT ? this.marqueeEntities.length : 0
     }
 
+    /** Top-left tile of the held selection (min entity position), or null. For e2e. */
+    public get marqueeOrigin(): IPoint | undefined {
+        if (this.mode !== EditorMode.SELECT || this.marqueeEntities.length === 0) return undefined
+        return {
+            x: Math.min(...this.marqueeEntities.map(e => e.position.x)),
+            y: Math.min(...this.marqueeEntities.map(e => e.position.y)),
+        }
+    }
+
+    /** Direction of the first held-selection entity (for the rotate-in-select e2e). */
+    public get marqueeDirection(): number | undefined {
+        if (this.mode !== EditorMode.SELECT || this.marqueeEntities.length === 0) return undefined
+        return this.marqueeEntities[0].direction
+    }
+
     /** Copy the selection into a paste ghost (originals stay), previewed in place. */
     public copyMarquee(): void {
         if (this.mode !== EditorMode.SELECT) return
@@ -1121,6 +1145,67 @@ export class BlueprintContainer extends Container {
             if (m) m.cursorBox = undefined
         }
         this.marqueeEntities = []
+    }
+
+    /**
+     * Nudge the held selection one tile in place (the SELECT-mode d-pad). Moves
+     * the actual entities, preserving their wiring (unlike cut/paste) — see
+     * `Blueprint.moveEntitiesBy`. The frozen selection box follows so it stays
+     * around the entities.
+     */
+    public nudgeSelection(offset: IPoint): void {
+        if (this.mode !== EditorMode.SELECT || this.marqueeEntities.length === 0) return
+        const brokenBefore = this.countOverReach()
+        if (this.bp.moveEntitiesBy(this.marqueeEntities, offset)) {
+            this.overlayContainer.shiftSelectionArea(offset.x, offset.y)
+            this.warnNewOverReach(brokenBefore)
+        }
+    }
+
+    /** Selected entities with at least one connection beyond max wire reach. */
+    private countOverReach(): number {
+        return this.marqueeEntities.filter(e => !e.connectionsReach()).length
+    }
+
+    /**
+     * In-place moves/rotations bypass the per-entity wire-reach guard (so a group
+     * can move as a unit), which can stretch a wire to a *non-selected* entity past
+     * the limit — a blueprint that won't import. First-step flag (#47): warn when a
+     * move/rotate newly breaks reach, naming how many entities are affected. (A
+     * persistent per-wire visual marker is a follow-up.)
+     */
+    private warnNewOverReach(brokenBefore: number): void {
+        const broken = this.countOverReach()
+        if (broken > brokenBefore) {
+            G.logger({
+                text: `${broken} entity(s) now have wires beyond reach — this blueprint may not import`,
+                type: 'warning',
+            })
+        }
+    }
+
+    /**
+     * Promote the entity under the EDIT-mode cursor into a one-entity held
+     * selection (mode SELECT), so the same nudge / Copy / Cut / Delete controls
+     * apply to a single tapped entity. Drives the EDIT bar's "Select".
+     */
+    public selectHovered(): void {
+        if (this.mode !== EditorMode.EDIT || !this.hoverContainer) return
+        const entity = this.hoverContainer.entity
+        this.updateHoverContainer(true) // clear hover/info + mode → NONE
+        this.marqueeEntities = [entity]
+        const m = EntityContainer.mappings.get(entity.entityNumber)
+        if (m) m.cursorBox = 'copy'
+        this.setMode(EditorMode.SELECT)
+    }
+
+    /** Open the editor for the EDIT-mode entity, or close it if already open (toggle). */
+    public editHovered(): void {
+        if (Dialog.anyOpen()) {
+            Dialog.closeAll()
+            return
+        }
+        if (this.mode === EditorMode.EDIT) this.openEditor()
     }
 
     public zoom(zoomIn = true): void {

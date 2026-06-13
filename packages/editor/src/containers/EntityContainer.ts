@@ -23,6 +23,8 @@ export class EntityContainer {
     private entitySprites: EntitySprite[] = []
     /** This is only a reference */
     private cursorBoxContainer: Container
+    /** The active cursor-box kind, so it can be re-drawn when the entity moves/rotates. */
+    private cursorBoxType?: keyof CursorBoxSpecification
     /** This is only a reference */
     private undergroundLine: Container
 
@@ -55,6 +57,7 @@ export class EntityContainer {
 
             this.updateUndergroundLine()
             this.redrawEntityInfo()
+            this.refreshCursorBox()
             G.BPC.wiresContainer.update(this.m_Entity.entityNumber)
         }
 
@@ -72,6 +75,7 @@ export class EntityContainer {
 
             this.updateUndergroundLine()
             this.redrawEntityInfo()
+            this.refreshCursorBox()
             G.BPC.wiresContainer.update(this.m_Entity.entityNumber)
             this.visualizationArea.moveTo(this.position)
         }
@@ -225,6 +229,7 @@ export class EntityContainer {
     }
 
     public set cursorBox(type: keyof CursorBoxSpecification) {
+        this.cursorBoxType = type
         if (this.cursorBoxContainer) {
             this.cursorBoxContainer.destroy()
         }
@@ -235,6 +240,16 @@ export class EntityContainer {
                 type
             )
         }
+    }
+
+    /**
+     * Re-draw the cursor box at the entity's current position/size. The box is an
+     * overlay anchored to a fixed spot, so it must be rebuilt when the entity
+     * moves or rotates (e.g. a held selection nudged in place) — otherwise the
+     * green highlight stays at the original location.
+     */
+    private refreshCursorBox(): void {
+        if (this.cursorBoxType !== undefined) this.cursorBox = this.cursorBoxType
     }
 
     private createUndergroundLine(): void {

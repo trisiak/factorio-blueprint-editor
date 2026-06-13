@@ -296,7 +296,11 @@ export class InventoryDialog extends Dialog {
         return Math.max(404, Math.min(needed, G.app.screen.width - 16))
     }
 
-    /** An item button: quick tap commits, long-press previews (Confirm/Pin bar). */
+    /**
+     * An item button. Desktop: click commits, long-press previews (Confirm/Pin
+     * bar). Touch: tap previews/focuses (deliberate Confirm-to-select, fewer
+     * misclicks) — see the pointerup handler.
+     */
     private makeItemButton(name: string): Button<Container> {
         const button = new Button<Container>(36, 36)
         button.content = F.CreateIcon(name)
@@ -313,9 +317,18 @@ export class InventoryDialog extends Dialog {
         button.on('pointerup', e => {
             e.stopPropagation()
             if (this.m_pressTimer) {
-                // released before the long-press fired → quick tap = commit
+                // released before the long-press fired → quick tap.
                 this.clearPressTimer()
-                this.commitSelect(name)
+                if (inputMode.mode === 'desktop') {
+                    // Desktop: a click commits immediately (precise pointer).
+                    this.commitSelect(name)
+                } else {
+                    // Touch: a tap *focuses* the item — shows its name/details and
+                    // the Confirm/Pin bar — so selecting is a deliberate two-step
+                    // (tap to inspect, Confirm to take), lowering misclicks. (Same
+                    // as a long-press; the press timer just makes hold redundant.)
+                    this.beginPreview(name, button)
+                }
             }
         })
         button.on('pointerupoutside', () => this.clearPressTimer())
