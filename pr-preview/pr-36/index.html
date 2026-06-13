@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="initial-scale=1, maximum-scale=1, user-scalable=no, minimum-scale=1, width=device-width, height=device-height"
+        />
+        <meta
+            name="description"
+            content="A feature-rich Factorio Blueprint Editor. You can now edit your blueprints in the browser!"
+        />
+
+        <title>Factorio Blueprint Editor</title>
+
+        <link rel="icon" href="/factorio-blueprint-editor/pr-preview/pr-36/favicon.png" />
+      <script type="module" crossorigin src="/factorio-blueprint-editor/pr-preview/pr-36/assets/index-B0jOk6Fu.js"></script>
+      <link rel="stylesheet" crossorigin href="/factorio-blueprint-editor/pr-preview/pr-36/assets/index-C0cVS_8o.css">
+    </head>
+
+    <body>
+        <div id="loadingScreen" class="active">
+            <img id="logo" src="/factorio-blueprint-editor/pr-preview/pr-36/logo.svg" alt />
+            <img class="loadingWheel" src="/factorio-blueprint-editor/pr-preview/pr-36/loadingWheel.svg" alt />
+        </div>
+        <div id="corner-panel">
+            <img src="/factorio-blueprint-editor/pr-preview/pr-36/logo-small.svg" alt />
+        </div>
+        <div id="buttons">
+            <a
+                class="github-button"
+                href="https://github.com/Teoxoy/factorio-blueprint-editor"
+                target="_blank"
+                rel="noopener"
+            >
+                <span>Github</span>
+                <img src="/factorio-blueprint-editor/pr-preview/pr-36/github.svg" alt />
+            </a>
+            <button class="settings-button" id="settings-button" type="button">
+                <span>Settings</span>
+                <img src="/factorio-blueprint-editor/pr-preview/pr-36/settings.svg" alt />
+            </button>
+        </div>
+        <div id="info-panel">
+            <button id="info-panel-close" type="button" aria-label="Close">&times;</button>
+            <h1>INFO</h1>
+            <ul class="info-list">
+                <li>To access the inventory and start building press <mark>E</mark></li>
+                <li>To import/export a blueprint string use <mark>ctrl/cmd + C/V</mark></li>
+                <li>
+                    Check out the settings area for an in depth look at the settings and
+                    <mark>keybinds</mark>
+                </li>
+                <li>Leave your suggestions, ideas, new features or bug reports on Github</li>
+            </ul>
+            <h2>Features</h2>
+            <ul>
+                <li>rendering and editing blueprints</li>
+                <li>history (undo/redo)</li>
+                <li>copy and delete selections</li>
+                <li>
+                    import blueprints and books from multiple sources (direct bp string, pastebin,
+                    hastebin, gist, gitlab, factorioprints, factorio.school, google docs)
+                </li>
+                <li>generating blueprint images</li>
+                <li>oil outpost generator</li>
+                <li>customizable keybinds</li>
+                <li>"creative" entities</li>
+            </ul>
+            <h2>Planned Features</h2>
+            <ul>
+                <li>more blueprint tools</li>
+                <li>more entity editors</li>
+                <li>full rails support</li>
+                <li>trains support</li>
+                <li>mod support</li>
+            </ul>
+            <h3>Available url query parameters</h3>
+            <ul>
+                <li>source=&lt;BPSTRING_OR_URL_TO_BPSTRING&gt;</li>
+                <li>index=&lt;INDEX_OF_BP_IN_BOOK&gt;</li>
+            </ul>
+            <p class="copyright-notice">
+                All art assets, spritesheets and other Factorio game data used in this project
+                belong to Wube Software Ltd and are not for redistribution
+            </p>
+        </div>
+        <canvas id="editor" tabindex="1"></canvas>
+    </body>
+</html>
