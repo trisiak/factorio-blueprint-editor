@@ -681,13 +681,29 @@ export class Entity extends EventEmitter<EntityEvents> {
      * Read-only: the second operand of an arithmetic/decider combinator when it
      * is a constant rather than a signal (the signals are exposed by
      * `combinatorConditions`). Used by the info panel to render e.g. `[each] > 100`.
+     *
+     * Note the format quirk: arithmetic combinators store the second-operand
+     * constant as `second_constant` (with a separate `first_constant` for the
+     * first operand), whereas deciders store it as the condition's `constant`.
      */
     public get combinatorConstant(): number | undefined {
         if (this.type === 'arithmetic-combinator') {
-            return this.m_rawEntity.control_behavior?.arithmetic_conditions?.constant
+            return this.m_rawEntity.control_behavior?.arithmetic_conditions?.second_constant
         }
         if (this.type === 'decider-combinator') {
             return this.m_rawEntity.control_behavior?.decider_conditions?.conditions?.[0]?.constant
+        }
+        return undefined
+    }
+
+    /**
+     * Read-only: the first operand of an arithmetic combinator when it is a
+     * constant rather than a signal (`first_constant`). Deciders always compare a
+     * signal, so this only applies to arithmetic combinators.
+     */
+    public get combinatorFirstConstant(): number | undefined {
+        if (this.type === 'arithmetic-combinator') {
+            return this.m_rawEntity.control_behavior?.arithmetic_conditions?.first_constant
         }
         return undefined
     }

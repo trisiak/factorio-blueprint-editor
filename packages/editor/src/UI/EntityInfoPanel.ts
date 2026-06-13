@@ -353,17 +353,30 @@ export class EntityInfoPanel extends Panel {
         container.addChild(header)
         y += header.height + 6
 
-        if (isCombinator) {
+        if (entity.type === 'selector-combinator') {
+            // Selectors are word-operations ('select', 'count', 'random', …); the
+            // index signal only exists for 'select', so show it conditionally.
+            const row = new Container()
+            let x = placeText(row, 0, `Operation: ${entity.operator ?? 'select'}`)
+            const idx = entity.combinatorConditions?.first_signal
+            if (idx?.name) {
+                x = placeText(row, x, '·')
+                placeToken(row, x, idx)
+            }
+            row.position.set(10, y)
+            container.addChild(row)
+            y += ROW_H
+        } else if (isCombinator) {
             const { first_signal, second_signal, output_signal } = entity.combinatorConditions ?? {}
             const row = new Container()
             let x = 0
-            x = placeToken(row, x, first_signal)
+            // Either operand may be a constant instead of a signal; the missing
+            // second operand defaults to 0 (matching how Factorio omits it).
+            x = placeToken(row, x, first_signal, entity.combinatorFirstConstant)
             x = placeText(row, x, String(entity.operator ?? ''))
-            if (entity.type !== 'selector-combinator') {
-                x = placeToken(row, x, second_signal, entity.combinatorConstant)
-                x = placeText(row, x, '→')
-                placeToken(row, x, output_signal)
-            }
+            x = placeToken(row, x, second_signal, entity.combinatorConstant ?? 0)
+            x = placeText(row, x, '→')
+            placeToken(row, x, output_signal)
             row.position.set(10, y)
             container.addChild(row)
             y += ROW_H
@@ -406,7 +419,7 @@ export class EntityInfoPanel extends Panel {
             x = placeText(row, x, 'Enabled if')
             x = placeToken(row, x, cond.first_signal)
             x = placeText(row, x, cond.comparator ?? '<')
-            placeToken(row, x, cond.second_signal, cond.constant)
+            placeToken(row, x, cond.second_signal, cond.constant ?? 0)
             row.position.set(10, y)
             container.addChild(row)
             y += ROW_H
