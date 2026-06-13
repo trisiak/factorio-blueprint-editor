@@ -140,6 +140,17 @@ export const SPRITE_GENERATION_FAILED = Symbol('SPRITE_GENERATION_FAILED')
 
 const generatorCache = new Map<string, (data: IDrawData) => readonly ExtendedSpriteData[]>()
 
+/**
+ * Drop all cached per-entity generators. Generators close over the prototype
+ * they were built from and the cache is keyed by entity *name*, so after a
+ * loadData() swap to a different pack (the sprite census test does this;
+ * in-app pack switching without a reload would too) the cache would keep
+ * serving sprites built from the previous pack's prototypes.
+ */
+export function clearSpriteDataCache(): void {
+    generatorCache.clear()
+}
+
 function getSpriteData(data: IDrawData): readonly ExtendedSpriteData[] {
     if (generatorCache.has(data.name)) {
         return generatorCache.get(data.name)(data)
