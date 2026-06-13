@@ -21,6 +21,7 @@ import FD, {
     getEntitySize,
     getModule,
     getPossibleRotations,
+    getFluidBoxes,
     isCraftingMachine,
     isInserter,
     mapBoundingBox,
@@ -55,6 +56,7 @@ export interface EntityEvents {
     destroy: []
     position: [newValue: IPoint, oldValue: IPoint]
     direction: []
+    mirror: []
     directionType: []
     recipe: [recipe: string]
     modules: [modules: (string | undefined)[]]
@@ -241,6 +243,26 @@ export class Entity extends EventEmitter<EntityEvents> {
         this.m_BP.history
             .updateValue(this.m_rawEntity, 'direction', direction, 'Change direction')
             .onDone(() => this.emit('direction'))
+            .commit()
+    }
+
+    /**
+     * Mirrored (Factorio 2.0). A chirality flip for buildings whose layout is
+     * asymmetric (fluidboxes) — flipping them is a *reflection*, which `direction`
+     * alone can't express, so the blueprint carries a `mirror` boolean. Symmetric
+     * directional entities (belts, inserters) flip via `direction` and never set
+     * this. Omitted from the raw entity when false to keep exports clean.
+     */
+    public get mirror(): boolean {
+        return this.m_rawEntity.mirror ?? false
+    }
+    public set mirror(mirror: boolean) {
+        if ((this.m_rawEntity.mirror ?? false) === mirror) return
+
+        this.m_BP.history
+            // store `true`, or `undefined` to drop the key when reset to false
+            .updateValue(this.m_rawEntity, 'mirror', mirror || undefined, 'Mirror')
+            .onDone(() => this.emit('mirror'))
             .commit()
     }
 
@@ -1000,14 +1022,20 @@ export class Entity extends EventEmitter<EntityEvents> {
         const position = vertical
             ? { x: this.m_rawEntity.position.x, y: -this.m_rawEntity.position.y }
             : { x: -this.m_rawEntity.position.x, y: this.m_rawEntity.position.y }
+        // Chiral buildings (fluidboxes) need the mirror flag toggled — the
+        // direction reflection above can't express their reflection. Directional
+        // entities flip via `direction` only and leave `mirror` untouched.
+        const mirror = this.isMirrorable ? !this.mirror : this.mirror
         const updatedRawEntity = {
             ...this.m_rawEntity,
             direction,
             position,
             input_priority,
             output_priority,
+            mirror: mirror || undefined,
         }
         if (direction === 0) delete updatedRawEntity.direction
+        if (!mirror) delete updatedRawEntity.mirror
 
         return new Entity(updatedRawEntity, this.m_BP)
     }
@@ -1203,6 +1231,21 @@ export class Entity extends EventEmitter<EntityEvents> {
         const e = this.entityData
         if (!isCraftingMachine(e)) return false
         return e.crafting_categories && e.crafting_categories.includes('crafting-with-fluid')
+    }
+
+    /**
+     * Whether flipping this entity is a *chirality* flip (needs the `mirror`
+     * flag) rather than just a direction change. True for crafting machines with
+     * fluidboxes — oil refinery, chemical plant, fluid-capable assemblers — whose
+     * asymmetric fluid I/O can't be expressed by `direction` alone. Symmetric /
+     * purely-directional entities (belts, inserters) flip via `direction` and
+     * never get a mirror flag (so they don't double-transform when rendered).
+     * (First cut keyed on "has fluidboxes"; refine if the game treats other
+     * prototypes as mirrorable — see #55.)
+     */
+    public get isMirrorable(): boolean {
+        const e = this.entityData
+        return isCraftingMachine(e) && getFluidBoxes(e, true).length > 0
     }
 
     public get assemblerHasFluidInputs(): boolean {

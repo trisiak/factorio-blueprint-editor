@@ -185,6 +185,27 @@ pipelines at once made touch taps double-act via the browser's synthetic
   `index.styl`). Covered by `e2e/touchPlacement*.spec.ts` (CDP drag for grab-vs-pan
   on both ghost kinds, d-pad nudge, Place commit) via the `?test` hook (`paint.kind`
     - `spawnPasteGhost`). Follow-up: fixed bottom-arrows idea realised.
+- ✅ **Single-entity flip + the `mirror` property** (issue #55) — the rail's Flip
+  H/Flip V used to only work on a multi-entity paste ghost (flip-by-copying); a
+  single held entity ignored them. Now a single held/selected entity flips in
+  place: a **directional** entity (belt, inserter, underground) flips via its
+  `direction`, and a **chiral** fluid building (oil refinery, chemical plant,
+  fluid assembler — `isCraftingMachine` with fluidboxes) toggles the Factorio 2.0
+  **`mirror`** flag instead, since a direction-reflection alone can't express a
+  fluidbox chirality flip. The flag is modeled end-to-end: parsed/serialized
+  (`types.ts`, `blueprintSchema.json`, `Entity.mirror` getter/setter on the
+  history stack), rendered (`EntitySprite` mirrors the sprite via negative
+  x-scale + shift; `OverlayContainer` mirrors the fluid in/out indicators), and
+  round-tripped through export (`serialize` spreads the raw entity). Flip routes
+  through `Entity.getFlippedCopy` (a throwaway Entity reuses the core
+  direction+mirror math and the `IllegalFlipError` guard for non-flippable rail
+  pieces) for both the held ghost (`PaintEntityContainer.flip/canFlip`) and the
+  in-place case; the rail's Flip buttons are **cursor-aware** (`cursorCanFlip`
+  hidden for a non-flippable held entity). Covered by `e2e/mirror.spec.ts`
+  (chiral toggle, directional-via-direction, placed round-trip) via the `?test`
+  hook (`paint.mirror`, `entityMirror`). _Sprite-mirror rendering and the exact
+  flip-encoding heuristic still want a visual (preview) + in-game (export a
+  flipped refinery, paste into Factorio) eyeball._
 - ✅ **Mode-gated action rail** (issue #33) — the rail now shows only the buttons
   whose action is live in the current mode, instead of the full set at all times.
   Each `ToolbarButton` declares the `modes` it's useful in (omit = global); a

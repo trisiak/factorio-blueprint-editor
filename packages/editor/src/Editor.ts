@@ -127,12 +127,12 @@ export class Editor {
     }
 
     /**
-     * Whether the held cursor can be flipped — true only while holding a *pasted
-     * blueprint* (a single held entity has no flip path). Gates the rail's Flip
+     * Whether the held cursor can be flipped — a pasted blueprint, or a single
+     * held entity that's directional or chiral (#55). Gates the rail's Flip
      * buttons so they only show when flipping does something.
      */
     public get cursorCanFlip(): boolean {
-        return G.BPC.mode === EditorMode.PAINT && !!G.BPC.paintContainer?.canFlipOrRotateByCopying()
+        return G.BPC.mode === EditorMode.PAINT && !!G.BPC.paintContainer?.canFlip()
     }
 
     // --- Touch marquee (#21) — thin delegators for the website's Select button

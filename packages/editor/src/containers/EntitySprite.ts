@@ -35,6 +35,8 @@ interface IEntityData {
     trainStopColor?: ColorWithAlpha
     entityColor?: ColorWithAlpha
     modules?: string[]
+    /** Factorio 2.0 chirality flip — render each layer horizontally mirrored. */
+    mirror?: boolean
 }
 
 /** Z-index layer assignments inspired by Factorio's render layer ordering.
@@ -68,7 +70,8 @@ export class EntitySprite extends Sprite {
     public constructor(
         texture: Texture,
         data: ExtendedSpriteData,
-        position: IPoint = { x: 0, y: 0 }
+        position: IPoint = { x: 0, y: 0 },
+        mirror = false
     ) {
         super(texture)
 
@@ -96,12 +99,20 @@ export class EntitySprite extends Sprite {
         this.position.set(position.x, position.y)
 
         if (data.shift) {
-            this.position.x += data.shift[0] * 32
+            // Mirroring reflects the entity left↔right, so each layer's x-shift
+            // flips sign (an off-centre layer moves to the mirrored side).
+            this.position.x += data.shift[0] * 32 * (mirror ? -1 : 1)
             this.position.y += data.shift[1] * 32
         }
 
         if (data.scale) {
             this.scale.set(data.scale)
+        }
+
+        // Horizontal flip about the anchor (texture mirror). Done after scale.set
+        // so it negates whatever scale was applied.
+        if (mirror) {
+            this.scale.x = -this.scale.x
         }
 
         this.anchor.x = data.anchorX === undefined ? 0.5 : data.anchorX
@@ -160,6 +171,7 @@ export class EntitySprite extends Sprite {
 
         const entityColor =
             entity instanceof Entity ? entity.trainStopColor : (entity as IEntityData).entityColor
+        const mirror = !!entity.mirror
 
         if ((spriteData as any) === SPRITE_GENERATION_FAILED || spriteData.length === 0) {
             const fdEntity = FD.entities[entity.name]
@@ -202,7 +214,7 @@ export class EntitySprite extends Sprite {
                 data.width || (Array.isArray(data.size) ? data.size[0] : data.size),
                 data.height || (Array.isArray(data.size) ? data.size[1] : data.size)
             )
-            const sprite = new EntitySprite(texture, data, position)
+            const sprite = new EntitySprite(texture, data, position, mirror)
 
             if (data.filename.includes('circuit-connector')) {
                 sprite.__zIndex = LAYER.CIRCUIT_CONNECTOR

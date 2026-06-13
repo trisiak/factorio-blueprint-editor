@@ -744,17 +744,22 @@ export class BlueprintContainer extends Container {
     }
 
     public flip(vertical: boolean): void {
-        if (this.mode === EditorMode.PAINT && this.paintContainer.canFlipOrRotateByCopying()) {
-            try {
+        if (this.mode !== EditorMode.PAINT) return
+        try {
+            if (this.paintContainer.canFlipOrRotateByCopying()) {
+                // Paste ghost: rebuild from flipped copies.
                 const copies = this.paintContainer.flippedEntities(vertical)
                 this.paintContainer.destroy()
                 this.spawnPaintContainer(copies, 0)
-            } catch (e) {
-                if (e instanceof IllegalFlipError) {
-                    G.logger({ text: e.message, type: 'warning' })
-                } else {
-                    throw e
-                }
+            } else {
+                // Single held entity: flip in place (no-op for tiles/wires).
+                this.paintContainer.flip(vertical)
+            }
+        } catch (e) {
+            if (e instanceof IllegalFlipError) {
+                G.logger({ text: e.message, type: 'warning' })
+            } else {
+                throw e
             }
         }
     }

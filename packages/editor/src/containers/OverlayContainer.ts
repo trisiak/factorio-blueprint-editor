@@ -143,11 +143,16 @@ export class OverlayContainer extends Container {
                 }
             }
 
-            fluidIcons.scale.set(0.5, 0.5)
+            // Mirror reflects the whole entity left↔right, so flip the fluid
+            // indicator layers as a unit (negative x-scale) — this reflects every
+            // arrow's position *and* its pointing direction consistently, matching
+            // the mirrored sprite, without per-arrow geometry.
+            const sx = entity.mirror ? -0.5 : 0.5
+            fluidIcons.scale.set(sx, 0.5)
             if (fluidIcons.children.length !== 0) {
                 entityInfo.addChild(fluidIcons)
             }
-            arrows.scale.set(0.5, 0.5)
+            arrows.scale.set(sx, 0.5)
             if (arrows.children.length !== 0) {
                 entityInfo.addChild(arrows)
             }
