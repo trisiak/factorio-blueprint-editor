@@ -1,10 +1,11 @@
-import { Container, FederatedPointerEvent } from 'pixi.js'
+import { Container } from 'pixi.js'
 import G from '../../common/globals'
 import { Entity } from '../../core/Entity'
 import { ISignal, LogisticFilter } from '../../types'
 import FD from '../../core/factorioData'
 import { Slot } from '../controls/Slot'
 import { NumericField } from '../controls/NumericField'
+import { bindSlotGestures } from '../controls/gestures'
 import { Editor } from './Editor'
 import F from '../controls/functions'
 
@@ -41,7 +42,11 @@ export class ConstantCombinatorEditor extends Editor {
             const slot = new Slot<number>()
             slot.data = i
             slot.position.set(x + (i % COLS) * STEP, y + Math.floor(i / COLS) * STEP)
-            slot.on('pointerdown', this.onSlotDown, this)
+            bindSlotGestures(
+                slot,
+                () => this.activateSlot(i),
+                () => this.clearSlot(i)
+            )
             this.addChild(slot)
             this.slots.push(slot)
         }
@@ -59,17 +64,14 @@ export class ConstantCombinatorEditor extends Editor {
         this.refreshSlots()
     }
 
-    private onSlotDown(e: FederatedPointerEvent): void {
-        e.stopPropagation()
-        const i = (e.target as Slot<number>).data
-        if (e.button === 2) {
-            this.m_filters[i] = undefined
-            if (this.selected === i) this.select(-1)
-            this.commit()
-            this.refreshSlots()
-            return
-        }
-        if (e.button !== 0) return
+    private clearSlot(i: number): void {
+        this.m_filters[i] = undefined
+        if (this.selected === i) this.select(-1)
+        this.commit()
+        this.refreshSlots()
+    }
+
+    private activateSlot(i: number): void {
         if (this.m_filters[i] === undefined) {
             G.UI.createSignalPicker(
                 'Select a signal',

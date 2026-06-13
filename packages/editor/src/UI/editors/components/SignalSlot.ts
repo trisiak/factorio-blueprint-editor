@@ -1,7 +1,8 @@
-import { FederatedPointerEvent, Text } from 'pixi.js'
+import { Text } from 'pixi.js'
 import G from '../../../common/globals'
 import { ISignal } from '../../../types'
 import { Slot } from '../../controls/Slot'
+import { bindSlotGestures } from '../../controls/gestures'
 import { styles } from '../../style'
 import F from '../../controls/functions'
 
@@ -24,7 +25,14 @@ export class SignalSlot extends Slot<undefined> {
         super(36, 36)
         this.m_signal = signal
         this.updateContent()
-        this.on('pointerdown', this.onPointerDown, this)
+        bindSlotGestures(
+            this,
+            () => this.openPicker(),
+            () => {
+                this.signal = undefined
+                this.onChange(undefined)
+            }
+        )
     }
 
     public get signal(): ISignal | undefined {
@@ -50,20 +58,14 @@ export class SignalSlot extends Slot<undefined> {
         this.content = placeholder
     }
 
-    private onPointerDown(e: FederatedPointerEvent): void {
-        e.stopPropagation()
-        if (e.button === 0) {
-            G.UI.createSignalPicker(
-                this.title,
-                choice => {
-                    this.signal = choice.signal
-                    this.onChange(choice.signal)
-                },
-                this.allowSpecial
-            )
-        } else if (e.button === 2) {
-            this.signal = undefined
-            this.onChange(undefined)
-        }
+    private openPicker(): void {
+        G.UI.createSignalPicker(
+            this.title,
+            choice => {
+                this.signal = choice.signal
+                this.onChange(choice.signal)
+            },
+            this.allowSpecial
+        )
     }
 }

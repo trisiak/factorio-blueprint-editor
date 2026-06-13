@@ -99,21 +99,28 @@ export class SignalPicker extends Dialog {
         )
         this.addChild(up, down)
 
-        // Bottom bar: preview name (left), optional constant field, ✓ Confirm (right).
+        // Bottom bar: ✕ None (clear) | preview name | optional constant | ✓ Confirm.
+        const none = SignalPicker.barButton('✕ None', 0x6b3636, () => {
+            this.onConfirm({})
+            this.close()
+        })
+        none.position.set(SignalPicker.PAD, SignalPicker.BAR_Y + 2)
+        this.addChild(none)
+
         this.nameLabel = new Text({ text: '', style: styles.dialog.label })
-        this.nameLabel.position.set(SignalPicker.PAD, SignalPicker.BAR_Y + 6)
+        this.nameLabel.position.set(SignalPicker.PAD + 90, SignalPicker.BAR_Y + 6)
         this.addChild(this.nameLabel)
 
         if (this.allowConstant) {
             const hint = new Text({ text: 'or constant', style: styles.dialog.label })
-            hint.position.set(SignalPicker.W - 196, SignalPicker.BAR_Y - 14)
+            hint.position.set(SignalPicker.W - 192, SignalPicker.BAR_Y - 14)
             this.addChild(hint)
             this.constantField = new NumericField(
                 undefined,
                 v => this.onConstantSet(v),
                 'Enter a constant'
             )
-            this.constantField.position.set(SignalPicker.W - 196, SignalPicker.BAR_Y + 4)
+            this.constantField.position.set(SignalPicker.W - 192, SignalPicker.BAR_Y + 4)
             this.addChild(this.constantField)
         }
 

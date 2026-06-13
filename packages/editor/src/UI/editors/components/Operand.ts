@@ -1,7 +1,8 @@
-import { FederatedPointerEvent, Text } from 'pixi.js'
+import { Text } from 'pixi.js'
 import G from '../../../common/globals'
 import { ISignal } from '../../../types'
 import { Slot } from '../../controls/Slot'
+import { bindSlotGestures } from '../../controls/gestures'
 import { styles } from '../../style'
 import F from '../../controls/functions'
 
@@ -29,7 +30,15 @@ export class Operand extends Slot<undefined> {
         super(36, 36)
         this.m_value = { ...value }
         this.updateContent()
-        this.on('pointerdown', this.onPointerDown, this)
+        bindSlotGestures(
+            this,
+            () => this.openPicker(),
+            () => {
+                this.m_value = {}
+                this.updateContent()
+                this.onChange({})
+            }
+        )
     }
 
     private updateContent(): void {
@@ -47,23 +56,16 @@ export class Operand extends Slot<undefined> {
         this.content = label
     }
 
-    private onPointerDown(e: FederatedPointerEvent): void {
-        e.stopPropagation()
-        if (e.button === 0) {
-            G.UI.createSignalPicker(
-                this.title,
-                choice => {
-                    this.m_value = choice
-                    this.updateContent()
-                    this.onChange(choice)
-                },
-                this.allowSpecial,
-                true // operands can be a constant
-            )
-        } else if (e.button === 2) {
-            this.m_value = {}
-            this.updateContent()
-            this.onChange({})
-        }
+    private openPicker(): void {
+        G.UI.createSignalPicker(
+            this.title,
+            choice => {
+                this.m_value = choice
+                this.updateContent()
+                this.onChange(choice)
+            },
+            this.allowSpecial,
+            true // operands can be a constant
+        )
     }
 }
