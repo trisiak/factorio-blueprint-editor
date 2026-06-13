@@ -70,16 +70,34 @@ export class WiresContainer extends Container {
 
         const bounds = wire.bounds
 
+        // Each wire is baked into its own RenderTexture (the main renderer runs
+        // with antialias off, so this supersampled+AA'd texture is how wires get
+        // smooth edges). Two things here are deliberately *not* like the obvious
+        // version, because they made short circuit (red/green) wires vanish on
+        // high-DPR / WebGPU mobile while long copper wires survived (issue #37):
+        //
+        //  - **No mipmaps.** A circuit wire between adjacent entities is a tiny,
+        //    near-axis-aligned segment — its texture is a thin 1.5px stroke. When
+        //    that's reduced down a mip chain (especially on the WebGPU path, where
+        //    mip generation runs over a small multisampled target), the thin
+        //    stroke averages to ~nothing in the upper levels, so the wire
+        //    disappears as soon as the view is minified. Copper wires span far
+        //    poles → big texture → upper mips still hold the stroke, which is why
+        //    only red/green went missing. Sampling the base level (no mips) keeps
+        //    thin wires visible at every zoom; the slight shimmer when zoomed way
+        //    out is a fair trade for not vanishing.
+        //  - **Clamped resolution.** `devicePixelRatio * 2` is ~5.25 on a phone,
+        //    blowing each short wire up into a needlessly large supersampled+MSAA
+        //    target; cap it so the textures stay sane on mobile GPUs.
+        const resolution = Math.min(window.devicePixelRatio * 2, 4)
         const renderTexture = RenderTexture.create({
             width: bounds.width,
             height: bounds.height,
-            autoGenerateMipmaps: true,
             antialias: true,
-            resolution: window.devicePixelRatio * 2,
+            resolution,
         })
 
         G.app.renderer.render({ container: wire, target: renderTexture })
-        renderTexture.source.updateMipmaps()
 
         wire.destroy()
 

@@ -110,6 +110,18 @@ pipelines at once made touch taps double-act via the browser's synthetic
   in-dialog and refreshes live; recipe-on-hover gated to desktop, fixing the stray
   touch-drag tooltip); and a **responsive body width** so the tab scroll only
   engages when the tabs truly can't fit (more item columns on wider screens).
+- ✅ **Red/green circuit wires render on high-DPR/touch** (issue #37) — each wire
+  is baked into its own supersampled `RenderTexture`; `autoGenerateMipmaps` + a
+  `devicePixelRatio * 2` resolution reduced the thin 1.5px stroke of a _short_
+  (adjacent-entity) circuit wire to nothing in the upper mips, so red/green wires
+  vanished under minification on the WebGPU/mobile path while long copper power
+  wires (big texture) survived. Fix: drop mipmaps (sample the base level, which
+  always holds the stroke) and clamp the texture resolution. `WiresContainer.ts`;
+  guarded by `e2e/wires.spec.ts` via a new `wireColorPixelCounts()` `?test` hook
+  that extracts the wires container in isolation and asserts all three colours
+  paint pixels (SwiftShader/WebGL here can't reproduce the WebGPU vanish, so this
+  locks the pipeline against a colour silently dropping out rather than the
+  device-specific bug itself).
 
 ## Not done / next
 
