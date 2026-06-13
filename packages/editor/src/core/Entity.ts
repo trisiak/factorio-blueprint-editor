@@ -768,17 +768,19 @@ export class Entity extends EventEmitter<EntityEvents> {
                     lines.push(`Reads belt contents (${mode(cb.circuit_contents_read_mode)})`)
                 break
             case 'assembling-machine':
-                if (cb.circuit_set_recipe) lines.push('Sets recipe from circuit')
-                if (cb.circuit_read_ingredients) lines.push('Reads ingredients')
-                if (cb.circuit_read_contents) lines.push('Reads contents')
-                if (cb.circuit_read_recipe_finished)
+                if (cb.set_recipe) lines.push('Sets recipe from circuit')
+                if (cb.read_ingredients) lines.push('Reads ingredients')
+                if (cb.read_contents) lines.push('Reads contents')
+                if (cb.read_recipe_finished)
                     lines.push(
                         `Reads recipe finished${
-                            cb.circuit_recipe_finished_signal?.name
-                                ? ` → ${cb.circuit_recipe_finished_signal.name}`
+                            cb.recipe_finished_signal?.name
+                                ? ` → ${cb.recipe_finished_signal.name}`
                                 : ''
                         }`
                     )
+                if (cb.working_signal?.name)
+                    lines.push(`Outputs ${cb.working_signal.name} while working`)
                 break
             case 'mining-drill':
                 if (cb.circuit_read_resources) lines.push('Reads resources')
