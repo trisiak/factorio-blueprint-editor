@@ -10,62 +10,42 @@ import { TempEditor } from './TempEditor'
 import { TrainStopEditor } from './TrainStopEditor'
 
 /**
- * Factory Function for creating Editor based on Entity Number
- *
- * @description This function is needed externally of the Editor class as otherwise there will
- * be a raise condition where the MachineEditor cannot be created due to teh Editor not being
- * available yet. This can be solved in the future with lazy loading classes with Import(). Once
- * lazy loading is available, this function can move into the Editor class
- *
- * @param entityNumber - Entity Number for which to create Editor for
+ * Which editor an entity gets — or `undefined` for an entity with nothing to
+ * configure (no editor opens). Pure routing decision, split out from
+ * `createEditor` so it can be unit-tested across data packs without the PixiJS
+ * editor classes (which need a canvas); see `editorRouting.test.ts`.
  */
-export function createEditor(entity: Entity): Editor {
-    let editor: Editor
+export type EditorKind =
+    | 'machine'
+    | 'beacon'
+    | 'inserter'
+    | 'mining'
+    | 'splitter'
+    | 'temp'
+    | 'trainstop'
+
+export function editorKindFor(entity: Entity): EditorKind | undefined {
     switch (entity.name) {
-        // Assembly Machines
         case 'assembling-machine-1':
         case 'assembling-machine-2':
-        case 'assembling-machine-3': {
-            editor = new MachineEditor(entity)
-            break
-        }
-        // Beacon
-        case 'beacon': {
-            editor = new BeaconEditor(entity)
-            break
-        }
-        // Inserters
+        case 'assembling-machine-3':
+            return 'machine'
+        case 'beacon':
+            return 'beacon'
         case 'burner-inserter':
         case 'inserter':
         case 'long-handed-inserter':
         case 'fast-inserter':
         case 'bulk-inserter':
-        case 'stack-inserter': {
-            editor = new InserterEditor(entity)
-            break
-        }
-        // Mining
-        case 'electric-mining-drill': {
-            editor = new MiningEditor(entity)
-            break
-        }
-        // Splitters
+        case 'stack-inserter':
+            return 'inserter'
+        case 'electric-mining-drill':
+            return 'mining'
         case 'splitter':
         case 'fast-splitter':
         case 'express-splitter':
-        case 'turbo-splitter': {
-            editor = new SplitterEditor(entity)
-            break
-        }
-        // Chests
-        // TODO: update using sections
-        // case 'buffer-chest':
-        // case 'requester-chest':
-        // case 'storage-chest': {
-        //     editor = new ChestEditor(entity)
-        //     break
-        // }
-        // Temp
+        case 'turbo-splitter':
+            return 'splitter'
         case 'lab':
         case 'electric-furnace':
         case 'pumpjack':
@@ -73,12 +53,9 @@ export function createEditor(entity: Entity): Editor {
         case 'chemical-plant':
         case 'centrifuge':
         case 'rocket-silo':
-            editor = new TempEditor(entity)
-            break
-        // Train stop
+            return 'temp'
         case 'train-stop':
-            editor = new TrainStopEditor(entity)
-            break
+            return 'trainstop'
         default: {
             // The cases above enumerate vanilla crafting machines by name, so
             // modded/expansion ones (e.g. Space Age's foundry, electromagnetic-
@@ -91,19 +68,53 @@ export function createEditor(entity: Entity): Editor {
             // configure — a selectable recipe (assembling-machine types; furnaces
             // and rocket silos auto-pick theirs) or module slots — so e.g. a plain
             // stone/steel furnace still opens nothing rather than a blank dialog.
+            //
+            // KNOWN GAP (#28): entities of type beacon/lab/mining-drill that
+            // aren't the vanilla name above but DO have module slots (SE's
+            // compact/wide beacons, burner-lab, se-space-science-lab,
+            // area-mining-drill) fall through to `undefined` — their modules are
+            // currently unreachable. Tracked by editorRouting.test.ts.
             if (isCraftingMachine(entity.entityData)) {
                 const hasRecipePicker =
                     entity.acceptedRecipes.length > 0 &&
                     entity.type !== 'furnace' &&
                     entity.type !== 'rocket-silo'
                 if (hasRecipePicker || entity.moduleSlots > 0) {
-                    editor = new TempEditor(entity)
-                    break
+                    return 'temp'
                 }
             }
             return undefined
         }
     }
+}
 
-    return editor
+/**
+ * Factory Function for creating Editor based on Entity Number
+ *
+ * @description This function is needed externally of the Editor class as otherwise there will
+ * be a raise condition where the MachineEditor cannot be created due to teh Editor not being
+ * available yet. This can be solved in the future with lazy loading classes with Import(). Once
+ * lazy loading is available, this function can move into the Editor class
+ *
+ * @param entityNumber - Entity Number for which to create Editor for
+ */
+export function createEditor(entity: Entity): Editor {
+    switch (editorKindFor(entity)) {
+        case 'machine':
+            return new MachineEditor(entity)
+        case 'beacon':
+            return new BeaconEditor(entity)
+        case 'inserter':
+            return new InserterEditor(entity)
+        case 'mining':
+            return new MiningEditor(entity)
+        case 'splitter':
+            return new SplitterEditor(entity)
+        case 'temp':
+            return new TempEditor(entity)
+        case 'trainstop':
+            return new TrainStopEditor(entity)
+        default:
+            return undefined
+    }
 }
