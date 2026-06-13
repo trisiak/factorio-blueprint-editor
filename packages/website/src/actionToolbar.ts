@@ -23,6 +23,11 @@ interface ToolbarButton {
     label: string
     /** Extra class (cancel/confirm/delete get emphasized in the relevant modes). */
     className?: string
+    /**
+     * Editor modes the button is shown in (default: all). Mode-specific controls
+     * (e.g. the paint-ghost nudges) only earn rail space while they're usable.
+     */
+    modes?: EditorMode[]
 }
 
 // Priority order: the buttons that fit stay in the rail; the rest spill into the
@@ -31,6 +36,13 @@ const BUTTONS: ToolbarButton[] = [
     { action: 'inventory', glyph: '⊞', label: 'Items' },
     { action: 'rotate', glyph: '↻', label: 'Rotate' },
     { action: 'confirmPlacement', glyph: '✓', label: 'Place', className: 'confirm' },
+    // Fine-tune nudges for a held paint ghost — the touch way to position a big
+    // paste precisely (drag gets close, arrows dial it in). PAINT-only so they
+    // don't waste rail space the rest of the time (see issue #30).
+    { action: 'moveEntityUp', glyph: '▲', label: 'Up', modes: [EditorMode.PAINT] },
+    { action: 'moveEntityLeft', glyph: '◀', label: 'Left', modes: [EditorMode.PAINT] },
+    { action: 'moveEntityRight', glyph: '▶', label: 'Right', modes: [EditorMode.PAINT] },
+    { action: 'moveEntityDown', glyph: '▼', label: 'Down', modes: [EditorMode.PAINT] },
     { action: 'closeWindow', glyph: '✕', label: 'Cancel', className: 'cancel' },
     { action: 'mine', glyph: '🗑', label: 'Delete', className: 'delete' },
     { action: 'pipette', glyph: '⊙', label: 'Pick' },
@@ -135,20 +147,24 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
         const stack = document.getElementById('buttons')
         const top = stack ? Math.round(stack.getBoundingClientRect().bottom) : 140
 
+        // Mode-specific buttons (the paint nudges) only take rail space while
+        // they're usable — everything else shows in every mode.
+        const visible = buttons.filter(b => !b.spec.modes || b.spec.modes.includes(editor.mode))
+
         // As many priority buttons as fit the height (×3 columns in landscape);
         // the rest collapse into the ⋯ overflow so nothing falls below the
         // viewport. The ⋯ takes the last grid cell when present.
         const columns = window.innerWidth > window.innerHeight ? 3 : 1
         const rows = Math.max(1, Math.floor((window.innerHeight - top - MARGIN) / BTN))
         const capacity = rows * columns
-        const overflowNeeded = buttons.length > capacity
-        const inRail = overflowNeeded ? capacity - 1 : buttons.length
+        const overflowNeeded = visible.length > capacity
+        const inRail = overflowNeeded ? capacity - 1 : visible.length
 
         primary.style.gridTemplateColumns = `repeat(${columns}, ${BTN}px)`
-        primary.replaceChildren(...buttons.slice(0, inRail).map(b => b.button))
+        primary.replaceChildren(...visible.slice(0, inRail).map(b => b.button))
         if (overflowNeeded) {
             primary.appendChild(moreBtn)
-            overflow.replaceChildren(...buttons.slice(inRail).map(b => b.button))
+            overflow.replaceChildren(...visible.slice(inRail).map(b => b.button))
         } else {
             overflow.replaceChildren()
             closeOverflow()
@@ -168,6 +184,8 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
         byAction('confirmPlacement')?.classList.toggle('active', mode === EditorMode.PAINT)
         byAction('mine')?.classList.toggle('active', mode === EditorMode.EDIT)
         byAction('closeWindow')?.classList.toggle('active', isCancelableMode(mode))
+        // The nudge buttons appear/disappear with PAINT mode, so re-flow the rail.
+        layout()
     }
     applyMode(editor.mode)
     editor.onModeChange(applyMode)

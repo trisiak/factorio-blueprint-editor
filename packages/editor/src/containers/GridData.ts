@@ -74,10 +74,22 @@ export class GridData extends EventEmitter<GridDataEvents> {
     /**
      * Force the grid position to a screen-space point. Touch taps have no
      * preceding pointermove to establish a position, so the tap handler seeds
-     * it here before dispatching the action.
+     * it here before dispatching the action; the touch ghost-drag feeds it
+     * continuously while a paint ghost is being dragged.
      */
     public moveTo(screenX: number, screenY: number): void {
         this.update(screenX, screenY)
+    }
+
+    /**
+     * Shift the grid position by whole tiles — the fine-tune "nudge" for a held
+     * paint ghost (arrow keys on desktop, the rail's arrows on touch). Converts
+     * the tile offset to screen space so the regular update/emit pipeline (which
+     * everything, including the ghost, listens on) runs unchanged.
+     */
+    public nudge(dxTiles: number, dyTiles: number): void {
+        const s = this.bpc.getViewportScale()
+        this.update(this.lastMousePosX + dxTiles * 32 * s, this.lastMousePosY + dyTiles * 32 * s)
     }
 
     private update(mouseX: number, mouseY: number): void {

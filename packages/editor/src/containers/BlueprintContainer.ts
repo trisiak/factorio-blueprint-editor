@@ -132,7 +132,7 @@ export class BlueprintContainer extends Container {
     private deleteModeUpdateFn: (endX: number, endY: number) => void
     private copySettingsActive = false
     private readonly pointerGestures = new PinchPanRecognizer()
-    /** in-progress single-finger touch, pending a tap-vs-pan decision */
+    /** in-progress single-finger touch, pending a tap-vs-drag decision */
     private touchPan: {
         pointerId: number
         startX: number
@@ -141,6 +141,20 @@ export class BlueprintContainer extends Container {
         lastY: number
         moved: boolean
         startTime: number
+        /**
+         * What the drag steers, decided once when the move threshold is crossed:
+         * `pan` scrolls the camera; `ghost` grabs a held paste ghost (the drag
+         * started on it) and moves it around the world instead. Tap-or-drag is
+         * unknown until then, so this stays undefined while `moved` is false.
+         */
+        target?: 'pan' | 'ghost'
+        /**
+         * Ghost drags preserve the grab point: the ghost's center stays
+         * `grabOffset` away from the finger (in screen px) instead of teleporting
+         * under it, so grabbing a big paste by its edge doesn't make it jump.
+         */
+        grabOffsetX?: number
+        grabOffsetY?: number
     } | null = null
 
     // PIXI properties
@@ -492,11 +506,29 @@ export class BlueprintContainer extends Container {
             if (!tp || e.pointerId !== tp.pointerId) return
             if (!tp.moved) {
                 const travel = Math.hypot(e.global.x - tp.startX, e.global.y - tp.startY)
-                if (travel > TOUCH_TAP_MOVE_THRESHOLD) tp.moved = true
+                if (travel > TOUCH_TAP_MOVE_THRESHOLD) {
+                    tp.moved = true
+                    // Classify the drag once, by where it *started*: on a held
+                    // paste ghost it grabs and moves the ghost; anywhere else it
+                    // pans the camera (so you can still scroll to check alignment
+                    // while holding a paste — two-finger pan/pinch also works).
+                    tp.target = this.grabsPaintGhost(tp.startX, tp.startY) ? 'ghost' : 'pan'
+                    if (tp.target === 'ghost') {
+                        const t = this.viewport.getTransform()
+                        tp.grabOffsetX = this.paintContainer.x * t.a + t.tx - tp.startX
+                        tp.grabOffsetY = this.paintContainer.y * t.d + t.ty - tp.startY
+                    }
+                }
             }
             if (tp.moved) {
-                // one-finger drag pans the viewport
-                this.viewport.translateBy(e.global.x - tp.lastX, e.global.y - tp.lastY)
+                if (tp.target === 'ghost') {
+                    // Steer the grid cursor (which the ghost follows, tile-snapped)
+                    // to the finger, offset by the original grab point.
+                    this.gridData.moveTo(e.global.x + tp.grabOffsetX, e.global.y + tp.grabOffsetY)
+                } else {
+                    // one-finger drag pans the viewport
+                    this.viewport.translateBy(e.global.x - tp.lastX, e.global.y - tp.lastY)
+                }
             }
             tp.lastX = e.global.x
             tp.lastY = e.global.y
@@ -507,6 +539,13 @@ export class BlueprintContainer extends Container {
             const tp = this.touchPan
             if (!tp || e.pointerId !== tp.pointerId) return
             this.touchPan = null
+            if (tp.moved && tp.target === 'ghost' && this.mode === EditorMode.PAINT) {
+                // The drag settled the ghost on a tile. Treat that tile as the
+                // last previewed one, so a follow-up tap on the ghost's (visible)
+                // center commits — the same contract as tap-positioning.
+                this.lastPaintTapTile = this.paintContainer.getGridPosition()
+                return
+            }
             const wasTap = !tp.moved && performance.now() - tp.startTime < TOUCH_TAP_MAX_DURATION
             if (wasTap) {
                 // A tap while a dialog (entity editor, inventory, …) is open
@@ -689,6 +728,21 @@ export class BlueprintContainer extends Container {
     }
 
     /**
+     * Whether a touch starting at this screen point lands on a held *paste*
+     * ghost (a multi-entity blueprint cursor) — if so, the drag moves the ghost
+     * instead of panning. Restricted to paste ghosts on purpose: single-entity
+     * paint repositions fine with taps, and a one-tile grab target would mostly
+     * steal pans.
+     */
+    private grabsPaintGhost(screenX: number, screenY: number): boolean {
+        if (this.mode !== EditorMode.PAINT) return false
+        if (!(this.paintContainer instanceof PaintBlueprintContainer)) return false
+        if (!this.paintContainer.visible) return false
+        const [worldX, worldY] = this.toWorld(screenX, screenY)
+        return this.paintContainer.containsWorldPoint(worldX, worldY)
+    }
+
+    /**
      * Handle a touch tap while holding a paint cursor: reveal + position the
      * ghost, and commit only when the tap repeats on the tile the ghost already
      * occupies. The item stays in hand after a placement (like desktop), so
@@ -696,6 +750,10 @@ export class BlueprintContainer extends Container {
      */
     private handlePaintTap(): void {
         this.paintContainer.show()
+        // The ghost ignores grid updates while hidden (moveAtCursor early-returns),
+        // so the first revealing tap must re-snap it explicitly — otherwise it
+        // appears (and reads its tile) at a stale, pre-hide position.
+        this.paintContainer.moveAtCursor()
         const tile = this.paintContainer.getGridPosition()
         const onSameTile =
             this.lastPaintTapTile !== undefined &&
@@ -740,6 +798,18 @@ export class BlueprintContainer extends Container {
     public moveEntity(offset: IPoint) {
         if (this.mode === EditorMode.EDIT) {
             this.hoverContainer.entity.moveBy(offset)
+        } else if (this.mode === EditorMode.PAINT) {
+            // Fine-tune nudge for the held ghost: shift the grid cursor (which
+            // the ghost follows) by whole tiles. Drives the rail's arrow buttons
+            // on touch and the arrow keys on desktop. Reveal the ghost first so
+            // an un-positioned cursor becomes visible & steerable, and re-snap it
+            // (it ignores grid updates while hidden).
+            this.paintContainer.show()
+            this.paintContainer.moveAtCursor()
+            this.gridData.nudge(offset.x, offset.y)
+            // Keep the tap-to-commit contract: after a nudge, a tap on the
+            // ghost's (visible) center tile commits.
+            this.lastPaintTapTile = this.paintContainer.getGridPosition()
         }
     }
 

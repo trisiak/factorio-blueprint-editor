@@ -1,5 +1,6 @@
 import { Entity } from '../core/Entity'
 import { Blueprint } from '../core/Blueprint'
+import { inputMode } from '../common/input'
 import { EntitySprite } from './EntitySprite'
 import { PaintContainer } from './PaintContainer'
 import { PaintBlueprintEntityContainer } from './PaintBlueprintEntityContainer'
@@ -9,6 +10,12 @@ import { IConnectionPoint } from '../core/WireConnections'
 export class PaintBlueprintContainer extends PaintContainer {
     private readonly bp: Blueprint
     private readonly entities = new Map<Entity, PaintBlueprintEntityContainer>()
+    /**
+     * The pasted entities' bounding box in ghost-local tile space (the ghost's
+     * origin is the blueprint's center, see the constructor). Used to hit-test
+     * "did this touch land on the ghost" for the drag-to-move gesture.
+     */
+    private readonly localBounds: { minX: number; minY: number; maxX: number; maxY: number }
 
     public constructor(bpc: BlueprintContainer, entities: Entity[]) {
         super(bpc, 'blueprint')
@@ -33,6 +40,13 @@ export class PaintBlueprintContainer extends PaintContainer {
         const center = {
             x: Math.floor((minX + maxX) / 2),
             y: Math.floor((minY + maxY) / 2),
+        }
+
+        this.localBounds = {
+            minX: minX - center.x,
+            minY: minY - center.y,
+            maxX: maxX - center.x,
+            maxY: maxY - center.y,
         }
 
         const entNrWhitelist = new Set(entities.map(e => e.entityNumber))
@@ -66,6 +80,7 @@ export class PaintBlueprintContainer extends PaintContainer {
 
     public hide(): void {
         this.bpc.underlayContainer.deactivateActiveAreas()
+        this.bpc.overlayContainer.hidePaintCenterMarker()
         super.hide()
     }
 
@@ -76,14 +91,43 @@ export class PaintBlueprintContainer extends PaintContainer {
             }
         }
         super.show()
+        this.updateCenterMarker()
     }
 
     public destroy(): void {
         this.bpc.underlayContainer.deactivateActiveAreas()
+        this.bpc.overlayContainer.hidePaintCenterMarker()
         for (const [, c] of this.entities) {
             c.destroy()
         }
         super.destroy()
+    }
+
+    /**
+     * Whether a world-space point (in px) falls inside the pasted entities'
+     * bounding box. The touch drag-to-move gesture uses this to decide if a
+     * one-finger drag grabs the ghost (starts on it) or pans the camera.
+     */
+    public containsWorldPoint(x: number, y: number): boolean {
+        const lx = (x - this.position.x) / 32
+        const ly = (y - this.position.y) / 32
+        return (
+            lx >= this.localBounds.minX &&
+            lx <= this.localBounds.maxX &&
+            ly >= this.localBounds.minY &&
+            ly <= this.localBounds.maxY
+        )
+    }
+
+    /**
+     * Keep the on-canvas center crosshair glued to the ghost's origin (= the
+     * blueprint's center). Touch-only: it's the visible anchor for precise
+     * taps/drags; on desktop the ghost just follows the mouse, so a marker
+     * would only add noise.
+     */
+    private updateCenterMarker(): void {
+        if (!this.visible || inputMode.mode !== 'mobile') return
+        this.bpc.overlayContainer.updatePaintCenterMarker(this.position)
     }
 
     public override getItemName(): string {
@@ -153,6 +197,8 @@ export class PaintBlueprintContainer extends PaintContainer {
         for (const [, c] of this.entities) {
             c.moveAtCursor()
         }
+
+        this.updateCenterMarker()
     }
 
     protected override redraw(): void {}
