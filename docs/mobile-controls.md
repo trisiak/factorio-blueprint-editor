@@ -202,26 +202,37 @@ pipelines at once made touch taps double-act via the browser's synthetic
   Place restoring the originals in place) via the `?test` hook (`marquee.count`).
 - ✅ **Selection nudge-in-place + EDIT bar + inventory focus-tap** (polish round) —
   four touches on top of the above:
-    - **Held-selection nudge.** SELECT now shows a **d-pad** (arrows + green
-      **Done** centre) that moves the actual selected entities a tile at a time
-      _in place_, preserving wiring — `Blueprint.moveEntitiesBy` validates the
-      group as a unit (lifting it out of the position grid so members don't block
-      each other) and applies leading-edge-first via `Entity.forceMoveBy`. This is
-      the wire-safe alternative to cut→paste. The Copy/Cut/Delete choices sit in a
-      row below the d-pad.
+    - **Held-selection nudge.** SELECT shows a **nudge d-pad** (4 arrows) that
+      moves the actual selected entities a tile at a time _in place_, preserving
+      wiring — `Blueprint.moveEntitiesBy` validates the group as a unit (lifting it
+      out of the position grid so members don't block each other) and applies
+      leading-edge-first via `Entity.forceMoveBy`. The wire-safe alternative to
+      cut→paste. **Single-entity Rotate** (rail) also works in SELECT (in place, no
+      pivot); multi-entity rotation is deferred (needs a pivot + collision/wire
+      handling). The cursor-box highlight now follows the entities as they move/
+      rotate (`EntityContainer.refreshCursorBox`).
+    - **Illegal-wire flag (first step).** In-place nudge/rotate bypass the wire-
+      reach guard, so a wire to a non-selected entity can stretch past the limit
+      (a blueprint that won't import). A move/rotate that _newly_ breaks reach now
+      **warns** (toast, counts affected entities). A persistent per-wire visual
+      marker is a follow-up.
+    - **Copy / Cut / Delete / Cancel** sit in a row below the d-pad (Cancel drops
+      the selection; any in-place nudges already applied persist).
     - **EDIT bar.** Tapping a single entity (EDIT) shows a **Select / Edit** bar:
       _Select_ promotes it to a one-entity held selection (so the nudge applies to
-      one entity too); _Edit_ opens its editor (same as a second tap).
+      one entity too); _Edit_ **toggles** its editor (open, or close if already open).
     - **Inventory focus-tap.** On touch, a **tap** in the item picker now _focuses_
       the item (name/details + Confirm/Pin) instead of committing — selecting is a
       deliberate two-step, fewer misclicks. Desktop click-to-commit is unchanged.
     - **Overflow on top.** The rail's ⋯ overflow now renders above the contextual
       bottom clusters (z22 > z21) so its buttons aren't hidden behind the d-pad.
     - Seams: `Blueprint.moveEntitiesBy` / `Entity.forceMoveBy`, `BlueprintContainer`
-      `nudgeSelection`/`selectHovered`/`editHovered`, `Editor` delegators, the
-      contextual clusters in `actionToolbar.ts` + `index.styl`, `InventoryDialog`
-      pointerup. e2e in `touchMarquee.spec.ts` (nudge-in-place + EDIT bar) via
-      `marquee.origin` / `entityScreenPos` hooks.
+      `nudgeSelection`/`selectHovered`/`editHovered`/`rotate` (SELECT) +
+      `warnNewOverReach`, `EntityContainer.refreshCursorBox`, `Editor` delegators,
+      the contextual clusters in `actionToolbar.ts` + `index.styl`, `InventoryDialog`
+      pointerup. e2e in `touchMarquee.spec.ts` (nudge-in-place, EDIT bar, Edit
+      toggle, single-entity rotate) via `marquee.origin`/`marquee.direction` /
+      `entityScreenPos` hooks.
 - 🚧 **e2e coverage gaps**: pinch needs CDP `Input.dispatchTouchEvent` (the
   high-level touch API is single-touch). Tap-to-place is now covered —
   `EditorTestState` was extended with `paint` + `blueprint.entityCount` and

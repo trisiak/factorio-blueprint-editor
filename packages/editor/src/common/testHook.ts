@@ -57,7 +57,12 @@ export interface EditorTestState {
      * `origin` is the selection's top-left tile — lets tests assert in-place
      * nudging actually moved the entities.
      */
-    marquee: { count: number; origin: { x: number; y: number } | null }
+    marquee: {
+        count: number
+        origin: { x: number; y: number } | null
+        /** Direction of the first selected entity (for the rotate-in-select test). */
+        direction: number | null
+    }
     /** Whether the top-right entity info panel is showing (hover/tap-select). */
     infoPanelVisible: boolean
 }
@@ -98,7 +103,11 @@ export function getEditorTestState(): EditorTestState {
                     : null,
         },
         dialogOpen: Dialog.anyOpen(),
-        marquee: { count: G.BPC.marqueeCount, origin: G.BPC.marqueeOrigin ?? null },
+        marquee: {
+            count: G.BPC.marqueeCount,
+            origin: G.BPC.marqueeOrigin ?? null,
+            direction: G.BPC.marqueeDirection ?? null,
+        },
         infoPanelVisible: G.UI.entityInfoPanelVisible,
     }
 }

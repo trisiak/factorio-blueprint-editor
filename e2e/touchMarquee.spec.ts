@@ -10,7 +10,7 @@ import { test, expect, type Page } from '@playwright/test'
 interface MarqueeState {
     paint: { active: boolean; kind: 'entity' | 'blueprint' | null }
     blueprint: { entityCount: number }
-    marquee: { count: number; origin: { x: number; y: number } | null }
+    marquee: { count: number; origin: { x: number; y: number } | null; direction: number | null }
     infoPanelVisible: boolean
 }
 
@@ -112,11 +112,11 @@ test.describe('touch marquee select', () => {
     test('a drag after Select draws a selection and shows the controls', async ({ page }) => {
         await gotoWithBlueprint(page)
         await selectAll(page)
-        // The action row offers Copy/Cut/Delete; the d-pad offers nudge + Done.
-        for (const title of ['Copy', 'Cut', 'Delete']) {
+        // The action row offers Copy/Cut/Delete/Cancel; the d-pad is pure nudge.
+        for (const title of ['Copy', 'Cut', 'Delete', 'Cancel']) {
             await expect(page.locator(`#select-actions button[title="${title}"]`)).toBeVisible()
         }
-        for (const title of ['Up', 'Down', 'Left', 'Right', 'Done']) {
+        for (const title of ['Up', 'Down', 'Left', 'Right']) {
             await expect(page.locator(`#select-dpad button[title="${title}"]`)).toBeVisible()
         }
         // The box sweeps over entities; the hover/info panel must stay hidden so it
@@ -180,11 +180,11 @@ test.describe('touch marquee select', () => {
         expect((await getState(page)).paint.active).toBe(false) // delete holds nothing
     })
 
-    test('Done drops the selection without changing anything', async ({ page }) => {
+    test('Cancel drops the selection without changing anything', async ({ page }) => {
         const original = await gotoWithBlueprint(page)
         await selectAll(page)
 
-        await tapIn(page, 'select-dpad', 'Done')
+        await tapIn(page, 'select-actions', 'Cancel')
 
         await expect.poll(async () => (await getState(page)).marquee.count).toBe(0)
         await expect(page.locator('#select-actions')).not.toHaveClass(/visible/)
@@ -236,12 +236,34 @@ test.describe('touch edit bar', () => {
         await expect(page.locator('#select-dpad')).toHaveClass(/visible/) // nudge applies now
     })
 
-    test('"Edit" opens the entity editor', async ({ page }) => {
+    test('"Edit" toggles the entity editor open and closed', async ({ page }) => {
         await gotoWithBlueprint(page)
         await tapEntity(page, 'assembling-machine-3')
 
         await tapIn(page, 'edit-bar', 'Edit')
-
         await expect.poll(async () => (await getState(page)).dialogOpen).toBe(true)
+
+        // Tapping Edit again while the editor is open closes it (toggle).
+        await tapIn(page, 'edit-bar', 'Edit')
+        await expect.poll(async () => (await getState(page)).dialogOpen).toBe(false)
+    })
+
+    test('Rotate turns a single selected entity in place', async ({ page }) => {
+        await gotoWithBlueprint(page)
+        // An inserter rotates freely (unlike an assembler without a fluid recipe).
+        await tapEntity(page, 'inserter')
+        await tapIn(page, 'edit-bar', 'Select')
+        await expect.poll(async () => (await getState(page)).marquee.count).toBe(1)
+
+        const before = (await getState(page)).marquee.direction
+        expect(before).not.toBeNull()
+        // Rotate lives in the left rail (open the ⋯ overflow if it spilled there).
+        const toolbar = page.locator('#action-toolbar')
+        const rotate = toolbar.locator('button[title="Rotate"]')
+        if (!(await rotate.isVisible()))
+            await toolbar.locator('button.rail-more').click({ force: true })
+        await rotate.click({ force: true })
+
+        await expect.poll(async () => (await getState(page)).marquee.direction).not.toBe(before)
     })
 })

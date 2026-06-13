@@ -78,22 +78,24 @@ const PAINT_DPAD: ToolbarButton[] = [
 ]
 
 // SELECT d-pad: nudge the *held selection* in place (moves the real entities,
-// preserving wiring — #21 polish), with a green **Done** centre to finish.
+// preserving wiring — #21 polish). Pure 4-arrow d-pad (empty centre); finishing
+// is the Cancel in the action row below.
 const SELECT_DPAD: ToolbarButton[] = [
     { action: 'nudgeSelUp', glyph: '▲', label: 'Up', row: 1, col: 2 },
     { action: 'nudgeSelLeft', glyph: '◀', label: 'Left', row: 2, col: 1 },
-    { action: 'cancelMarquee', glyph: '✓', label: 'Done', row: 2, col: 2, className: 'confirm' },
     { action: 'nudgeSelRight', glyph: '▶', label: 'Right', row: 2, col: 3 },
     { action: 'nudgeSelDown', glyph: '▼', label: 'Down', row: 3, col: 2 },
 ]
 
 // SELECT action row: what to do with the held selection. Copy → paste ghost
-// (originals stay); Cut → ghost + remove originals; Delete → remove. (Nudging in
-// place via the d-pad is the wire-preserving alternative to cut/paste.)
+// (originals stay); Cut → ghost + remove originals; Delete → remove; Cancel →
+// drop the selection (any in-place nudges already applied persist). Nudging in
+// place via the d-pad is the wire-preserving alternative to cut/paste.
 const SELECT_ACTIONS: ToolbarButton[] = [
     { action: 'copyMarquee', glyph: '⧉', label: 'Copy' },
     { action: 'cutMarquee', glyph: '✂', label: 'Cut' },
     { action: 'deleteMarquee', glyph: '🗑', label: 'Delete', className: 'delete' },
+    { action: 'cancelMarquee', glyph: '✕', label: 'Cancel', className: 'cancel' },
 ]
 
 // EDIT bar: shown when a single entity is selected (EDIT). Select → promote it to

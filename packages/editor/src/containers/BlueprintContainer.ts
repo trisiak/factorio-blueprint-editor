@@ -731,6 +731,15 @@ export class BlueprintContainer extends Container {
             } else {
                 this.paintContainer.rotate(ccw)
             }
+        } else if (this.mode === EditorMode.SELECT) {
+            // A single held entity rotates in place (no pivot to worry about).
+            // Rotating a multi-entity group needs a proper pivot + collision/wire
+            // handling — deferred (see #47); a lone-entity rotate is the common case.
+            if (this.marqueeEntities.length === 1) {
+                const brokenBefore = this.countOverReach()
+                this.marqueeEntities[0].rotate(ccw, true)
+                this.warnNewOverReach(brokenBefore)
+            }
         }
     }
 
@@ -1064,6 +1073,12 @@ export class BlueprintContainer extends Container {
         }
     }
 
+    /** Direction of the first held-selection entity (for the rotate-in-select e2e). */
+    public get marqueeDirection(): number | undefined {
+        if (this.mode !== EditorMode.SELECT || this.marqueeEntities.length === 0) return undefined
+        return this.marqueeEntities[0].direction
+    }
+
     /** Copy the selection into a paste ghost (originals stay), previewed in place. */
     public copyMarquee(): void {
         if (this.mode !== EditorMode.SELECT) return
@@ -1140,8 +1155,32 @@ export class BlueprintContainer extends Container {
      */
     public nudgeSelection(offset: IPoint): void {
         if (this.mode !== EditorMode.SELECT || this.marqueeEntities.length === 0) return
+        const brokenBefore = this.countOverReach()
         if (this.bp.moveEntitiesBy(this.marqueeEntities, offset)) {
             this.overlayContainer.shiftSelectionArea(offset.x, offset.y)
+            this.warnNewOverReach(brokenBefore)
+        }
+    }
+
+    /** Selected entities with at least one connection beyond max wire reach. */
+    private countOverReach(): number {
+        return this.marqueeEntities.filter(e => !e.connectionsReach()).length
+    }
+
+    /**
+     * In-place moves/rotations bypass the per-entity wire-reach guard (so a group
+     * can move as a unit), which can stretch a wire to a *non-selected* entity past
+     * the limit — a blueprint that won't import. First-step flag (#47): warn when a
+     * move/rotate newly breaks reach, naming how many entities are affected. (A
+     * persistent per-wire visual marker is a follow-up.)
+     */
+    private warnNewOverReach(brokenBefore: number): void {
+        const broken = this.countOverReach()
+        if (broken > brokenBefore) {
+            G.logger({
+                text: `${broken} entity(s) now have wires beyond reach — this blueprint may not import`,
+                type: 'warning',
+            })
         }
     }
 
@@ -1160,8 +1199,12 @@ export class BlueprintContainer extends Container {
         this.setMode(EditorMode.SELECT)
     }
 
-    /** Open the editor for the EDIT-mode entity (the EDIT bar's "Edit"). */
+    /** Open the editor for the EDIT-mode entity, or close it if already open (toggle). */
     public editHovered(): void {
+        if (Dialog.anyOpen()) {
+            Dialog.closeAll()
+            return
+        }
         if (this.mode === EditorMode.EDIT) this.openEditor()
     }
 
