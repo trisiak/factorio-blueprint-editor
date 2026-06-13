@@ -1274,7 +1274,8 @@ function draw_constant_combinator(
     }
 }
 function draw_container(e: ContainerPrototype): (data: IDrawData) => readonly SpriteData[] {
-    return () => e.picture.layers
+    // picture may be a plain sprite (SE's rocket-launch-pad) or layered.
+    return () => layersOf((e as { picture?: unknown }).picture as Animation)
 }
 function draw_simple_entity(e: any): (data: IDrawData) => readonly SpriteData[] {
     return (data: IDrawData) => {
@@ -1409,7 +1410,8 @@ function draw_display_panel(e: DisplayPanelPrototype): (data: IDrawData) => read
 function draw_electric_energy_interface(
     e: ElectricEnergyInterfacePrototype
 ): (data: IDrawData) => readonly SpriteData[] {
-    return () => e.picture.layers
+    // picture may be a plain sprite (SE's gate energy interface) or layered.
+    return () => layersOf((e as { picture?: unknown }).picture as Animation)
 }
 function draw_electric_pole(e: ElectricPolePrototype): (data: IDrawData) => readonly SpriteData[] {
     return (data: IDrawData) => [
@@ -1573,8 +1575,9 @@ function draw_gate(e: GatePrototype): (data: IDrawData) => readonly SpriteData[]
     }
 }
 function draw_generator(e: GeneratorPrototype): (data: IDrawData) => readonly SpriteData[] {
+    // layersOf: SE's big-turbine generators use plain animations (no .layers)
     return (data: IDrawData) =>
-        data.dir % 8 === 0 ? e.vertical_animation.layers : e.horizontal_animation.layers
+        data.dir % 8 === 0 ? layersOf(e.vertical_animation) : layersOf(e.horizontal_animation)
 }
 function draw_heat_interface(
     e: HeatInterfacePrototype
@@ -1784,7 +1787,8 @@ function draw_lab(e: LabPrototype): (data: IDrawData) => readonly SpriteData[] {
     return () => e.off_animation.layers
 }
 function draw_lamp(e: LampPrototype): (data: IDrawData) => readonly SpriteData[] {
-    return () => e.picture_off.layers
+    // picture_off may be a plain sprite (SE's space-elevator lamp) or layered.
+    return () => layersOf(e.picture_off)
 }
 function draw_land_mine(e: LandMinePrototype): (data: IDrawData) => readonly SpriteData[] {
     return () => [e.picture_set]

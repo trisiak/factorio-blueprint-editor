@@ -22,9 +22,12 @@ import { getSpriteData, clearSpriteDataCache, SPRITE_GENERATION_FAILED } from '.
  * offending entity names — that listing is the live to-do list for #28.
  */
 const BASELINES: Record<string, { partial: number; failed: number }> = {
-    'vanilla-2.0': { partial: 0, failed: 6 },
-    'space-age': { partial: 0, failed: 7 },
-    'space-exploration': { partial: 0, failed: 19 },
+    // Remaining failures are graphics-less internal entities (dummy rails,
+    // fulgoran ruin attractor, SE's spaceship-clamp/console/blocker internals)
+    // that draw as the labeled box — acceptable; they aren't placeable buildings.
+    'vanilla-2.0': { partial: 0, failed: 2 },
+    'space-age': { partial: 0, failed: 3 },
+    'space-exploration': { partial: 0, failed: 10 },
 }
 
 describe.each(Object.keys(BASELINES))('sprite census: %s', pack => {
