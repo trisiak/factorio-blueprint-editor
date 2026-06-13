@@ -99,7 +99,7 @@ pipelines at once made touch taps double-act via the browser's synthetic
   competition; the wires panel re-centres at the bottom. `actionToolbar.ts`,
   `index.{styl,ts,html}`, `Editor.setViewportInsets`/`onModeChange`, `Panel`;
   e2e `actionToolbar.spec.ts` + `panels.spec.ts`. Remaining: real game-sprite
-  icons (unicode glyphs for now); touch box-select (#21).
+  icons (unicode glyphs for now).
 - ✅ **Item-selector overhaul** (`InventoryDialog`, the shared item/recipe/module
   picker) — now touch-usable: **scrollable** group-tabs (◀▶) and item grid (▲▼),
   masked with viewport-gated hit-testing; a **Recents tab** (first/active) with
@@ -167,10 +167,22 @@ pipelines at once made touch taps double-act via the browser's synthetic
   on both ghost kinds, d-pad nudge, Place commit) via the `?test` hook (`paint.kind`
     - `spawnPasteGhost`). Follow-up: fixed bottom-arrows idea realised; rail buttons
       that are no-ops in the current mode should hide (#33).
-- ⬜ **Touch area/marquee select** — multi-select for copy/delete is desktop-only
-  (drag with a modifier); needs a touch gesture (issue #21). Pairs with the
-  placement work above: a marquee **copy** hands you exactly the paste ghost that
-  drag/nudge/center now makes placeable.
+- ✅ **Touch box-select / marquee** (issue #21) — desktop area-select is
+  modifier+drag and commits on mouse-release (copy → paste ghost, delete →
+  remove); touch had no modifier and no way to _choose_ the action. Now **one
+  button**: the rail's **Select** arms the gesture, a **one-finger drag draws a
+  selection box**, and releasing **holds** the selection (new `EditorMode.SELECT`)
+  while a fixed bottom-center **Copy / Cut / Delete / Cancel** bar waits. **Copy** →
+  paste ghost (originals stay); **Cut** → ghost + remove originals; **Delete** →
+  remove; **Cancel** / Escape / tap-away / rail-Cancel drop it. The result of Copy
+  or Cut is exactly the paste ghost that the placement work (#30) makes
+  drag/nudge/center-placeable, closing the cut/copy/paste loop on touch. Reuses the
+  desktop selection rectangle + `getEntitiesInArea` + cursor-box highlight;
+  `OverlayContainer.freezeSelectionArea()` pins the box on release. Seams:
+  `BlueprintContainer` (`armMarquee`/`begin`/`end`/`copy`/`cut`/`delete`/`cancelMarquee`,
+  `touchPan.target = 'marquee'`), `Editor` delegators, the Select button + marquee
+  bar (`actionToolbar.ts`, `index.styl`). Covered by `e2e/touchMarquee.spec.ts`
+  (CDP box-drag → Copy/Cut/Delete/Cancel) via the `?test` hook (`marquee.count`).
 - 🚧 **e2e coverage gaps**: pinch needs CDP `Input.dispatchTouchEvent` (the
   high-level touch API is single-touch). Tap-to-place is now covered —
   `EditorTestState` was extended with `paint` + `blueprint.entityCount` and

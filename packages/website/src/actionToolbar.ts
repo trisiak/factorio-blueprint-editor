@@ -30,6 +30,10 @@ interface ToolbarButton {
 // ghost's nudge arrows + Place live in a separate bottom d-pad (DPAD), not here.
 const BUTTONS: ToolbarButton[] = [
     { action: 'inventory', glyph: '⊞', label: 'Items' },
+    // Touch marquee (#21): arm a box-select; the drag + Copy/Cut/Delete bar are
+    // handled on the canvas / in MARQUEE below. Routed via a handler (it's an
+    // Editor method, not a keybind action).
+    { action: 'marquee', glyph: '▦', label: 'Select' },
     { action: 'rotate', glyph: '↻', label: 'Rotate' },
     { action: 'closeWindow', glyph: '✕', label: 'Cancel', className: 'cancel' },
     { action: 'mine', glyph: '🗑', label: 'Delete', className: 'delete' },
@@ -75,12 +79,29 @@ const DPAD: DpadButton[] = [
     { action: 'moveEntityDown', glyph: '▼', label: 'Down', row: 3, col: 2 },
 ]
 
+// The marquee action bar: a fixed bottom-center row shown only while a touch
+// box-selection is held (mode SELECT). One-button Select → draw a box → choose.
+// Copy → paste ghost (originals stay); Cut → ghost + remove originals; Delete →
+// remove; Cancel → drop the selection. (Desktop commits copy/delete on
+// mouse-release; touch defers the choice to here.)
+const MARQUEE: ToolbarButton[] = [
+    { action: 'copyMarquee', glyph: '⧉', label: 'Copy' },
+    { action: 'cutMarquee', glyph: '✂', label: 'Cut' },
+    { action: 'deleteMarquee', glyph: '🗑', label: 'Delete', className: 'delete' },
+    { action: 'cancelMarquee', glyph: '✕', label: 'Cancel', className: 'cancel' },
+]
+
 const BTN = 44 // button square (px); flush, no gap — see index.styl
 const MARGIN = 2 // sliver between the rail and the canvas
 
 /** A cursor mode the user needs an explicit way out of (no keyboard on touch). */
 function isCancelableMode(mode: EditorMode): boolean {
-    return mode === EditorMode.PAINT || mode === EditorMode.COPY || mode === EditorMode.DELETE
+    return (
+        mode === EditorMode.PAINT ||
+        mode === EditorMode.COPY ||
+        mode === EditorMode.DELETE ||
+        mode === EditorMode.SELECT
+    )
 }
 
 /**
@@ -90,6 +111,17 @@ function isCancelableMode(mode: EditorMode): boolean {
  *   `EDITOR.callAction`.
  */
 export function initActionToolbar(editor: Editor, handlers: Record<string, () => void> = {}): void {
+    // Built-in handlers for buttons backed by Editor methods rather than the
+    // keybind registry (the touch marquee). Caller overrides win.
+    handlers = {
+        marquee: () => editor.armMarquee(),
+        copyMarquee: () => editor.copyMarquee(),
+        cutMarquee: () => editor.cutMarquee(),
+        deleteMarquee: () => editor.deleteMarquee(),
+        cancelMarquee: () => editor.cancelMarquee(),
+        ...handlers,
+    }
+
     const rail = document.createElement('div')
     rail.id = 'action-toolbar'
 
@@ -171,6 +203,36 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
         )
     }
 
+    // The marquee action bar (Copy / Cut / Delete / Cancel), built once and
+    // shown only while a box-selection is held (mode SELECT). Routes through the
+    // handlers map (these are Editor methods).
+    const marqueeBar = document.createElement('div')
+    marqueeBar.id = 'marquee-bar'
+    for (const spec of MARQUEE) {
+        const button = document.createElement('button')
+        button.type = 'button'
+        if (spec.className) button.classList.add(spec.className)
+        button.title = spec.label
+        const glyph = document.createElement('span')
+        glyph.className = 'glyph'
+        glyph.textContent = spec.glyph
+        button.appendChild(glyph)
+        const label = document.createElement('span')
+        label.className = 'label'
+        label.textContent = spec.label
+        button.appendChild(label)
+        button.addEventListener('click', () => handlers[spec.action]?.())
+        marqueeBar.appendChild(button)
+    }
+    document.body.appendChild(marqueeBar)
+
+    const updateMarqueeBar = (): void => {
+        marqueeBar.classList.toggle(
+            'visible',
+            inputMode.mode === 'mobile' && editor.mode === EditorMode.SELECT
+        )
+    }
+
     moreBtn.addEventListener('click', () => overflow.classList.toggle('open'))
     // A tap outside the rail dismisses the overflow sheet.
     window.addEventListener('pointerdown', e => {
@@ -225,15 +287,18 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
         byAction('mine')?.classList.toggle('active', mode === EditorMode.EDIT)
         byAction('closeWindow')?.classList.toggle('active', isCancelableMode(mode))
         updateDpad()
+        updateMarqueeBar()
     }
     applyMode(editor.mode)
     editor.onModeChange(applyMode)
 
     layout()
     updateDpad()
+    updateMarqueeBar()
     window.addEventListener('resize', layout)
     inputMode.on('change', layout)
     inputMode.on('change', updateDpad)
+    inputMode.on('change', updateMarqueeBar)
     // The top-left stack's height changes (mobile collapses it to square icons,
     // icons load async); re-anchor when it actually resizes, like settingsPane.
     const stack = document.getElementById('buttons')

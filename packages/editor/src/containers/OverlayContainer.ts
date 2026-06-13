@@ -547,6 +547,16 @@ export class OverlayContainer extends Container {
     }
 
     /**
+     * Stop the selection rectangle from tracking further grid updates, but leave
+     * it drawn. Used by the touch marquee: when the drag ends the box should
+     * freeze in place (a later tap moves the grid cursor and would otherwise
+     * redraw it) while the held selection awaits a Copy/Cut/Delete choice.
+     */
+    public freezeSelectionArea(): void {
+        this.bpc.gridData.off('update', this.selectionAreaUpdateFn, this)
+    }
+
+    /**
      * (Re)draw the paint-ghost center crosshair at a world position (px). The
      * holder of the ghost calls this whenever the ghost moves or shows — there's
      * no listener here, so there's no event-ordering race against the ghost's
