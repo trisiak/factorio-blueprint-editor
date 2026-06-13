@@ -1,5 +1,12 @@
 # Mobile / touch controls
 
+> **Companion doc:** [`mobile-layout-inventory.md`](./mobile-layout-inventory.md)
+> (the screen-space map). **Open issues:** #33 (action-rail mode filtering).
+> This doc is the source of truth for _what's done_ on the touch arc (it leads
+> the issue tracker) — when a slice lands, close/tick the matching issue in the
+> same change so they don't contradict each other. See CLAUDE.md "Keep issues
+> in sync with the work".
+
 Tracking doc for the touch-support arc: what's done, what's not, and where the
 pieces live. Intentionally light — update the checkboxes as work lands.
 
