@@ -3,7 +3,11 @@ import * as fs from 'fs'
 import * as path from 'path'
 
 /**
- * Regression guard for the wire-rendering bugs in `WiresContainer` (issue #37).
+ * Regression guards for wires going missing (issue #37). Two unrelated root
+ * causes converged on the same symptom — a blueprint with no visible wires:
+ *  1. rendering — `WiresContainer` baking each wire into a fragile `RenderTexture`
+ *     (the first two tests), and
+ *  2. paste — `Editor.appendBlueprint` dropping the connections (the last test).
  *
  * Originally each wire was baked into its own supersampled `RenderTexture`. That
  * texture pipeline kept failing on the high-DPR / WebGPU path: a *short* circuit
@@ -70,6 +74,55 @@ test('a wire-dense combinator blueprint renders all its wires', async ({ page })
 
     // Confirms the 96 mostly-short circuit wires don't all drop out (the WebGPU
     // failure mode) — every colour should be well-represented here.
+    const counts = await wireCounts(page)
+    expect(counts.copper, JSON.stringify(counts)).toBeGreaterThan(0)
+    expect(counts.red, JSON.stringify(counts)).toBeGreaterThan(0)
+    expect(counts.green, JSON.stringify(counts)).toBeGreaterThan(0)
+})
+
+/**
+ * Distinct from the `?source` loads above: this drives the *paste-as-ghost* path
+ * (`Editor.appendBlueprint` → `PaintBlueprintContainer` → place), the touch/drag
+ * paste mode from #30. `appendBlueprint` used to rebind the pasted entities to the
+ * (empty) target blueprint, so the ghost serialized *zero* wires and a placed
+ * paste had no circuit/copper connections at all — even though the same blueprint
+ * loaded via `?source` (which keeps the source blueprint) wired up fine. Unlike
+ * the WebGPU rendering bug, this drops the connections in plain logic, so it
+ * reproduces here on WebGL and this guards it directly. Keyboard-driven, so
+ * desktop only (touch pastes via the action rail, same `appendBlueprint` seam).
+ */
+test('pasting a blueprint and placing it keeps its wires', async ({ page, context }) => {
+    test.skip(test.info().project.name !== 'desktop-chromium', 'keyboard paste is desktop-only')
+
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => undefined)
+    await page.goto('/?test')
+    await waitForReady(page)
+    await page.evaluate(s => navigator.clipboard.writeText(s), DENSE_BLUEPRINT)
+
+    const canvas = page.locator('canvas').first()
+    const box = (await canvas.boundingBox())!
+    const cx = box.x + box.width / 2
+    const cy = box.y + box.height / 2
+
+    // focus the canvas, then Ctrl+Shift+V => appendBlueprint (spawns a paste ghost)
+    await canvas.click({ position: { x: box.width / 2, y: box.height / 2 } })
+    await page.keyboard.press('Control+Shift+KeyV')
+
+    // the async clipboard read + spawn settles into a multi-entity "blueprint" ghost
+    await expect
+        .poll(async () => page.evaluate(() => (window as any).__FBE_TEST__.getState().paint.kind))
+        .toBe('blueprint')
+
+    // place the ghost with a left click (the desktop build action)
+    await page.mouse.move(cx, cy)
+    await page.mouse.down()
+    await page.mouse.up()
+    await page.waitForTimeout(1000)
+
+    const state = await page.evaluate(() => (window as any).__FBE_TEST__.getState())
+    expect(state.blueprint.entityCount, 'paste should place the entities').toBeGreaterThan(0)
+
+    // The bug placed the entities but no wires (red === green === copper === 0).
     const counts = await wireCounts(page)
     expect(counts.copper, JSON.stringify(counts)).toBeGreaterThan(0)
     expect(counts.red, JSON.stringify(counts)).toBeGreaterThan(0)
