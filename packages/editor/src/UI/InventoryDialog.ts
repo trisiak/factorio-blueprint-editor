@@ -282,8 +282,13 @@ export class InventoryDialog extends Dialog {
         let tabs = recentsKey ? 1 : 0
         for (const group of FD.inventoryLayout) {
             if (group.name === 'creative' && itemsFilter !== undefined) continue
-            const hasItems = group.subgroups.some(sg =>
-                sg.items.some(it => InventoryDialog.isItemAllowed(it.name, itemsFilter))
+            // Same shape guard as the constructor: a group with nothing
+            // placeable (SE) serializes its empty Lua table as `{}`, not [].
+            const subgroups = Array.isArray(group.subgroups) ? group.subgroups : []
+            const hasItems = subgroups.some(sg =>
+                (Array.isArray(sg.items) ? sg.items : []).some(it =>
+                    InventoryDialog.isItemAllowed(it.name, itemsFilter)
+                )
             )
             if (hasItems) tabs += 1
         }
