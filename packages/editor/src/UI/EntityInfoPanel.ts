@@ -314,7 +314,8 @@ export class EntityInfoPanel extends Panel {
             entity.type === 'selector-combinator'
         const isConstant = entity.type === 'constant-combinator'
         const hasEnableCond = entity.circuitCondition !== undefined
-        if (!isCombinator && !isConstant && !hasEnableCond) return startY
+        const modeLines = entity.circuitModeSummary
+        if (!isCombinator && !isConstant && !hasEnableCond && modeLines.length === 0) return startY
 
         const hasIcon = (name?: string): boolean =>
             !!name && !!(FD.items[name] || FD.fluids[name] || FD.recipes[name] || FD.signals[name])
@@ -423,6 +424,15 @@ export class EntityInfoPanel extends Panel {
             row.position.set(10, y)
             container.addChild(row)
             y += ROW_H
+        }
+
+        // Read/set-mode flags (e.g. "Reads hand contents (hold)", "Sets recipe
+        // from circuit") — boolean control_behavior settings rendered as text.
+        for (const line of modeLines) {
+            const label = new Text({ text: line, style: styles.dialog.label })
+            label.position.set(10, y)
+            container.addChild(label)
+            y += ROW_H - 4
         }
 
         return y

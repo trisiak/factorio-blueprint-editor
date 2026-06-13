@@ -735,6 +735,88 @@ export class Entity extends EventEmitter<EntityEvents> {
             .map(f => ({ name: f.name, count: f.count, quality: f.quality }))
     }
 
+    /**
+     * Read-only: human-readable lines describing the boolean/mode `control_behavior`
+     * flags that aren't conditions or signal lists — e.g. an inserter reading its
+     * hand contents, an assembler reading its recipe, a roboport reading logistics.
+     * Returns `[]` when the entity has none set. Type-keyed (mod-safe); only flags
+     * that are actually enabled produce a line, so most entities yield nothing.
+     */
+    public get circuitModeSummary(): string[] {
+        const cb = this.m_rawEntity.control_behavior
+        if (!cb) return []
+        const lines: string[] = []
+        const mode = (m: number | undefined): string => (m === 1 ? 'hold' : 'pulse')
+        switch (this.type) {
+            case 'inserter':
+                if (cb.circuit_read_hand_contents)
+                    lines.push(`Reads hand contents (${mode(cb.circuit_hand_read_mode)})`)
+                if (cb.circuit_set_filters) lines.push('Sets filters from circuit')
+                if (cb.circuit_set_stack_size)
+                    lines.push(
+                        `Sets stack size${
+                            cb.stack_control_input_signal?.name
+                                ? ` from ${cb.stack_control_input_signal.name}`
+                                : ''
+                        }`
+                    )
+                break
+            case 'transport-belt':
+                if (cb.circuit_read_hand_contents)
+                    lines.push(`Reads belt contents (${mode(cb.circuit_contents_read_mode)})`)
+                break
+            case 'assembling-machine':
+                if (cb.circuit_set_recipe) lines.push('Sets recipe from circuit')
+                if (cb.circuit_read_ingredients) lines.push('Reads ingredients')
+                if (cb.circuit_read_contents) lines.push('Reads contents')
+                if (cb.circuit_read_recipe_finished)
+                    lines.push(
+                        `Reads recipe finished${
+                            cb.circuit_recipe_finished_signal?.name
+                                ? ` → ${cb.circuit_recipe_finished_signal.name}`
+                                : ''
+                        }`
+                    )
+                break
+            case 'mining-drill':
+                if (cb.circuit_read_resources) lines.push('Reads resources')
+                break
+            case 'roboport':
+                if (cb.read_logistics) lines.push('Reads logistics contents')
+                if (cb.read_robot_stats) lines.push('Reads robot stats')
+                break
+            case 'accumulator':
+                if (cb.read_charge)
+                    lines.push(
+                        `Reads charge${cb.output_signal?.name ? ` → ${cb.output_signal.name}` : ''}`
+                    )
+                break
+            case 'train-stop':
+                if (cb.send_to_train) lines.push('Sends to train')
+                if (cb.read_from_train) lines.push('Reads from train')
+                if (cb.read_stopped_train)
+                    lines.push(
+                        `Reads stopped train${
+                            cb.train_stopped_signal?.name
+                                ? ` → ${cb.train_stopped_signal.name}`
+                                : ''
+                        }`
+                    )
+                if (cb.set_trains_limit) lines.push('Sets trains limit from circuit')
+                if (cb.read_trains_count) lines.push('Reads trains count')
+                break
+            case 'rail-signal':
+            case 'rail-chain-signal':
+                if (cb.circuit_read_signal) lines.push('Reads signal state')
+                if (cb.circuit_close_signal) lines.push('Closes signal from circuit')
+                break
+            case 'lamp':
+                if (cb.use_colors) lines.push('Uses circuit colours')
+                break
+        }
+        return lines
+    }
+
     public get generateConnector(): boolean {
         return this.hasConnections || this.connectToLogisticNetwork
     }
