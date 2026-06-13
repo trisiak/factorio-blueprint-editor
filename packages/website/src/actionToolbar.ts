@@ -61,10 +61,30 @@ const BUTTONS: ToolbarButton[] = [
         modes: [EM.NONE, EM.EDIT],
         when: e => !e.blueprintEmpty,
     },
-    // Cursor actions — only where they do something.
-    { action: 'rotate', glyph: '↻', label: 'Rotate', modes: [EM.PAINT, EM.EDIT, EM.SELECT] },
-    { action: 'flipHorizontal', glyph: '⇄', label: 'Flip H', modes: [EM.PAINT] },
-    { action: 'flipVertical', glyph: '⇅', label: 'Flip V', modes: [EM.PAINT] },
+    // Cursor actions — only where they do something. Rotate works on a held
+    // ghost, an edited entity, and a *single*-entity selection (group rotation
+    // isn't supported yet — #52); flip only works on a pasted-blueprint ghost.
+    {
+        action: 'rotate',
+        glyph: '↻',
+        label: 'Rotate',
+        modes: [EM.PAINT, EM.EDIT, EM.SELECT],
+        when: e => e.mode !== EM.SELECT || e.marqueeCount === 1,
+    },
+    {
+        action: 'flipHorizontal',
+        glyph: '⇄',
+        label: 'Flip H',
+        modes: [EM.PAINT],
+        when: e => e.cursorCanFlip,
+    },
+    {
+        action: 'flipVertical',
+        glyph: '⇅',
+        label: 'Flip V',
+        modes: [EM.PAINT],
+        when: e => e.cursorCanFlip,
+    },
     { action: 'pipette', glyph: '⊙', label: 'Pick', modes: [EM.PAINT, EM.EDIT] },
     { action: 'mine', glyph: '🗑', label: 'Delete', className: 'delete', modes: [EM.EDIT] },
     { action: 'copyEntitySettings', glyph: '⧉', label: 'Copy cfg', modes: [EM.EDIT] },

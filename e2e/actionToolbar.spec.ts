@@ -116,19 +116,35 @@ test.describe('action toolbar', () => {
             await expect(page.locator('#action-toolbar button[title="Select"]')).toBeVisible()
         })
 
-        test('PAINT mode surfaces the ghost actions (rotate/flip) and hides EDIT-only ones', async ({
-            page,
-        }) => {
-            await gotoAndEnterPaint(page)
+        test('PAINT mode surfaces rotate/pick/cancel; flip is cursor-aware', async ({ page }) => {
+            await gotoAndEnterPaint(page) // holding a single item (transport-belt)
 
             const toolbar = page.locator('#action-toolbar')
-            for (const title of ['Rotate', 'Flip H', 'Flip V', 'Pick', 'Cancel']) {
+            for (const title of ['Rotate', 'Pick', 'Cancel']) {
                 await expect(toolbar.locator(`button[title="${title}"]`)).toBeVisible()
             }
-            // Delete / Copy cfg only make sense on a selected entity (EDIT).
-            for (const title of ['Delete', 'Copy cfg', 'Paste cfg']) {
+            // Flip only works on a pasted-blueprint ghost, not a single held item,
+            // so it's hidden here; EDIT-only actions are hidden too.
+            for (const title of ['Flip H', 'Flip V', 'Delete', 'Copy cfg', 'Paste cfg']) {
                 await expect(toolbar.locator(`button[title="${title}"]`)).toHaveCount(0)
             }
+        })
+
+        test('Flip buttons appear when holding a pasted-blueprint ghost', async ({ page }) => {
+            // A paste ghost (PaintBlueprintContainer) is flippable; spawn one via
+            // the test hook from a loaded blueprint.
+            await page.goto(`/?test&source=${encodeURIComponent(CHEST)}`)
+            await waitForLoaded(page)
+            await expect.poll(() => entityCount(page)).toBeGreaterThan(0)
+            await page.evaluate(() =>
+                (
+                    window as unknown as { __FBE_TEST__: { spawnPasteGhost: () => boolean } }
+                ).__FBE_TEST__.spawnPasteGhost()
+            )
+
+            const toolbar = page.locator('#action-toolbar')
+            await expect(toolbar.locator('button[title="Flip H"]')).toBeVisible()
+            await expect(toolbar.locator('button[title="Flip V"]')).toBeVisible()
         })
 
         test('global + paint buttons route through the registry without throwing', async ({
@@ -141,7 +157,7 @@ test.describe('action toolbar', () => {
 
             // PAINT-mode rail actions exist now; exercise the callAction seam.
             const toolbar = page.locator('#action-toolbar')
-            for (const title of ['Rotate', 'Flip H', 'Flip V', 'Undo', 'Redo', 'Center']) {
+            for (const title of ['Rotate', 'Pick', 'Undo', 'Redo', 'Center']) {
                 await toolbar.locator(`button[title="${title}"]`).click({ force: true })
             }
 

@@ -126,6 +126,15 @@ export class Editor {
         return G.bp.isEmpty()
     }
 
+    /**
+     * Whether the held cursor can be flipped — true only while holding a *pasted
+     * blueprint* (a single held entity has no flip path). Gates the rail's Flip
+     * buttons so they only show when flipping does something.
+     */
+    public get cursorCanFlip(): boolean {
+        return G.BPC.mode === EditorMode.PAINT && !!G.BPC.paintContainer?.canFlipOrRotateByCopying()
+    }
+
     // --- Touch marquee (#21) — thin delegators for the website's Select button
     // and the Copy/Cut/Delete bar (the gesture itself lives in BlueprintContainer).
     /** Arm the marquee: the next one-finger drag draws a selection box (mobile). */
