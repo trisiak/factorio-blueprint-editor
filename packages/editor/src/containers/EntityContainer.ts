@@ -110,6 +110,7 @@ export class EntityContainer {
         this.m_Entity.on('filters', this.redrawEntityInfo, this)
         this.m_Entity.on('splitterInputPriority', this.redrawEntityInfo, this)
         this.m_Entity.on('splitterOutputPriority', this.redrawEntityInfo, this)
+        this.m_Entity.on('controlBehavior', this.redrawEntityInfo, this)
 
         this.m_Entity.on('destroy', onEntityDestroy)
 
@@ -123,6 +124,7 @@ export class EntityContainer {
             this.m_Entity.off('filters', this.redrawEntityInfo, this)
             this.m_Entity.off('splitterInputPriority', this.redrawEntityInfo, this)
             this.m_Entity.off('splitterOutputPriority', this.redrawEntityInfo, this)
+            this.m_Entity.off('controlBehavior', this.redrawEntityInfo, this)
 
             this.m_Entity.off('destroy', onEntityDestroy)
         })
@@ -272,6 +274,8 @@ export class EntityContainer {
             this.m_Entity.type === 'offshore-pump' ||
             this.m_Entity.type === 'arithmetic-combinator' ||
             this.m_Entity.type === 'decider-combinator' ||
+            this.m_Entity.type === 'selector-combinator' ||
+            this.m_Entity.type === 'constant-combinator' ||
             this.m_Entity.type === 'inserter' ||
             this.m_Entity.type === 'logistic-container'
         ) {

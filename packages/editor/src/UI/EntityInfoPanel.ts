@@ -8,6 +8,7 @@ import {
 } from 'factorio:prototype'
 import G from '../common/globals'
 import util from '../common/util'
+import { ISignal } from '../types'
 import { Entity } from '../core/Entity'
 import F from './controls/functions'
 import { Panel } from './controls/Panel'
@@ -69,6 +70,7 @@ export class EntityInfoPanel extends Panel {
     private m_entityInfo: Text
     private m_RecipeContainer: Container
     private m_RecipeIOContainer: Container
+    private m_CircuitContainer: Container
 
     public constructor() {
         super(270, 270)
@@ -85,18 +87,21 @@ export class EntityInfoPanel extends Panel {
         this.m_entityInfo = new Text({ text: '', style: styles.dialog.label })
         this.m_RecipeContainer = new Container()
         this.m_RecipeIOContainer = new Container()
+        this.m_CircuitContainer = new Container()
 
         this.addChild(
             this.m_EntityName,
             this.m_entityInfo,
             this.m_RecipeContainer,
-            this.m_RecipeIOContainer
+            this.m_RecipeIOContainer,
+            this.m_CircuitContainer
         )
     }
 
     public updateVisualization(entity?: Entity): void {
         this.m_RecipeContainer.removeChildren()
         this.m_RecipeIOContainer.removeChildren()
+        this.m_CircuitContainer.removeChildren()
 
         if (!entity) {
             this.visible = false
@@ -183,57 +188,57 @@ export class EntityInfoPanel extends Panel {
             this.m_entityInfo.position.set(10, nextY)
             nextY = this.m_entityInfo.position.y + this.m_entityInfo.height + 10
 
-            if (!entity.recipe) return
+            // Details for assembling machines with a recipe. The recipe can be
+            // unset (e.g. when it's driven from the circuit network via
+            // `set_recipe`), so guard rather than early-return — otherwise the
+            // circuit section rendered at the end of this method is skipped.
+            const recipe = entity.recipe ? FD.recipes[entity.recipe] : undefined
+            if (recipe !== undefined) {
+                // Show the original recipe
+                this.m_RecipeContainer.addChild(
+                    new Text({
+                        text: 'Recipe:',
+                        style: styles.dialog.label,
+                    })
+                )
+                F.CreateRecipe(
+                    this.m_RecipeContainer,
+                    0,
+                    20,
+                    recipe.ingredients,
+                    recipe.results,
+                    recipe.energy_required
+                )
+                this.m_RecipeContainer.position.set(10, nextY)
+                nextY = this.m_RecipeContainer.position.y + this.m_RecipeContainer.height + 20
 
-            // Details for assembling machines with recipe
-            this.m_RecipeContainer.removeChildren()
-            const recipe = FD.recipes[entity.recipe]
-            if (recipe === undefined) return
-
-            // Show the original recipe
-            this.m_RecipeContainer.addChild(
-                new Text({
-                    text: 'Recipe:',
-                    style: styles.dialog.label,
-                })
-            )
-            F.CreateRecipe(
-                this.m_RecipeContainer,
-                0,
-                20,
-                recipe.ingredients,
-                recipe.results,
-                recipe.energy_required
-            )
-            this.m_RecipeContainer.position.set(10, nextY)
-            nextY = this.m_RecipeContainer.position.y + this.m_RecipeContainer.height + 20
-
-            // Show recipe that takes entity effects into account
-            this.m_RecipeIOContainer.addChild(
-                new Text({
-                    text: 'Recipe (takes entity effects into account):',
-                    style: styles.dialog.label,
-                })
-            )
-            const energy_required = recipe.energy_required || 0.5
-            F.CreateRecipe(
-                this.m_RecipeIOContainer,
-                0,
-                20,
-                recipe.ingredients.map(i => ({
-                    ...i,
-                    amount: roundToTwo((i.amount * newCraftingSpeed) / energy_required),
-                })),
-                recipe.results.map(r => ({
-                    ...r,
-                    amount: roundToTwo(
-                        ((r.amount * newCraftingSpeed) / energy_required) * (1 + productivity)
-                    ),
-                })),
-                1
-            )
-            this.m_RecipeIOContainer.position.set(10, nextY)
-            nextY = this.m_RecipeIOContainer.position.y + this.m_RecipeIOContainer.height + 20
+                // Show recipe that takes entity effects into account
+                this.m_RecipeIOContainer.addChild(
+                    new Text({
+                        text: 'Recipe (takes entity effects into account):',
+                        style: styles.dialog.label,
+                    })
+                )
+                const energy_required = recipe.energy_required || 0.5
+                F.CreateRecipe(
+                    this.m_RecipeIOContainer,
+                    0,
+                    20,
+                    recipe.ingredients.map(i => ({
+                        ...i,
+                        amount: roundToTwo((i.amount * newCraftingSpeed) / energy_required),
+                    })),
+                    recipe.results.map(r => ({
+                        ...r,
+                        amount: roundToTwo(
+                            ((r.amount * newCraftingSpeed) / energy_required) * (1 + productivity)
+                        ),
+                    })),
+                    1
+                )
+                this.m_RecipeIOContainer.position.set(10, nextY)
+                nextY = this.m_RecipeIOContainer.position.y + this.m_RecipeIOContainer.height + 20
+            }
         }
 
         const isBelt = (e: Entity): boolean =>
@@ -281,6 +286,156 @@ export class EntityInfoPanel extends Panel {
             this.m_entityInfo.position.set(10, nextY)
             nextY = this.m_entityInfo.position.y + this.m_entityInfo.height + 20
         }
+
+        // Phase 0a (read-only): surface circuit settings already in the blueprint —
+        // combinator conditions, constant-combinator contents and enable conditions.
+        nextY = this.renderCircuitInfo(entity, nextY)
+    }
+
+    /**
+     * Renders a read-only summary of an entity's circuit/control_behavior settings
+     * into `m_CircuitContainer`, returning the new layout cursor `y`. Returns `y`
+     * unchanged for entities with nothing circuit-related to show.
+     *
+     * This is deliberately read-only (Phase 0): it proves we can decode every
+     * post-2.0 control_behavior shape across the data packs before any editing UI
+     * is built on top. Signal tokens fall back to plain text when the data pack
+     * has no icon for them, so modded/virtual signals never crash the panel.
+     */
+    private renderCircuitInfo(entity: Entity, startY: number): number {
+        const container = this.m_CircuitContainer
+        const ICON = 20
+        const ROW_H = 24
+
+        // Is there anything circuit-related to show?
+        const isCombinator =
+            entity.type === 'arithmetic-combinator' ||
+            entity.type === 'decider-combinator' ||
+            entity.type === 'selector-combinator'
+        const isConstant = entity.type === 'constant-combinator'
+        const hasEnableCond = entity.circuitCondition !== undefined
+        const modeLines = entity.circuitModeSummary
+        if (!isCombinator && !isConstant && !hasEnableCond && modeLines.length === 0) return startY
+
+        const hasIcon = (name?: string): boolean =>
+            !!name && !!(FD.items[name] || FD.fluids[name] || FD.recipes[name] || FD.signals[name])
+
+        // Render a signal icon (or a plain-text fallback / a constant) into `row`
+        // at horizontal offset `x`, returning the next free x.
+        const placeToken = (
+            row: Container,
+            x: number,
+            signal?: ISignal,
+            constant?: number
+        ): number => {
+            if (signal?.name && hasIcon(signal.name)) {
+                const icon = F.CreateIcon(signal.name, ICON, false)
+                icon.position.set(x, 0)
+                row.addChild(icon)
+                return x + ICON + 4
+            }
+            const text = signal?.name ?? (constant !== undefined ? String(constant) : '?')
+            const label = new Text({ text, style: styles.dialog.label })
+            label.position.set(x, 2)
+            row.addChild(label)
+            return x + label.width + 4
+        }
+
+        const placeText = (row: Container, x: number, text: string): number => {
+            const label = new Text({ text, style: styles.dialog.label })
+            label.position.set(x, 2)
+            row.addChild(label)
+            return x + label.width + 4
+        }
+
+        let y = startY
+        const header = new Text({ text: 'Circuit network:', style: styles.dialog.label })
+        header.position.set(10, y)
+        container.addChild(header)
+        y += header.height + 6
+
+        if (entity.type === 'selector-combinator') {
+            // Selectors are word-operations ('select', 'count', 'random', …); the
+            // index signal only exists for 'select', so show it conditionally.
+            const row = new Container()
+            let x = placeText(row, 0, `Operation: ${entity.operator ?? 'select'}`)
+            const idx = entity.combinatorConditions?.first_signal
+            if (idx?.name) {
+                x = placeText(row, x, '·')
+                placeToken(row, x, idx)
+            }
+            row.position.set(10, y)
+            container.addChild(row)
+            y += ROW_H
+        } else if (isCombinator) {
+            const { first_signal, second_signal, output_signal } = entity.combinatorConditions ?? {}
+            const row = new Container()
+            let x = 0
+            // Either operand may be a constant instead of a signal; the missing
+            // second operand defaults to 0 (matching how Factorio omits it).
+            x = placeToken(row, x, first_signal, entity.combinatorFirstConstant)
+            x = placeText(row, x, String(entity.operator ?? ''))
+            x = placeToken(row, x, second_signal, entity.combinatorConstant ?? 0)
+            x = placeText(row, x, '→')
+            placeToken(row, x, output_signal)
+            row.position.set(10, y)
+            container.addChild(row)
+            y += ROW_H
+        } else if (isConstant) {
+            const signals = entity.constantCombinatorSignals
+            if (signals.length === 0) {
+                const label = new Text({ text: '(empty)', style: styles.dialog.label })
+                label.position.set(10, y)
+                container.addChild(label)
+                y += ROW_H
+            } else {
+                // Wrap signal icons (with their counts) into rows of 6.
+                const PER_ROW = 6
+                const STEP = 38
+                signals.forEach((s, i) => {
+                    const col = i % PER_ROW
+                    const line = Math.floor(i / PER_ROW)
+                    if (hasIcon(s.name)) {
+                        F.CreateIconWithAmount(
+                            container,
+                            10 + col * STEP,
+                            y + line * STEP,
+                            s.name,
+                            s.count
+                        )
+                    } else {
+                        const label = new Text({ text: s.name, style: styles.dialog.label })
+                        label.position.set(10 + col * STEP, y + line * STEP)
+                        container.addChild(label)
+                    }
+                })
+                y += (Math.floor((signals.length - 1) / PER_ROW) + 1) * STEP + 4
+            }
+        }
+
+        if (hasEnableCond) {
+            const cond = entity.circuitCondition
+            const row = new Container()
+            let x = 0
+            x = placeText(row, x, 'Enabled if')
+            x = placeToken(row, x, cond.first_signal)
+            x = placeText(row, x, cond.comparator ?? '<')
+            placeToken(row, x, cond.second_signal, cond.constant ?? 0)
+            row.position.set(10, y)
+            container.addChild(row)
+            y += ROW_H
+        }
+
+        // Read/set-mode flags (e.g. "Reads hand contents (hold)", "Sets recipe
+        // from circuit") — boolean control_behavior settings rendered as text.
+        for (const line of modeLines) {
+            const label = new Text({ text: line, style: styles.dialog.label })
+            label.position.set(10, y)
+            container.addChild(label)
+            y += ROW_H - 4
+        }
+
+        return y
     }
 
     protected override setPosition(): void {

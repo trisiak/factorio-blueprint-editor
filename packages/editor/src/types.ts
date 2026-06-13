@@ -409,6 +409,21 @@ export interface IEntity {
         /** 0 = pulse, 1 = hold, only present if entity is of type transport-belt and circuit_read_hand_contents is true */
         circuit_contents_read_mode?: defines.control_behavior.transport_belt.content_read_mode
 
+        // only present if entity is of type assembling-machine (crafting machine).
+        // NB: the blueprint string drops the `circuit_` prefix the runtime LuaControl-
+        // Behavior API uses (e.g. `set_recipe`, not `circuit_set_recipe`).
+        /** set the machine's recipe from the circuit network */
+        set_recipe?: boolean
+        /** read the machine's current contents (in-progress craft) to the circuit network */
+        read_contents?: boolean
+        /** read the current recipe's ingredients to the circuit network */
+        read_ingredients?: boolean
+        /** pulse a signal when a craft finishes */
+        read_recipe_finished?: boolean
+        recipe_finished_signal?: ISignal
+        /** output this signal while the machine is working */
+        working_signal?: ISignal
+
         /** only present if entity is cargo landing pad, buffer-chest or requester-chest */
         circuit_mode_of_operation?:
             | defines.control_behavior.cargo_landing_pad.exclusive_mode
