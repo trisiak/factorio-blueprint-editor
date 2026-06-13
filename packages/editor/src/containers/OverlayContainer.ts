@@ -41,7 +41,12 @@ export class OverlayContainer extends Container {
             isCraftingMachine(entity.entityData) &&
             (entity.entityData.show_recipe_icon === undefined || entity.entityData.show_recipe_icon)
         ) {
-            const spec = entity.entityData.icon_draw_specification
+            // icon_draw_specification is optional in the prototype (absent on
+            // 52 SE crafting machines; every vanilla/SA one happens to define
+            // it, which is why this never surfaced). Default to centered,
+            // unscaled — without the guard, setting any recipe on those
+            // machines threw here, breaking their info panel and editor (#35).
+            const spec = entity.entityData.icon_draw_specification ?? {}
             const shift = spec.shift || [0, 0]
             const scale = spec.scale || 1
             const recipeInfo = new Container()
