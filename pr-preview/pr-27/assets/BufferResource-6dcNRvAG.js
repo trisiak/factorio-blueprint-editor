@@ -1,4 +1,4 @@
-import{w as _,x as y,S as c,y as S,B as g,z as m,a as I,A as p}from"./index-DmH2fRCV.js";const A={name:"texture-bit",vertex:{header:`
+import{w as _,x as y,S as c,y as S,B as g,z as m,a as I,A as p}from"./index-BY90gu-u.js";const A={name:"texture-bit",vertex:{header:`
 
         struct TextureUniforms {
             uTextureMatrix:mat3x3<f32>,
@@ -153,4 +153,4 @@ import{w as _,x as y,S as c,y as S,B as g,z as m,a as I,A as p}from"./index-DmH2
         data[offset + 2] = v[2];
         data[offset + 3] = v[3];
     `};class B extends I{constructor({buffer:t,offset:a,size:s}){super(),this.uid=p("buffer"),this._resourceType="bufferResource",this._touched=0,this._resourceId=p("resource"),this._bufferResource=!0,this.destroyed=!1,this.buffer=t,this.offset=a|0,this.size=s,this.buffer.on("change",this.onBufferChange,this)}onBufferChange(){this._resourceId=p("resource"),this.emit("change",this)}destroy(t=!1){this.destroyed=!0,t&&this.buffer.destroy(),this.emit("change",this),this.buffer=null,this.removeAllListeners()}}export{B,d as G,T as U,F as a,h as b,k as c,D as d,O as e,A as t,w as u};
-//# sourceMappingURL=BufferResource-6ZVmY2gb.js.map
+//# sourceMappingURL=BufferResource-6dcNRvAG.js.map
