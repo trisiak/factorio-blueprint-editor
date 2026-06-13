@@ -9,6 +9,9 @@ import {
     ArithmeticOperation,
     ISignal,
     ICondition,
+    IArithmeticCondition,
+    IDeciderCondition,
+    LogisticFilter,
     SelectorCombinatorOperation,
 } from '../types'
 import util from '../common/util'
@@ -819,6 +822,90 @@ export class Entity extends EventEmitter<EntityEvents> {
                 break
         }
         return lines
+    }
+
+    // ── Circuit / control_behavior mutators (used by the combinator editors) ──
+    // Every edit clones the whole control_behavior, mutates the clone and writes
+    // it back through history (so undo/redo and the blueprint-string round-trip
+    // come for free) and emits `controlBehavior` so the overlay/info panel and
+    // any open editor refresh. control_behavior is created on demand.
+
+    private mutateControlBehavior(
+        mutate: (cb: NonNullable<IEntity['control_behavior']>) => void,
+        label: string
+    ): void {
+        const cb = (
+            this.m_rawEntity.control_behavior
+                ? util.duplicate(this.m_rawEntity.control_behavior)
+                : {}
+        ) as NonNullable<IEntity['control_behavior']>
+        mutate(cb)
+        this.m_BP.history
+            .updateValue(this.m_rawEntity, 'control_behavior', cb, label)
+            .onDone(() => this.emit('controlBehavior'))
+            .commit()
+    }
+
+    /** Arithmetic combinator condition (post-2.0 single condition object). */
+    public get arithmeticConditions(): IArithmeticCondition {
+        return this.m_rawEntity.control_behavior?.arithmetic_conditions ?? {}
+    }
+    public set arithmeticConditions(c: IArithmeticCondition) {
+        this.mutateControlBehavior(cb => {
+            cb.arithmetic_conditions = c
+        }, 'Edit arithmetic combinator')
+    }
+
+    /** Decider combinator conditions (post-2.0 conditions[]/outputs[] object). */
+    public get deciderConditions(): IDeciderCondition {
+        return this.m_rawEntity.control_behavior?.decider_conditions ?? {}
+    }
+    public set deciderConditions(c: IDeciderCondition) {
+        this.mutateControlBehavior(cb => {
+            cb.decider_conditions = c
+        }, 'Edit decider combinator')
+    }
+
+    /** Selector combinator operation + its parameters (post-2.0). */
+    public set selectorOperation(op: SelectorCombinatorOperation) {
+        this.mutateControlBehavior(cb => {
+            cb.operation = op
+        }, 'Edit selector combinator')
+    }
+    public set selectorSelectMax(selectMax: boolean) {
+        this.mutateControlBehavior(cb => {
+            cb.select_max = selectMax
+        }, 'Edit selector combinator')
+    }
+
+    /** Constant combinator first-section filters (post-2.0 `sections`). */
+    public get constantCombinatorSection(): LogisticFilter[] {
+        return this.m_rawEntity.control_behavior?.sections?.sections?.[0]?.filters ?? []
+    }
+    public set constantCombinatorSection(filters: LogisticFilter[]) {
+        this.mutateControlBehavior(cb => {
+            if (!cb.sections) cb.sections = { sections: [] }
+            if (!cb.sections.sections) cb.sections.sections = []
+            if (!cb.sections.sections[0]) cb.sections.sections[0] = { index: 1 }
+            cb.sections.sections[0].filters = filters.length > 0 ? filters : undefined
+        }, 'Edit constant combinator')
+    }
+
+    /** Whether the entity is enabled/disabled by its circuit condition. */
+    public set circuitEnabled(enabled: boolean) {
+        this.mutateControlBehavior(
+            cb => {
+                cb.circuit_enabled = enabled || undefined
+            },
+            enabled ? 'Enable circuit condition' : 'Disable circuit condition'
+        )
+    }
+
+    /** The enable/disable circuit condition itself. */
+    public set circuitCondition(cond: ICondition) {
+        this.mutateControlBehavior(cb => {
+            cb.circuit_condition = cond
+        }, 'Edit enable condition')
     }
 
     public get generateConnector(): boolean {

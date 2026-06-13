@@ -4,8 +4,10 @@ import { DebugContainer } from './DebugContainer'
 import { QuickbarPanel } from './QuickbarPanel'
 import { EntityInfoPanel } from './EntityInfoPanel'
 import { InventoryDialog } from './InventoryDialog'
+import { SignalPicker } from './SignalPicker'
 import { WiresPanel } from './WiresPanel'
 import { createEditor } from './editors/factory'
+import { ISignal } from '../types'
 
 export class UIContainer extends Container {
     private debugContainer: DebugContainer
@@ -63,6 +65,16 @@ export class UIContainer extends Container {
         const inv = new InventoryDialog(title, itemsFilter, selectedCallBack, recentsKey)
         this.dialogsContainer.addChild(inv)
         return inv
+    }
+
+    public createSignalPicker(
+        title: string,
+        onSelect: (signal: ISignal) => void,
+        allowSpecial = true
+    ): SignalPicker {
+        const picker = new SignalPicker(title, onSelect, allowSpecial)
+        this.dialogsContainer.addChild(picker)
+        return picker
     }
 
     // public changeQuickbarRows(rows: number): void {
