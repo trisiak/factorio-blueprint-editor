@@ -24,35 +24,24 @@ const makeEntity = (name: string): Entity =>
  *    a selectable recipe on a non-furnace/non-silo crafting machine) that route
  *    to NO editor — so that state is unreachable in the UI.
  *
- * The gap list is a RATCHET. It exists because the factory matches several
- * editor families (beacon/lab/mining-drill) by vanilla *name*, so modded
- * variants of those types fall through. When routing is generalized to match by
- * type, delete the fixed entries here; the test fails if the set grows (a new
- * pack/entity regressed) or shrinks (a fix landed — update the baseline).
+ * The gap list is a RATCHET. `editorKindFor` now routes the beacon / lab /
+ * mining-drill editor families by *type* (when the entity has module slots),
+ * not by vanilla name, so modded variants reach the right editor — every pack
+ * is now gap-free. The test fails if the set grows (a new pack/entity
+ * regressed); restore the relevant entries with a comment if that's intended.
  *
- * Browser-verified separately: all 67 editor-yielding space-exploration
- * entities open their editor without console/page errors (manual sweep via the
- * `?test` openEntityEditor hook).
+ * Browser-verified separately: all editor-yielding space-exploration entities
+ * open their editor without console/page errors (sweep via the `?test`
+ * openEntityEditor hook), and SE's wide beacons show their full module grid.
  */
 
-// Entities that SHOULD expose configurable state but currently get no editor.
-// furnaces / rocket-silos with no module slots are intentionally excluded —
-// they auto-select their recipe, so "no editor" is correct, not a gap.
+// Entities that SHOULD expose configurable state but get no editor. Empty
+// everywhere now that routing is type-based; furnaces / rocket-silos with no
+// module slots are correctly absent (they auto-select their recipe).
 const KNOWN_GAPS: Record<string, string[]> = {
-    // vanilla matches every editor family by name, so it has no gaps.
     'vanilla-2.0': [],
-    // Not SE-specific: Space Age's biolab + big-mining-drill have module slots
-    // but aren't the vanilla 'lab'/'electric-mining-drill' names, so no editor.
-    'space-age': ['biolab', 'big-mining-drill'],
-    'space-exploration': [
-        'se-compact-beacon', // 10 module slots
-        'se-compact-beacon-2', // 10
-        'se-wide-beacon', // 15
-        'se-wide-beacon-2', // 20
-        'burner-lab', // 2
-        'se-space-science-lab', // 6
-        'area-mining-drill', // 5
-    ],
+    'space-age': [],
+    'space-exploration': [],
 }
 
 describe.each(Object.keys(KNOWN_GAPS))('editor routing: %s', pack => {
