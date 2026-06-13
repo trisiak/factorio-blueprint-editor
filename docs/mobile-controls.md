@@ -200,6 +200,28 @@ pipelines at once made touch taps double-act via the browser's synthetic
   Select button + marquee bar (`actionToolbar.ts`, `index.styl`). Covered by
   `e2e/touchMarquee.spec.ts` (CDP box-drag → Copy/Cut/Delete/Cancel, plus Cut →
   Place restoring the originals in place) via the `?test` hook (`marquee.count`).
+- ✅ **Selection nudge-in-place + EDIT bar + inventory focus-tap** (polish round) —
+  four touches on top of the above:
+    - **Held-selection nudge.** SELECT now shows a **d-pad** (arrows + green
+      **Done** centre) that moves the actual selected entities a tile at a time
+      _in place_, preserving wiring — `Blueprint.moveEntitiesBy` validates the
+      group as a unit (lifting it out of the position grid so members don't block
+      each other) and applies leading-edge-first via `Entity.forceMoveBy`. This is
+      the wire-safe alternative to cut→paste. The Copy/Cut/Delete choices sit in a
+      row below the d-pad.
+    - **EDIT bar.** Tapping a single entity (EDIT) shows a **Select / Edit** bar:
+      _Select_ promotes it to a one-entity held selection (so the nudge applies to
+      one entity too); _Edit_ opens its editor (same as a second tap).
+    - **Inventory focus-tap.** On touch, a **tap** in the item picker now _focuses_
+      the item (name/details + Confirm/Pin) instead of committing — selecting is a
+      deliberate two-step, fewer misclicks. Desktop click-to-commit is unchanged.
+    - **Overflow on top.** The rail's ⋯ overflow now renders above the contextual
+      bottom clusters (z22 > z21) so its buttons aren't hidden behind the d-pad.
+    - Seams: `Blueprint.moveEntitiesBy` / `Entity.forceMoveBy`, `BlueprintContainer`
+      `nudgeSelection`/`selectHovered`/`editHovered`, `Editor` delegators, the
+      contextual clusters in `actionToolbar.ts` + `index.styl`, `InventoryDialog`
+      pointerup. e2e in `touchMarquee.spec.ts` (nudge-in-place + EDIT bar) via
+      `marquee.origin` / `entityScreenPos` hooks.
 - 🚧 **e2e coverage gaps**: pinch needs CDP `Input.dispatchTouchEvent` (the
   high-level touch API is single-touch). Tap-to-place is now covered —
   `EditorTestState` was extended with `paint` + `blueprint.entityCount` and

@@ -1055,6 +1055,15 @@ export class BlueprintContainer extends Container {
         return this.mode === EditorMode.SELECT ? this.marqueeEntities.length : 0
     }
 
+    /** Top-left tile of the held selection (min entity position), or null. For e2e. */
+    public get marqueeOrigin(): IPoint | undefined {
+        if (this.mode !== EditorMode.SELECT || this.marqueeEntities.length === 0) return undefined
+        return {
+            x: Math.min(...this.marqueeEntities.map(e => e.position.x)),
+            y: Math.min(...this.marqueeEntities.map(e => e.position.y)),
+        }
+    }
+
     /** Copy the selection into a paste ghost (originals stay), previewed in place. */
     public copyMarquee(): void {
         if (this.mode !== EditorMode.SELECT) return
@@ -1121,6 +1130,39 @@ export class BlueprintContainer extends Container {
             if (m) m.cursorBox = undefined
         }
         this.marqueeEntities = []
+    }
+
+    /**
+     * Nudge the held selection one tile in place (the SELECT-mode d-pad). Moves
+     * the actual entities, preserving their wiring (unlike cut/paste) — see
+     * `Blueprint.moveEntitiesBy`. The frozen selection box follows so it stays
+     * around the entities.
+     */
+    public nudgeSelection(offset: IPoint): void {
+        if (this.mode !== EditorMode.SELECT || this.marqueeEntities.length === 0) return
+        if (this.bp.moveEntitiesBy(this.marqueeEntities, offset)) {
+            this.overlayContainer.shiftSelectionArea(offset.x, offset.y)
+        }
+    }
+
+    /**
+     * Promote the entity under the EDIT-mode cursor into a one-entity held
+     * selection (mode SELECT), so the same nudge / Copy / Cut / Delete controls
+     * apply to a single tapped entity. Drives the EDIT bar's "Select".
+     */
+    public selectHovered(): void {
+        if (this.mode !== EditorMode.EDIT || !this.hoverContainer) return
+        const entity = this.hoverContainer.entity
+        this.updateHoverContainer(true) // clear hover/info + mode → NONE
+        this.marqueeEntities = [entity]
+        const m = EntityContainer.mappings.get(entity.entityNumber)
+        if (m) m.cursorBox = 'copy'
+        this.setMode(EditorMode.SELECT)
+    }
+
+    /** Open the editor for the EDIT-mode entity (the EDIT bar's "Edit"). */
+    public editHovered(): void {
+        if (this.mode === EditorMode.EDIT) this.openEditor()
     }
 
     public zoom(zoomIn = true): void {

@@ -127,6 +127,18 @@ export class Editor {
     public cancelMarquee(): void {
         G.BPC.cancelMarquee()
     }
+    /** Nudge the held selection one tile in place (preserves wiring). */
+    public nudgeSelection(offset: { x: number; y: number }): void {
+        G.BPC.nudgeSelection(offset)
+    }
+    /** EDIT bar: promote the tapped entity into a one-entity held selection. */
+    public selectHovered(): void {
+        G.BPC.selectHovered()
+    }
+    /** EDIT bar: open the tapped entity's editor. */
+    public editHovered(): void {
+        G.BPC.editHovered()
+    }
 
     /**
      * Reserve viewport edges (CSS px) for DOM chrome; the canvas shrinks into the
