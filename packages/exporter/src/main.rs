@@ -44,6 +44,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let base_factorio_dir = DATA_DIR.join(factorio_dir_name);
 
     setup::download_factorio(&DATA_DIR, &base_factorio_dir, FACTORIO_VERSION, pack).await?;
+    // After the game download — a build re-download wipes the install (and the
+    // mods/ dir with it); portal mods then reinstall from the zip cache.
+    setup::download_portal_mods(&DATA_DIR, &base_factorio_dir, pack).await?;
     setup::extract(&output_dir, &base_factorio_dir, pack, &all_mods).await?;
 
     let static_ = Static::new(Path::new("data/output/"));

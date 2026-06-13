@@ -324,11 +324,26 @@ function colorAndAlphaToColorSource(color: number, a: number): ColorSource {
 }
 
 function applyTint(s: { tint: ColorSource; alpha: number }, tint: ColorWithAlpha): void {
-    const r = tint.r || 0
-    const g = tint.g || 0
-    const b = tint.b || 0
+    let r = tint.r || 0
+    let g = tint.g || 0
+    let b = tint.b || 0
+    let a = tint.a || 1
+    // Factorio colors come in two scales: 0-1 floats or 0-255 ints, and the
+    // game treats any component > 1 as meaning the whole color is 0-255
+    // (SE's icon tints use that form, e.g. {r: 219, g: 96, b: 255}). PixiJS
+    // only takes 0-1, so normalize here — the one funnel every tint (UI icons
+    // and entity sprites alike) flows through. Alpha is only rescaled when it
+    // itself is > 1: an omitted alpha defaults to opaque on either scale.
+    if (r > 1 || g > 1 || b > 1 || a > 1) {
+        r /= 255
+        g /= 255
+        b /= 255
+        if (a > 1) {
+            a /= 255
+        }
+    }
     s.tint = rgbToColorSource(r, g, b)
-    s.alpha = tint.a || 1
+    s.alpha = a
 }
 
 function rgbToColorSource(r: number, g: number, b: number): ColorSource {
