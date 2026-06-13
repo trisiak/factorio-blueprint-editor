@@ -216,7 +216,14 @@ export class Editor {
     }
 
     public async appendBlueprint(bp: Blueprint): Promise<void> {
-        const result = bp.entities.valuesArray().map(e => new Entity(e.rawEntity, G.BPC.bp))
+        // Keep the copies bound to the *source* blueprint `bp`, not the target
+        // `G.BPC.bp`: `PaintBlueprintContainer` rebuilds its ghost from
+        // `entities[0].Blueprint.wireConnections` (serializing the wires between the
+        // pasted entities), so binding to the empty target dropped every wire — a
+        // pasted blueprint placed with no circuit/copper connections. `bp` still
+        // holds the connections parsed on import, so the ghost (and the place that
+        // follows) carries them through.
+        const result = bp.entities.valuesArray().map(e => new Entity(e.rawEntity, bp))
 
         G.BPC.spawnPaintContainer(result, 0)
     }

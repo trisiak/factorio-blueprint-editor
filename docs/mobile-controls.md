@@ -110,6 +110,17 @@ pipelines at once made touch taps double-act via the browser's synthetic
   in-dialog and refreshes live; recipe-on-hover gated to desktop, fixing the stray
   touch-drag tooltip); and a **responsive body width** so the tab scroll only
   engages when the tabs truly can't fit (more item columns on wider screens).
+- ✅ **Pasted blueprints keep their wires** (issue #37) — the touch/drag paste mode
+  (#30) placed every entity but none of the wires: `Editor.appendBlueprint` rebound
+  the pasted entities to the (empty) target blueprint, so `PaintBlueprintContainer`
+  serialized its ghost from the wrong `wireConnections` and the placed paste had no
+  circuit/copper connections at all — while the same blueprint loaded via `?source`
+  (which keeps the source blueprint) wired up fine. Fix: keep the copies bound to
+  the source blueprint, which still holds the connections parsed on import. `Editor.ts`;
+  guarded by `e2e/wires.spec.ts`, which drives the real paste→place path and asserts
+  the placed wires survive (via a `wireColorPixelCounts()` `?test` hook that extracts
+  the wires container in isolation), plus `?source` load guards over a trivial and a
+  real 96-wire combinator blueprint (`e2e/fixtures/circuit-wire-blueprint.txt`).
 
 ## Not done / next
 
