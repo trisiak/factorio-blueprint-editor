@@ -68,6 +68,8 @@ export interface EntityEvents {
     requestFromBufferChest: []
     station: []
     manualTrainsLimit: []
+    /** The entity's circuit/control_behavior config changed wholesale (e.g. paste settings). */
+    controlBehavior: []
 }
 
 /** Entity Base Class */
@@ -1091,6 +1093,23 @@ export class Entity extends EventEmitter<EntityEvents> {
         // PASTE REQUESTER CHEST SETTINGS
         if (this.name === 'requester-chest' && sourceEntity.name === 'requester-chest') {
             this.requestFromBufferChest = sourceEntity.requestFromBufferChest
+        }
+
+        // PASTE CIRCUIT / CONTROL_BEHAVIOR (combinator conditions, constant-combinator
+        // signals, enable conditions, read/set modes, …). canPasteSettings guarantees
+        // source and target share a type, so the whole object is safe to copy; deep-
+        // clone it so the two entities don't alias the same control_behavior.
+        const srcCB = sourceEntity.m_rawEntity.control_behavior
+        if (srcCB || this.m_rawEntity.control_behavior) {
+            this.m_BP.history
+                .updateValue(
+                    this.m_rawEntity,
+                    'control_behavior',
+                    srcCB ? util.duplicate(srcCB) : undefined,
+                    'Paste circuit settings'
+                )
+                .onDone(() => this.emit('controlBehavior'))
+                .commit()
         }
 
         this.m_BP.history.commitTransaction()
