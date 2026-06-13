@@ -119,10 +119,10 @@ export interface FbeTestHook {
     spawnPasteGhost: () => boolean
     /**
      * Count rendered wire pixels per colour by extracting the wires container in
-     * isolation (so combinator/pole sprites can't be mistaken for a wire). Used by
-     * the e2e wire-rendering regression guard for issue #37 — red/green circuit
-     * wires went missing on high-DPR/WebGPU while copper survived; this asserts all
-     * three colours actually paint pixels.
+     * isolation (so combinator/pole sprites can't be mistaken for a wire). Backs
+     * the e2e wire-visibility guards (`e2e/wires.spec.ts`) — asserting that every
+     * wire colour actually paints pixels, so a colour silently dropping out (e.g.
+     * a paste that places entities but none of their connections) fails the test.
      */
     wireColorPixelCounts: () => { red: number; green: number; copper: number }
 }

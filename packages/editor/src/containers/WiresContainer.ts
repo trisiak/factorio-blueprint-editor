@@ -1,13 +1,14 @@
-import { Container, Graphics } from 'pixi.js'
+import { Container, Graphics, RenderTexture, Sprite } from 'pixi.js'
 import { Blueprint } from '../core/Blueprint'
 import { IConnection, IConnectionPoint } from '../core/WireConnections'
 import U from '../core/generators/util'
 import { IPoint, WireColor } from '../types'
 import { EntityContainer } from './EntityContainer'
+import G from '../common/globals'
 
 export class WiresContainer extends Container {
     private readonly bp: Blueprint
-    private connectionToWire = new Map<string, Graphics>()
+    private connectionToSprite = new Map<string, Sprite>()
 
     public constructor(bp: Blueprint) {
         super()
@@ -19,7 +20,7 @@ export class WiresContainer extends Container {
         p2: IPoint,
         color: WireColor,
         connectionsReach = true
-    ): Graphics {
+    ): Sprite {
         const wire = new Graphics()
 
         const minX = Math.min(p1.x, p2.x)
@@ -67,30 +68,31 @@ export class WiresContainer extends Container {
             alpha: connectionsReach ? 1 : 0.3,
         })
 
-        // Each wire is its own vector Graphics, drawn straight into the scene
-        // rather than baked into a per-wire RenderTexture first. The texture route
-        // was a recurring source of GPU fragility (issue #37): a short circuit
-        // (red/green) wire between adjacent entities is a thin ~1.5px stroke, and
-        // on high-DPR / WebGPU that tiny texture lost the stroke — first to its mip
-        // chain (the wire vanished under minification while long copper power wires,
-        // with big textures, survived), and a wire-dense blueprint could drop *all*
-        // its wires at once (dozens of small antialiased — i.e. multisampled —
-        // render targets is a lot of texture memory for a mobile GPU). Vector
-        // Graphics sidesteps the whole class: no textures, no mips, no resolution
-        // to clamp — it rasterizes crisply at any zoom.
-        //
-        // The curve is drawn in a local frame from (0,0)→(dX,dY); positioning the
-        // Graphics at the segment midpoint with a matching pivot — and mirroring on
-        // X for the "other diagonal" — places it in world space and preserves the
-        // original bow direction, exactly as the baked sprite did.
-        wire.position.set(minX + dX / 2, minY + dY / 2)
-        wire.pivot.set(dX / 2, dY / 2)
+        const bounds = wire.bounds
+
+        const renderTexture = RenderTexture.create({
+            width: bounds.width,
+            height: bounds.height,
+            autoGenerateMipmaps: true,
+            antialias: true,
+            resolution: window.devicePixelRatio * 2,
+        })
+
+        G.app.renderer.render({ container: wire, target: renderTexture })
+        renderTexture.source.updateMipmaps()
+
+        wire.destroy()
+
+        const s = new Sprite(renderTexture)
+
+        s.position.set(minX + dX / 2, minY + dY / 2)
+        s.pivot.set(dX / 2, dY / 2)
 
         if (!((p1.x < p2.x && p1.y < p2.y) || (p2.x < p1.x && p2.y < p1.y))) {
-            wire.scale.x = -1
+            s.scale.x = -1
         }
 
-        return wire
+        return s
     }
 
     public connect(hash: string, connection: IConnection): void {
@@ -104,16 +106,16 @@ export class WiresContainer extends Container {
     }
 
     public add(hash: string, connection: IConnection): void {
-        const wire = this.getWire(connection)
-        this.addChild(wire)
-        this.connectionToWire.set(hash, wire)
+        const sprite = this.getWireSprite(connection)
+        this.addChild(sprite)
+        this.connectionToSprite.set(hash, sprite)
     }
 
     public remove(hash: string): void {
-        const wire = this.connectionToWire.get(hash)
-        if (wire) {
-            wire.destroy()
-            this.connectionToWire.delete(hash)
+        const sprite = this.connectionToSprite.get(hash)
+        if (sprite) {
+            sprite.destroy({ texture: true, textureSource: true })
+            this.connectionToSprite.delete(hash)
         }
     }
 
@@ -153,7 +155,7 @@ export class WiresContainer extends Container {
         }
     }
 
-    private getWire(connection: IConnection): Graphics {
+    private getWireSprite(connection: IConnection): Sprite {
         const getWirePos = (cp: IConnectionPoint, color: string): IPoint => {
             if (cp.entityNumber) {
                 const entity = this.bp.entities.get(cp.entityNumber)

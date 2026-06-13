@@ -110,22 +110,17 @@ pipelines at once made touch taps double-act via the browser's synthetic
   in-dialog and refreshes live; recipe-on-hover gated to desktop, fixing the stray
   touch-drag tooltip); and a **responsive body width** so the tab scroll only
   engages when the tabs truly can't fit (more item columns on wider screens).
-- ✅ **Circuit/power wires render on high-DPR/touch** (issue #37) — `WiresContainer`
-  used to bake each wire into its own supersampled `RenderTexture`, which kept
-  failing on the high-DPR/WebGPU path. A _short_ (adjacent-entity) circuit wire is
-  a thin ~1.5px stroke, and its tiny texture lost the stroke: first to the mip
-  chain (red/green wires vanished under minification while long copper power wires,
-  with big textures, survived — the original report), then on a wire-dense
-  blueprint _all_ wires could drop at once (dozens of small antialiased/multisampled
-  render targets is a lot of texture memory for a mobile GPU). Fix: draw each wire
-  as a vector `Graphics` straight into the scene — no textures, no mips, no
-  resolution to clamp, resolution-independent and crisp at any zoom — removing the
-  whole fragile texture pipeline. `WiresContainer.ts`; guarded by `e2e/wires.spec.ts`
-  via a `wireColorPixelCounts()` `?test` hook (extracts the wires container in
-  isolation and asserts all three colours paint pixels) over both a trivial and a
+- ✅ **Pasted blueprints keep their wires** (issue #37) — the touch/drag paste mode
+  (#30) placed every entity but none of the wires: `Editor.appendBlueprint` rebound
+  the pasted entities to the (empty) target blueprint, so `PaintBlueprintContainer`
+  serialized its ghost from the wrong `wireConnections` and the placed paste had no
+  circuit/copper connections at all — while the same blueprint loaded via `?source`
+  (which keeps the source blueprint) wired up fine. Fix: keep the copies bound to
+  the source blueprint, which still holds the connections parsed on import. `Editor.ts`;
+  guarded by `e2e/wires.spec.ts`, which drives the real paste→place path and asserts
+  the placed wires survive (via a `wireColorPixelCounts()` `?test` hook that extracts
+  the wires container in isolation), plus `?source` load guards over a trivial and a
   real 96-wire combinator blueprint (`e2e/fixtures/circuit-wire-blueprint.txt`).
-  SwiftShader/WebGL here can't reproduce the WebGPU-only vanish, so the specs lock
-  the pipeline against a colour silently dropping rather than the device bug itself.
 
 ## Not done / next
 

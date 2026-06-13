@@ -3,28 +3,16 @@ import * as fs from 'fs'
 import * as path from 'path'
 
 /**
- * Regression guards for wires going missing (issue #37). Two unrelated root
- * causes converged on the same symptom — a blueprint with no visible wires:
- *  1. rendering — `WiresContainer` baking each wire into a fragile `RenderTexture`
- *     (the first two tests), and
- *  2. paste — `Editor.appendBlueprint` dropping the connections (the last test).
+ * Guards that a blueprint's wires are actually visible — across the two paths
+ * that build them. The `?source` loads (first two tests) cover the import/render
+ * path; the paste test covers the paint-ghost place path, which regressed
+ * separately (see its comment). All assert via `wireColorPixelCounts()`, the
+ * `?test` hook that extracts the wires container in isolation (so combinator/pole
+ * sprites can't be mistaken for a wire) and counts red/green/copper pixels.
  *
- * Originally each wire was baked into its own supersampled `RenderTexture`. That
- * texture pipeline kept failing on the high-DPR / WebGPU path: a *short* circuit
- * (red/green) wire between adjacent entities is a thin ~1.5px stroke, and its
- * tiny texture lost the stroke — first to the mip chain (the wire vanished under
- * minification while long copper *power* wires, with big textures, survived), and
- * then, on a wire-dense blueprint, all wires could drop at once (dozens of small
- * antialiased/multisampled render targets is a lot of texture memory for a mobile
- * GPU). The fix draws each wire as a vector `Graphics` instead — no textures, no
- * mips, no resolution — so there is nothing left to round away or run out of.
- *
- * Headless Chromium here renders through SwiftShader/WebGL and never reproduced
- * the WebGPU vanish, so these specs can't *catch* the original device bug. What
- * they lock in is that every wire colour actually paints pixels — no colour
- * silently drops out of the pipeline — across a trivial blueprint and a dense,
- * real-world combinator blueprint (the one that surfaced the all-wires-gone case),
- * on both the desktop and mobile projects.
+ * Note: these run on headless WebGL (SwiftShader) and confirm every wire colour
+ * paints pixels — i.e. no colour silently drops out — over a trivial blueprint
+ * and a dense, real-world 96-wire combinator blueprint.
  */
 
 const SIMPLE_BLUEPRINT =
@@ -32,8 +20,8 @@ const SIMPLE_BLUEPRINT =
 
 /**
  * A real 58-entity / 96-wire combinator blueprint (decider/arithmetic/selector/
- * constant combinators, poles, roboport, display panel, …) — the blueprint that
- * exposed the "paste a wire-heavy blueprint, get zero wires" case on WebGPU.
+ * constant combinators, poles, roboport, display panel, …) — the blueprint from
+ * the "paste a wire-heavy blueprint, get zero wires" report.
  */
 const DENSE_BLUEPRINT = fs
     .readFileSync(path.join(__dirname, 'fixtures', 'circuit-wire-blueprint.txt'), 'utf8')
@@ -59,8 +47,7 @@ test('circuit (red/green) and power (copper) wires all render', async ({ page })
     await waitForReady(page)
     await page.waitForTimeout(1500)
 
-    // The pre-#37 symptom was red === green === 0 with copper > 0. Assert every
-    // colour paints pixels so a colour silently dropping out fails the test.
+    // Assert every colour paints pixels so a colour silently dropping out fails.
     const counts = await wireCounts(page)
     expect(counts.copper, JSON.stringify(counts)).toBeGreaterThan(0)
     expect(counts.red, JSON.stringify(counts)).toBeGreaterThan(0)
@@ -72,8 +59,7 @@ test('a wire-dense combinator blueprint renders all its wires', async ({ page })
     await waitForReady(page)
     await page.waitForTimeout(2000)
 
-    // Confirms the 96 mostly-short circuit wires don't all drop out (the WebGPU
-    // failure mode) — every colour should be well-represented here.
+    // 96 mostly-short circuit wires plus copper — every colour should be present.
     const counts = await wireCounts(page)
     expect(counts.copper, JSON.stringify(counts)).toBeGreaterThan(0)
     expect(counts.red, JSON.stringify(counts)).toBeGreaterThan(0)
@@ -86,10 +72,10 @@ test('a wire-dense combinator blueprint renders all its wires', async ({ page })
  * paste mode from #30. `appendBlueprint` used to rebind the pasted entities to the
  * (empty) target blueprint, so the ghost serialized *zero* wires and a placed
  * paste had no circuit/copper connections at all — even though the same blueprint
- * loaded via `?source` (which keeps the source blueprint) wired up fine. Unlike
- * the WebGPU rendering bug, this drops the connections in plain logic, so it
- * reproduces here on WebGL and this guards it directly. Keyboard-driven, so
- * desktop only (touch pastes via the action rail, same `appendBlueprint` seam).
+ * loaded via `?source` (which keeps the source blueprint) wired up fine. The drop
+ * is plain logic (not GPU-dependent), so it reproduces here on WebGL and this
+ * guards it directly. Keyboard-driven, so desktop only (touch pastes via the
+ * action rail, same `appendBlueprint` seam).
  */
 test('pasting a blueprint and placing it keeps its wires', async ({ page, context }) => {
     test.skip(test.info().project.name !== 'desktop-chromium', 'keyboard paste is desktop-only')
