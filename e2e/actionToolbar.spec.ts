@@ -110,6 +110,33 @@ test.describe('action toolbar', () => {
             expect(fatal.join('\n')).toBe('')
         })
 
+        // Blueprint-level actions (clipboard / new / export) live in the ⋯
+        // overflow; they're keyboard-only otherwise, so the rail is the only touch
+        // path. Open the sheet, confirm they're there, and that tapping them routes
+        // (copyBlueprint via a handler, the rest via the action registry) without
+        // throwing on an empty blueprint.
+        test('overflow exposes the blueprint actions and they route without throwing', async ({
+            page,
+        }) => {
+            const fatal: string[] = []
+            page.on('pageerror', err => fatal.push(err.message))
+
+            await page.goto('/')
+            await waitForLoaded(page)
+
+            const toolbar = page.locator('#action-toolbar')
+
+            // Force clicks throughout: the rail re-lays-out (ResizeObserver on the
+            // button stack) so elements aren't "stable" for the actionability wait.
+            // A button click closes the sheet, so re-open ⋯ before each.
+            for (const title of ['Copy BP', 'Paste BP', 'Export', 'New']) {
+                await toolbar.locator('button.rail-more').click({ force: true })
+                await toolbar.locator(`button[title="${title}"]`).click({ force: true })
+            }
+
+            expect(fatal.join('\n')).toBe('')
+        })
+
         // The headline behavior: a touch user can get out of paint mode. Cancel
         // routes through closeWindow -> BlueprintContainer.clearCursor().
         test('Cancel button exits paint mode', async ({ page }) => {

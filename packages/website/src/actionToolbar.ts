@@ -41,6 +41,12 @@ const BUTTONS: ToolbarButton[] = [
     { action: 'flipVertical', glyph: '⇅', label: 'Flip V' },
     { action: 'copyEntitySettings', glyph: '⧉', label: 'Copy cfg' },
     { action: 'pasteEntitySettings', glyph: '⊟', label: 'Paste cfg' },
+    // Blueprint-level / management actions — keyboard-only otherwise, so unreachable
+    // on touch (see issue #26). Low priority → live in the ⋯ overflow.
+    { action: 'copyBlueprint', glyph: '📋', label: 'Copy BP' },
+    { action: 'appendBlueprint', glyph: '📥', label: 'Paste BP' },
+    { action: 'takePicture', glyph: '📷', label: 'Export' },
+    { action: 'clear', glyph: '🆕', label: 'New' },
 ]
 
 const BTN = 44 // button square (px); flush, no gap — see index.styl
@@ -51,7 +57,13 @@ function isCancelableMode(mode: EditorMode): boolean {
     return mode === EditorMode.PAINT || mode === EditorMode.COPY || mode === EditorMode.DELETE
 }
 
-export function initActionToolbar(editor: Editor): void {
+/**
+ * @param handlers Optional overrides keyed by action name, for buttons that
+ *   aren't plain registry actions (e.g. clipboard copy, which is a `document`
+ *   copy listener). If a button's action has a handler it's called instead of
+ *   `EDITOR.callAction`.
+ */
+export function initActionToolbar(editor: Editor, handlers: Record<string, () => void> = {}): void {
     const rail = document.createElement('div')
     rail.id = 'action-toolbar'
 
@@ -90,7 +102,9 @@ export function initActionToolbar(editor: Editor): void {
         button.appendChild(label)
 
         button.addEventListener('click', () => {
-            EDITOR.callAction(spec.action)
+            const handler = handlers[spec.action]
+            if (handler) handler()
+            else EDITOR.callAction(spec.action)
             closeOverflow()
         })
         return { spec, button }
