@@ -22,8 +22,8 @@ import { getSpriteData, clearSpriteDataCache, SPRITE_GENERATION_FAILED } from '.
  */
 const BASELINES: Record<string, { partial: number; failed: number }> = {
     'vanilla-2.0': { partial: 0, failed: 6 },
-    'space-age': { partial: 4, failed: 8 },
-    'space-exploration': { partial: 22, failed: 47 },
+    'space-age': { partial: 0, failed: 8 },
+    'space-exploration': { partial: 7, failed: 38 },
 }
 
 describe.each(Object.keys(BASELINES))('sprite census: %s', pack => {

@@ -166,11 +166,16 @@ function getSpriteData(data: IDrawData): readonly ExtendedSpriteData[] {
     const graphicsFn = generateGraphics(entity)
     const generator = (data: IDrawData): readonly ExtendedSpriteData[] => {
         try {
+            // Normalize at the seam: a draw_* function may emit a raw
+            // prototype field that is still a `{layers}` wrapper (modded
+            // shapes, see layersOf) — EntitySprite would silently drop it
+            // (no `filename`), rendering the entity incomplete. Expanding
+            // here is a no-op for already-flat parts.
             return [
                 ...graphicsFn(data),
                 ...generateCovers(entity, data),
                 ...generateConnection(entity, data),
-            ]
+            ].flatMap(part => layersOf(part) as readonly ExtendedSpriteData[])
         } catch (err) {
             console.warn(`Error generating sprites for '${data.name}' (type: ${entity.type}):`, err)
             return SPRITE_GENERATION_FAILED as any
@@ -682,6 +687,22 @@ function getAnimation(a: Animation4Way, dir: number): Animation {
     }
 }
 
+/**
+ * Factorio's Sprite/Animation shapes are polymorphic: any graphics field may
+ * be a plain definition or a `{layers: [...]}` wrapper (recursively). The
+ * game's prototype loader normalizes every documented shape and mods rely on
+ * that — vanilla just happens to wrap most fields, which is the shape the
+ * draw_* functions were written against (`...e.base.layers` throws on e.g.
+ * AAI's plain `base`). Returns the flat layer list for either shape, and []
+ * for an absent field, so call sites stop encoding one pack's conventions.
+ */
+function layersOf(s: SpriteData | Animation | undefined | null): readonly SpriteData[] {
+    if (!s) return []
+    const layers = (s as Animation).layers
+    if (!Array.isArray(layers)) return [s as SpriteData]
+    return layers.flatMap(l => layersOf(l as SpriteData))
+}
+
 function generateGraphics(e: EntityWithOwnerPrototype): (data: IDrawData) => readonly SpriteData[] {
     switch (e.type) {
         case 'accumulator':
@@ -866,22 +887,22 @@ function draw_agricultural_tower(
     return () => (e as any).graphics_set.animation.layers
 }
 function draw_ammo_turret(e: AmmoTurretPrototype): (data: IDrawData) => readonly SpriteData[] {
-    return (data: IDrawData) => [
-        ...((e.graphics_set.base_visualisation as TurretBaseVisualisation).animation as Animation)
-            .layers,
-        duplicateAndSetPropertyUsing(
-            (e.folded_animation as RotatedAnimation).layers[0] as SpriteData,
-            'y',
-            'height',
-            data.dir / 4
-        ),
-        duplicateAndSetPropertyUsing(
-            (e.folded_animation as RotatedAnimation).layers[1] as SpriteData,
-            'y',
-            'height',
-            data.dir / 4
-        ),
-    ]
+    return (data: IDrawData) => {
+        // Tolerate the full prototype shape space (SE's meteor defence /
+        // point defence are ammo-turrets whose base animation is 4-way and
+        // whose folded_animation is a plain, single-layer animation):
+        // vanilla gun-turrets keep their exact two folded layers ([0] body,
+        // [1] mask — the shadow layer was never drawn here).
+        const bv = e.graphics_set.base_visualisation as TurretBaseVisualisation
+        const base = layersOf(getAnimation(bv.animation as Animation4Way, data.dir))
+        const folded = layersOf(e.folded_animation as RotatedAnimation)
+        return [
+            ...base,
+            ...folded
+                .slice(0, 2)
+                .map(l => duplicateAndSetPropertyUsing(l, 'y', 'height', data.dir / 4)),
+        ]
+    }
 }
 function draw_railgun_turret(e: AmmoTurretPrototype): (data: IDrawData) => readonly SpriteData[] {
     return (data: IDrawData) => {
@@ -1035,6 +1056,13 @@ function draw_asteroid_collector(
 }
 function draw_beacon(e: BeaconPrototype): (data: IDrawData) => readonly SpriteData[] {
     return (data: IDrawData) => {
+        // graphics_set is optional in the prototype spec; without it a beacon
+        // falls back to the classic base_picture + animation pair (SE's
+        // compact/wide beacons still use that shape). Module visualisations
+        // only exist on the graphics_set path.
+        if (!e.graphics_set) {
+            return [...layersOf((e as any).base_picture), ...layersOf((e as any).animation)]
+        }
         const layers = e.graphics_set.animation_list
             .filter(vis => vis.always_draw)
             .map(vis => vis.animation)
@@ -1370,21 +1398,15 @@ function draw_electric_turret(
     return (data: IDrawData) => {
         const bv = (e as any).graphics_set.base_visualisation
         const visualisation: TurretBaseVisualisation = Array.isArray(bv) ? bv[0] : bv
-        const baseLayers = (visualisation.animation as Animation).layers
+        // layersOf tolerates a plain (un-layered) base animation — SE's
+        // shield-projector ships one. Vanilla laser turrets keep their exact
+        // folded picks: [0] body and [2] glow ([1] is the shadow).
+        const folded = layersOf(e.folded_animation as RotatedAnimation)
         return [
-            ...baseLayers,
-            duplicateAndSetPropertyUsing(
-                (e.folded_animation as RotatedAnimation).layers[0] as SpriteData,
-                'y',
-                'height',
-                data.dir / 4
-            ),
-            duplicateAndSetPropertyUsing(
-                (e.folded_animation as RotatedAnimation).layers[2] as SpriteData,
-                'y',
-                'height',
-                data.dir / 4
-            ),
+            ...layersOf(visualisation.animation as Animation),
+            ...[folded[0], folded[2]]
+                .filter(l => l !== undefined)
+                .map(l => duplicateAndSetPropertyUsing(l, 'y', 'height', data.dir / 4)),
         ]
     }
 }
@@ -2141,7 +2163,9 @@ function draw_reactor(e: ReactorPrototype): (data: IDrawData) => readonly Sprite
     }
 }
 function draw_roboport(e: RoboportPrototype): (data: IDrawData) => readonly SpriteData[] {
-    return () => [...e.base.layers, e.door_animation_up, e.door_animation_down, e.base_animation]
+    // layersOf: vanilla's base is `{layers}`, AAI's signal sender/receiver
+    // (same prototype type) ship a plain animation — both are valid shapes.
+    return () => [...layersOf(e.base), e.door_animation_up, e.door_animation_down, e.base_animation]
 }
 function draw_rocket_silo(e: RocketSiloPrototype): (data: IDrawData) => readonly SpriteData[] {
     return () => [
