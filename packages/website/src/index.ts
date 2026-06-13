@@ -118,7 +118,10 @@ editor
         }
 
         registerActions()
-        initActionToolbar(editor)
+        initActionToolbar(editor, {
+            copyBlueprint: copyBlueprintToClipboard,
+            clear: confirmClearBlueprint,
+        })
 
         // Opt-in e2e probe for on-canvas state that the DOM can't expose.
         if (new URLSearchParams(window.location.search).has('test')) {
@@ -268,25 +271,51 @@ async function loadBp(
     }
 }
 
+// Copy the current blueprint/book string to the clipboard. Shared by the
+// `ctrl/cmd+C` document handler and the mobile action rail's "Copy BP" button
+// (the rail can't use a keybind, so it gets this directly).
+function copyBlueprintToClipboard(): void {
+    if (bp.isEmpty()) {
+        createToast({ text: 'Nothing to copy — the blueprint is empty.', type: 'info' })
+        return
+    }
+    encode(book || bp)
+        .then(s => navigator.clipboard.writeText(s))
+        .then(() => createToast({ text: 'Blueprint string copied to clipboard', type: 'success' }))
+        .catch(error => createErrorMessage('Blueprint string could not be generated.', error))
+}
+
 document.addEventListener('copy', (e: ClipboardEvent) => {
     if (document.activeElement !== CANVAS) return
     e.preventDefault()
-
-    if (bp.isEmpty()) return
-
-    const onSuccess = (): void => {
-        createToast({ text: 'Blueprint string copied to clipboard', type: 'success' })
-    }
-
-    const onError = (error: Error): void => {
-        createErrorMessage('Blueprint string could not be generated.', error)
-    }
-
-    encode(book || bp)
-        .then(s => navigator.clipboard.writeText(s))
-        .then(onSuccess)
-        .catch(onError)
+    if (bp.isEmpty()) return // ctrl/cmd+C on an empty blueprint stays silent
+    copyBlueprintToClipboard()
 })
+
+// Reset to a blank blueprint and drop the autosave. This swaps in a fresh
+// Blueprint (with its own History), so it's NOT undoable.
+function clearBlueprint(): void {
+    clearSavedBlueprint()
+    loadBp(new Blueprint())
+}
+
+// The mobile action rail's "New" button. Because clearing can't be undone, gate
+// the one-tap button behind a confirm toast (tap "Clear" to go through; tapping
+// the toast body or letting it sit cancels). A no-op on an already-empty
+// blueprint just resets silently — there's nothing to lose. The desktop
+// `shift+N` keybind stays immediate: it's a deliberate two-key combo.
+function confirmClearBlueprint(): void {
+    if (book === undefined && bp.isEmpty()) {
+        clearBlueprint()
+        return
+    }
+    createToast({
+        text: 'Clear the blueprint? This cannot be undone.',
+        type: 'warning',
+        timeout: Infinity,
+        action: { text: 'Clear', callback: clearBlueprint },
+    })
+}
 
 document.addEventListener('paste', (e: ClipboardEvent) => {
     if (document.activeElement !== CANVAS) return
@@ -310,8 +339,7 @@ function registerActions(): void {
         modifiers: { shift: true },
         callbacks: {
             onPress: () => {
-                clearSavedBlueprint()
-                loadBp(new Blueprint())
+                clearBlueprint()
                 return true
             },
         },
