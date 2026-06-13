@@ -188,57 +188,57 @@ export class EntityInfoPanel extends Panel {
             this.m_entityInfo.position.set(10, nextY)
             nextY = this.m_entityInfo.position.y + this.m_entityInfo.height + 10
 
-            if (!entity.recipe) return
+            // Details for assembling machines with a recipe. The recipe can be
+            // unset (e.g. when it's driven from the circuit network via
+            // `set_recipe`), so guard rather than early-return — otherwise the
+            // circuit section rendered at the end of this method is skipped.
+            const recipe = entity.recipe ? FD.recipes[entity.recipe] : undefined
+            if (recipe !== undefined) {
+                // Show the original recipe
+                this.m_RecipeContainer.addChild(
+                    new Text({
+                        text: 'Recipe:',
+                        style: styles.dialog.label,
+                    })
+                )
+                F.CreateRecipe(
+                    this.m_RecipeContainer,
+                    0,
+                    20,
+                    recipe.ingredients,
+                    recipe.results,
+                    recipe.energy_required
+                )
+                this.m_RecipeContainer.position.set(10, nextY)
+                nextY = this.m_RecipeContainer.position.y + this.m_RecipeContainer.height + 20
 
-            // Details for assembling machines with recipe
-            this.m_RecipeContainer.removeChildren()
-            const recipe = FD.recipes[entity.recipe]
-            if (recipe === undefined) return
-
-            // Show the original recipe
-            this.m_RecipeContainer.addChild(
-                new Text({
-                    text: 'Recipe:',
-                    style: styles.dialog.label,
-                })
-            )
-            F.CreateRecipe(
-                this.m_RecipeContainer,
-                0,
-                20,
-                recipe.ingredients,
-                recipe.results,
-                recipe.energy_required
-            )
-            this.m_RecipeContainer.position.set(10, nextY)
-            nextY = this.m_RecipeContainer.position.y + this.m_RecipeContainer.height + 20
-
-            // Show recipe that takes entity effects into account
-            this.m_RecipeIOContainer.addChild(
-                new Text({
-                    text: 'Recipe (takes entity effects into account):',
-                    style: styles.dialog.label,
-                })
-            )
-            const energy_required = recipe.energy_required || 0.5
-            F.CreateRecipe(
-                this.m_RecipeIOContainer,
-                0,
-                20,
-                recipe.ingredients.map(i => ({
-                    ...i,
-                    amount: roundToTwo((i.amount * newCraftingSpeed) / energy_required),
-                })),
-                recipe.results.map(r => ({
-                    ...r,
-                    amount: roundToTwo(
-                        ((r.amount * newCraftingSpeed) / energy_required) * (1 + productivity)
-                    ),
-                })),
-                1
-            )
-            this.m_RecipeIOContainer.position.set(10, nextY)
-            nextY = this.m_RecipeIOContainer.position.y + this.m_RecipeIOContainer.height + 20
+                // Show recipe that takes entity effects into account
+                this.m_RecipeIOContainer.addChild(
+                    new Text({
+                        text: 'Recipe (takes entity effects into account):',
+                        style: styles.dialog.label,
+                    })
+                )
+                const energy_required = recipe.energy_required || 0.5
+                F.CreateRecipe(
+                    this.m_RecipeIOContainer,
+                    0,
+                    20,
+                    recipe.ingredients.map(i => ({
+                        ...i,
+                        amount: roundToTwo((i.amount * newCraftingSpeed) / energy_required),
+                    })),
+                    recipe.results.map(r => ({
+                        ...r,
+                        amount: roundToTwo(
+                            ((r.amount * newCraftingSpeed) / energy_required) * (1 + productivity)
+                        ),
+                    })),
+                    1
+                )
+                this.m_RecipeIOContainer.position.set(10, nextY)
+                nextY = this.m_RecipeIOContainer.position.y + this.m_RecipeIOContainer.height + 20
+            }
         }
 
         const isBelt = (e: Entity): boolean =>
