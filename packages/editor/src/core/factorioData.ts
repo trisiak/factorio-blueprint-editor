@@ -732,7 +732,6 @@ const FD: {
 
 export function loadData(str: string): void {
     const data = JSON.parse(str)
-    console.log(data)
     FD.items = data.items
     FD.fluids = data.fluids
     FD.signals = data.signals
