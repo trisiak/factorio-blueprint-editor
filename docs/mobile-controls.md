@@ -1,7 +1,8 @@
 # Mobile / touch controls
 
 > **Companion doc:** [`mobile-layout-inventory.md`](./mobile-layout-inventory.md)
-> (the screen-space map). **Open issues:** #33 (action-rail mode filtering).
+> (the screen-space map). **Open issues:** #52 (reposition a selection without
+> breaking wires — the broader problem behind the in-place nudge).
 > This doc is the source of truth for _what's done_ on the touch arc (it leads
 > the issue tracker) — when a slice lands, close/tick the matching issue in the
 > same change so they don't contradict each other. See CLAUDE.md "Keep issues
@@ -183,8 +184,19 @@ pipelines at once made touch taps double-act via the browser's synthetic
   bottom d-pad + toast `pointer-events`/z-index fix (`actionToolbar.ts`,
   `index.styl`). Covered by `e2e/touchPlacement*.spec.ts` (CDP drag for grab-vs-pan
   on both ghost kinds, d-pad nudge, Place commit) via the `?test` hook (`paint.kind`
-    - `spawnPasteGhost`). Follow-up: fixed bottom-arrows idea realised; rail buttons
-      that are no-ops in the current mode should hide (#33).
+    - `spawnPasteGhost`). Follow-up: fixed bottom-arrows idea realised.
+- ✅ **Mode-gated action rail** (issue #33) — the rail now shows only the buttons
+  whose action is live in the current mode, instead of the full set at all times.
+  Each `ToolbarButton` declares the `modes` it's useful in (omit = global); a
+  `when` predicate adds non-mode conditions (Select needs a non-empty blueprint).
+  `layout()` filters to the live set on every mode change (`editor.onModeChange`)
+  and on entity add/remove (`editor.onBlueprintChange`, a new stable emitter that
+  survives blueprint swaps). Mapping: **global** Items/Undo/Redo/Center +
+  Copy/Paste BP/Export/New; **PAINT** Rotate/Flip H/Flip V/Pick/Cancel; **EDIT**
+  Rotate/Delete/Pick/Copy cfg/Paste cfg; **SELECT** Rotate/Cancel; **Select**
+  (marquee) in NONE/EDIT when non-empty. Priority order is preserved so the rail
+  collapses rather than reshuffling. `actionToolbar.ts`, `Editor.onBlueprintChange`
+  / `blueprintEmpty`; covered in `e2e/actionToolbar.spec.ts`.
 - ✅ **Touch box-select / marquee** (issue #21) — desktop area-select is
   modifier+drag and commits on mouse-release (copy → paste ghost, delete →
   remove); touch had no modifier and no way to _choose_ the action. Now **one

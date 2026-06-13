@@ -31,28 +31,54 @@ interface ToolbarButton {
     /** Grid placement for d-pad clusters (1-based). */
     row?: number
     col?: number
+    /**
+     * Editor modes this rail button is shown in. Omit = always (global actions).
+     * Buttons hide in modes where their action is a no-op, so the rail only ever
+     * shows what's useful right now (#33).
+     */
+    modes?: EditorMode[]
+    /** Extra show condition beyond mode (e.g. Select needs a non-empty blueprint). */
+    when?: (editor: Editor) => boolean
 }
 
 // Rail (left gutter). Priority order: the buttons that fit stay in the rail; the
-// rest spill into the ⋯ overflow.
+// rest spill into the ⋯ overflow. Each button declares the modes it's useful in
+// (`modes`); it hides elsewhere so the rail only shows live actions (#33).
+// `EM` is a short alias for EditorMode to keep the table readable.
+const EM = EditorMode
 const BUTTONS: ToolbarButton[] = [
+    // Global actions — useful in any mode.
     { action: 'inventory', glyph: '⊞', label: 'Items' },
-    // Touch marquee (#21): arm a box-select; the drag + the held-selection
-    // controls are handled on the canvas / in SELECT_* below.
-    { action: 'marquee', glyph: '▦', label: 'Select' },
-    { action: 'rotate', glyph: '↻', label: 'Rotate' },
-    { action: 'closeWindow', glyph: '✕', label: 'Cancel', className: 'cancel' },
-    { action: 'mine', glyph: '🗑', label: 'Delete', className: 'delete' },
-    { action: 'pipette', glyph: '⊙', label: 'Pick' },
     { action: 'undo', glyph: '↶', label: 'Undo' },
     { action: 'redo', glyph: '↷', label: 'Redo' },
     { action: 'focus', glyph: '⌖', label: 'Center' },
-    { action: 'flipHorizontal', glyph: '⇄', label: 'Flip H' },
-    { action: 'flipVertical', glyph: '⇅', label: 'Flip V' },
-    { action: 'copyEntitySettings', glyph: '⧉', label: 'Copy cfg' },
-    { action: 'pasteEntitySettings', glyph: '⊟', label: 'Paste cfg' },
-    // Blueprint-level / management actions — keyboard-only otherwise, so unreachable
-    // on touch (see issue #26). Low priority → live in the ⋯ overflow.
+    // Touch marquee (#21): arm a box-select. Only when idle/inspecting and there's
+    // something to select; the drag + held-selection controls live in SELECT_*.
+    {
+        action: 'marquee',
+        glyph: '▦',
+        label: 'Select',
+        modes: [EM.NONE, EM.EDIT],
+        when: e => !e.blueprintEmpty,
+    },
+    // Cursor actions — only where they do something.
+    { action: 'rotate', glyph: '↻', label: 'Rotate', modes: [EM.PAINT, EM.EDIT, EM.SELECT] },
+    { action: 'flipHorizontal', glyph: '⇄', label: 'Flip H', modes: [EM.PAINT] },
+    { action: 'flipVertical', glyph: '⇅', label: 'Flip V', modes: [EM.PAINT] },
+    { action: 'pipette', glyph: '⊙', label: 'Pick', modes: [EM.PAINT, EM.EDIT] },
+    { action: 'mine', glyph: '🗑', label: 'Delete', className: 'delete', modes: [EM.EDIT] },
+    { action: 'copyEntitySettings', glyph: '⧉', label: 'Copy cfg', modes: [EM.EDIT] },
+    { action: 'pasteEntitySettings', glyph: '⊟', label: 'Paste cfg', modes: [EM.EDIT] },
+    // "Get me out" — present whenever there's a cursor/selection to drop.
+    {
+        action: 'closeWindow',
+        glyph: '✕',
+        label: 'Cancel',
+        className: 'cancel',
+        modes: [EM.PAINT, EM.COPY, EM.DELETE, EM.SELECT],
+    },
+    // Blueprint-level / management actions — global; keyboard-only otherwise, so
+    // unreachable on touch (see issue #26). Low priority → live in the ⋯ overflow.
     { action: 'copyBlueprint', glyph: '📋', label: 'Copy BP' },
     { action: 'appendBlueprint', glyph: '📥', label: 'Paste BP' },
     { action: 'takePicture', glyph: '📷', label: 'Export' },
@@ -254,20 +280,30 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
         const stack = document.getElementById('buttons')
         const top = stack ? Math.round(stack.getBoundingClientRect().bottom) : 140
 
+        // Only the buttons whose action is live in the current mode (and pass any
+        // extra `when`). Priority order is preserved, so the survivors keep their
+        // relative spots — the rail collapses rather than reshuffling (#33).
+        const mode = editor.mode
+        const live = buttons.filter(
+            b =>
+                (!b.spec.modes || b.spec.modes.includes(mode)) &&
+                (!b.spec.when || b.spec.when(editor))
+        )
+
         // As many priority buttons as fit the height (×3 columns in landscape);
         // the rest collapse into the ⋯ overflow so nothing falls below the
         // viewport. The ⋯ takes the last grid cell when present.
         const columns = window.innerWidth > window.innerHeight ? 3 : 1
         const rows = Math.max(1, Math.floor((window.innerHeight - top - MARGIN) / BTN))
         const capacity = rows * columns
-        const overflowNeeded = buttons.length > capacity
-        const inRail = overflowNeeded ? capacity - 1 : buttons.length
+        const overflowNeeded = live.length > capacity
+        const inRail = overflowNeeded ? capacity - 1 : live.length
 
         primary.style.gridTemplateColumns = `repeat(${columns}, ${BTN}px)`
-        primary.replaceChildren(...buttons.slice(0, inRail).map(b => b.button))
+        primary.replaceChildren(...live.slice(0, inRail).map(b => b.button))
         if (overflowNeeded) {
             primary.appendChild(moreBtn)
-            overflow.replaceChildren(...buttons.slice(inRail).map(b => b.button))
+            overflow.replaceChildren(...live.slice(inRail).map(b => b.button))
         } else {
             overflow.replaceChildren()
             closeOverflow()
@@ -281,15 +317,19 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
         editor.setViewportInsets({ left: railWidth })
     }
 
-    // Emphasize Delete/Cancel only while meaningful: Delete in EDIT, Cancel
-    // whenever there's a cursor to drop. Then refresh the contextual clusters.
+    // On a mode change: re-filter the rail to the now-live actions, refresh the
+    // contextual bottom clusters, and emphasize the cancel/delete buttons.
     const applyMode = (mode: EditorMode): void => {
         byAction('mine')?.classList.toggle('active', mode === EditorMode.EDIT)
         byAction('closeWindow')?.classList.toggle('active', isCancelableMode(mode))
+        layout()
         updateContextual()
     }
     applyMode(editor.mode)
     editor.onModeChange(applyMode)
+    // The Select button's `when` depends on the blueprint being non-empty, so
+    // re-filter when entities are added/removed (across blueprint loads).
+    editor.onBlueprintChange(layout)
 
     layout()
     updateContextual()

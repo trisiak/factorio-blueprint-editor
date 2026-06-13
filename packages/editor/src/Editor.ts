@@ -26,6 +26,11 @@ export class Editor {
     // blueprint load, so DOM consumers (the on-screen toolbar) subscribe here
     // once and we re-forward each new container's mode changes onto it.
     private readonly m_modeEmitter = new EventEmitter<{ mode: [EditorMode] }>()
+    // Stable blueprint-change emitter. Like the mode emitter, the active Blueprint
+    // is swapped on load, so DOM consumers (the action rail, which gates the
+    // box-select button on a non-empty blueprint) subscribe here once and we
+    // re-forward each new blueprint's create/remove-entity events onto it.
+    private readonly m_bpEmitter = new EventEmitter<{ change: [] }>()
 
     // Viewport insets (CSS px) reserved for DOM chrome — e.g. the mobile action
     // rail's left gutter. The canvas is sized to the remaining area and offset by
@@ -90,9 +95,15 @@ export class Editor {
         G.UI.showDebuggingLayer = G.debug
     }
 
-    /** Re-emit the active BlueprintContainer's mode changes on the stable emitter. */
+    /** Re-emit the active container's mode + the blueprint's entity changes on the stable emitters. */
     private bindBPCMode(): void {
         G.BPC.on('mode', (mode: EditorMode) => this.m_modeEmitter.emit('mode', mode))
+        G.bp.on('create-entity', () => this.m_bpEmitter.emit('change'))
+        G.bp.on('remove-entity', () => this.m_bpEmitter.emit('change'))
+        // Nudge consumers for the freshly-bound blueprint (e.g. after a load swaps
+        // it in). No-op at boot — nobody's subscribed yet (the rail's own initial
+        // layout covers the empty-blueprint start).
+        this.m_bpEmitter.emit('change')
     }
 
     /** Current editor mode (NONE / EDIT / PAINT / PAN / COPY / DELETE / SELECT). */
@@ -103,6 +114,16 @@ export class Editor {
     /** Subscribe to editor mode changes — e.g. to show a "cancel paint" control. */
     public onModeChange(cb: (mode: EditorMode) => void): void {
         this.m_modeEmitter.on('mode', cb)
+    }
+
+    /** Subscribe to blueprint entity add/remove (across blueprint swaps on load). */
+    public onBlueprintChange(cb: () => void): void {
+        this.m_bpEmitter.on('change', cb)
+    }
+
+    /** Whether the working blueprint has no entities/tiles (gates the rail's Select). */
+    public get blueprintEmpty(): boolean {
+        return G.bp.isEmpty()
     }
 
     // --- Touch marquee (#21) — thin delegators for the website's Select button
