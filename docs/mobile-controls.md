@@ -165,8 +165,8 @@ pipelines at once made touch taps double-act via the browser's synthetic
   bottom d-pad + toast `pointer-events`/z-index fix (`actionToolbar.ts`,
   `index.styl`). Covered by `e2e/touchPlacement*.spec.ts` (CDP drag for grab-vs-pan
   on both ghost kinds, d-pad nudge, Place commit) via the `?test` hook (`paint.kind`
-  + `spawnPasteGhost`). Follow-up: fixed bottom-arrows idea realised; rail buttons
-  that are no-ops in the current mode should hide (#33).
+    - `spawnPasteGhost`). Follow-up: fixed bottom-arrows idea realised; rail buttons
+      that are no-ops in the current mode should hide (#33).
 - ⬜ **Touch area/marquee select** — multi-select for copy/delete is desktop-only
   (drag with a modifier); needs a touch gesture (issue #21). Pairs with the
   placement work above: a marquee **copy** hands you exactly the paste ghost that
