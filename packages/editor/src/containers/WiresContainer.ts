@@ -1,14 +1,13 @@
-import { Container, Graphics, RenderTexture, Sprite } from 'pixi.js'
+import { Container, Graphics } from 'pixi.js'
 import { Blueprint } from '../core/Blueprint'
 import { IConnection, IConnectionPoint } from '../core/WireConnections'
 import U from '../core/generators/util'
 import { IPoint, WireColor } from '../types'
 import { EntityContainer } from './EntityContainer'
-import G from '../common/globals'
 
 export class WiresContainer extends Container {
     private readonly bp: Blueprint
-    private connectionToSprite = new Map<string, Sprite>()
+    private connectionToWire = new Map<string, Graphics>()
 
     public constructor(bp: Blueprint) {
         super()
@@ -20,7 +19,7 @@ export class WiresContainer extends Container {
         p2: IPoint,
         color: WireColor,
         connectionsReach = true
-    ): Sprite {
+    ): Graphics {
         const wire = new Graphics()
 
         const minX = Math.min(p1.x, p2.x)
@@ -68,49 +67,30 @@ export class WiresContainer extends Container {
             alpha: connectionsReach ? 1 : 0.3,
         })
 
-        const bounds = wire.bounds
-
-        // Each wire is baked into its own RenderTexture (the main renderer runs
-        // with antialias off, so this supersampled+AA'd texture is how wires get
-        // smooth edges). Two things here are deliberately *not* like the obvious
-        // version, because they made short circuit (red/green) wires vanish on
-        // high-DPR / WebGPU mobile while long copper wires survived (issue #37):
+        // Each wire is its own vector Graphics, drawn straight into the scene
+        // rather than baked into a per-wire RenderTexture first. The texture route
+        // was a recurring source of GPU fragility (issue #37): a short circuit
+        // (red/green) wire between adjacent entities is a thin ~1.5px stroke, and
+        // on high-DPR / WebGPU that tiny texture lost the stroke — first to its mip
+        // chain (the wire vanished under minification while long copper power wires,
+        // with big textures, survived), and a wire-dense blueprint could drop *all*
+        // its wires at once (dozens of small antialiased — i.e. multisampled —
+        // render targets is a lot of texture memory for a mobile GPU). Vector
+        // Graphics sidesteps the whole class: no textures, no mips, no resolution
+        // to clamp — it rasterizes crisply at any zoom.
         //
-        //  - **No mipmaps.** A circuit wire between adjacent entities is a tiny,
-        //    near-axis-aligned segment — its texture is a thin 1.5px stroke. When
-        //    that's reduced down a mip chain (especially on the WebGPU path, where
-        //    mip generation runs over a small multisampled target), the thin
-        //    stroke averages to ~nothing in the upper levels, so the wire
-        //    disappears as soon as the view is minified. Copper wires span far
-        //    poles → big texture → upper mips still hold the stroke, which is why
-        //    only red/green went missing. Sampling the base level (no mips) keeps
-        //    thin wires visible at every zoom; the slight shimmer when zoomed way
-        //    out is a fair trade for not vanishing.
-        //  - **Clamped resolution.** `devicePixelRatio * 2` is ~5.25 on a phone,
-        //    blowing each short wire up into a needlessly large supersampled+MSAA
-        //    target; cap it so the textures stay sane on mobile GPUs.
-        const resolution = Math.min(window.devicePixelRatio * 2, 4)
-        const renderTexture = RenderTexture.create({
-            width: bounds.width,
-            height: bounds.height,
-            antialias: true,
-            resolution,
-        })
-
-        G.app.renderer.render({ container: wire, target: renderTexture })
-
-        wire.destroy()
-
-        const s = new Sprite(renderTexture)
-
-        s.position.set(minX + dX / 2, minY + dY / 2)
-        s.pivot.set(dX / 2, dY / 2)
+        // The curve is drawn in a local frame from (0,0)→(dX,dY); positioning the
+        // Graphics at the segment midpoint with a matching pivot — and mirroring on
+        // X for the "other diagonal" — places it in world space and preserves the
+        // original bow direction, exactly as the baked sprite did.
+        wire.position.set(minX + dX / 2, minY + dY / 2)
+        wire.pivot.set(dX / 2, dY / 2)
 
         if (!((p1.x < p2.x && p1.y < p2.y) || (p2.x < p1.x && p2.y < p1.y))) {
-            s.scale.x = -1
+            wire.scale.x = -1
         }
 
-        return s
+        return wire
     }
 
     public connect(hash: string, connection: IConnection): void {
@@ -124,16 +104,16 @@ export class WiresContainer extends Container {
     }
 
     public add(hash: string, connection: IConnection): void {
-        const sprite = this.getWireSprite(connection)
-        this.addChild(sprite)
-        this.connectionToSprite.set(hash, sprite)
+        const wire = this.getWire(connection)
+        this.addChild(wire)
+        this.connectionToWire.set(hash, wire)
     }
 
     public remove(hash: string): void {
-        const sprite = this.connectionToSprite.get(hash)
-        if (sprite) {
-            sprite.destroy({ texture: true, textureSource: true })
-            this.connectionToSprite.delete(hash)
+        const wire = this.connectionToWire.get(hash)
+        if (wire) {
+            wire.destroy()
+            this.connectionToWire.delete(hash)
         }
     }
 
@@ -173,7 +153,7 @@ export class WiresContainer extends Container {
         }
     }
 
-    private getWireSprite(connection: IConnection): Sprite {
+    private getWire(connection: IConnection): Graphics {
         const getWirePos = (cp: IConnectionPoint, color: string): IPoint => {
             if (cp.entityNumber) {
                 const entity = this.bp.entities.get(cp.entityNumber)
