@@ -1,5 +1,10 @@
 # Space Exploration modpack — extracted mod list
 
+> **Tracking issues:** #28 (SE rendering fidelity + entity editors), #9 (per-pack
+> exporter regeneration). The census/verdicts here are the supporting data for
+> those issues — keep them in sync with #28's checklist (advance the ratchet
+> counts together). See CLAUDE.md "Keep issues in sync with the work".
+
 Source: a Space Exploration save (`se.zip`), parsed from the save's
 binary header (`level-init.dat`) — Factorio doesn't store a clean mod-list
 file in the save. Save engine version: **2.0.76** (matches the exporter pin).

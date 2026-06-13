@@ -1,5 +1,10 @@
 # Mobile layout inventory
 
+> **Companion doc:** [`mobile-controls.md`](./mobile-controls.md) (status +
+> backlog). Remaining action-rail / layout work is tracked in #33. Keep this
+> inventory current as the layout work lands — see CLAUDE.md "Keep issues in
+> sync with the work".
+
 A map of **every element that consumes screen space** in the editor, split by
 the two rendering layers (PixiJS on the canvas vs. DOM overlays), with anchors,
 sizes, and how they collide on a phone. This is the shared reference we design
