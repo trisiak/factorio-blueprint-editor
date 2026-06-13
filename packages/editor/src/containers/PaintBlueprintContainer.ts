@@ -1,5 +1,6 @@
 import { Entity } from '../core/Entity'
 import { Blueprint } from '../core/Blueprint'
+import { inputMode } from '../common/input'
 import { EntitySprite } from './EntitySprite'
 import { PaintContainer } from './PaintContainer'
 import { PaintBlueprintEntityContainer } from './PaintBlueprintEntityContainer'
@@ -66,6 +67,7 @@ export class PaintBlueprintContainer extends PaintContainer {
 
     public hide(): void {
         this.bpc.underlayContainer.deactivateActiveAreas()
+        this.bpc.overlayContainer.hidePaintCenterMarker()
         super.hide()
     }
 
@@ -76,14 +78,32 @@ export class PaintBlueprintContainer extends PaintContainer {
             }
         }
         super.show()
+        this.updateCenterMarker()
     }
 
     public destroy(): void {
         this.bpc.underlayContainer.deactivateActiveAreas()
+        this.bpc.overlayContainer.hidePaintCenterMarker()
         for (const [, c] of this.entities) {
             c.destroy()
         }
         super.destroy()
+    }
+
+    /** The pasted ghost is grabbable by touch (drag-to-move). */
+    public override containsWorldPoint(x: number, y: number): boolean {
+        return this.worldBoundsContain(x, y)
+    }
+
+    /**
+     * Keep the on-canvas center crosshair glued to the ghost's origin (= the
+     * blueprint's center). Touch-only: it's the visible anchor for precise
+     * taps/drags; on desktop the ghost just follows the mouse, so a marker
+     * would only add noise.
+     */
+    private updateCenterMarker(): void {
+        if (!this.visible || inputMode.mode !== 'mobile') return
+        this.bpc.overlayContainer.updatePaintCenterMarker(this.position)
     }
 
     public override getItemName(): string {
@@ -153,6 +173,8 @@ export class PaintBlueprintContainer extends PaintContainer {
         for (const [, c] of this.entities) {
             c.moveAtCursor()
         }
+
+        this.updateCenterMarker()
     }
 
     protected override redraw(): void {}

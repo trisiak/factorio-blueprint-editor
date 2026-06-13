@@ -47,18 +47,25 @@ async function gotoHoldingItem(page: Page, item = 'transport-belt'): Promise<voi
     await expect.poll(async () => (await getState(page)).paint.active).toBe(true)
 }
 
-// Drag a single finger across the canvas (a one-finger pan). Playwright's
-// touchscreen API only taps, so synthesize the touch stream over CDP — the same
-// raw `Input.dispatchTouchEvent` path the pinch work needs.
+// Drag a single finger across the canvas. Playwright's touchscreen API only
+// taps, so synthesize the touch stream over CDP. Coordinates are **canvas/
+// element-relative** (the same frame as `locator.tap({position})`): CDP wants
+// page coords, but the canvas is inset by the action rail, so we add the
+// `#editor` box offset. Skipping this would land the touch ~one rail-width left
+// of where a same-coord tap did — fine for a pan, but it would miss a small
+// ghost you're trying to grab.
 async function dragOneFinger(
     page: Page,
     from: { x: number; y: number },
     to: { x: number; y: number }
 ): Promise<void> {
+    const box = await page.locator('#editor').boundingBox()
+    const ox = box?.x ?? 0
+    const oy = box?.y ?? 0
     const cdp = await page.context().newCDPSession(page)
     await cdp.send('Input.dispatchTouchEvent', {
         type: 'touchStart',
-        touchPoints: [{ x: from.x, y: from.y }],
+        touchPoints: [{ x: ox + from.x, y: oy + from.y }],
     })
     const steps = 8
     for (let i = 1; i <= steps; i++) {
@@ -66,8 +73,8 @@ async function dragOneFinger(
             type: 'touchMove',
             touchPoints: [
                 {
-                    x: from.x + ((to.x - from.x) * i) / steps,
-                    y: from.y + ((to.y - from.y) * i) / steps,
+                    x: ox + from.x + ((to.x - from.x) * i) / steps,
+                    y: oy + from.y + ((to.y - from.y) * i) / steps,
                 },
             ],
         })
@@ -134,9 +141,30 @@ test.describe('touch placement (deferred)', () => {
         await page.locator('#editor').tap({ position: TILE_A })
         expect(await entityCount(page)).toBe(0)
 
-        await page.locator('#action-toolbar button[title="Place"]').tap()
+        // Place lives in the bottom paint d-pad (shown only while holding a ghost).
+        // Force-click: geometry is fixed/unobstructed, but the actionability wait
+        // is flaky under parallel render-loop contention (see actionToolbar.spec).
+        await page.locator('#paint-dpad button[title="Place"]').click({ force: true })
 
         await expect.poll(() => entityCount(page)).toBe(1)
+    })
+
+    test('a one-finger drag on a single entity ghost moves it without placing', async ({
+        page,
+    }) => {
+        // A 3x3 entity gives the drag a comfortable grab target.
+        await gotoHoldingItem(page, 'assembling-machine-2')
+
+        await page.locator('#editor').tap({ position: TILE_A })
+        const before = (await getState(page)).paint.tile
+
+        // Drag starting on the ghost grabs and moves it (the touch analogue of
+        // dragging a held item), rather than panning the camera.
+        await dragOneFinger(page, TILE_A, TILE_B)
+
+        const s = await getState(page)
+        expect(s.paint.tile).not.toEqual(before) // the ghost followed the finger
+        expect(s.blueprint.entityCount).toBe(0) // dragging places nothing
     })
 
     test('panning keeps the previewed ghost pinned to its tile', async ({ page }) => {

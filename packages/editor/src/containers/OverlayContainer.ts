@@ -23,6 +23,8 @@ export class OverlayContainer extends Container {
     private readonly cursorBoxes = new Container()
     private readonly undergroundLines = new Container()
     private readonly selectionArea = new Graphics()
+    /** Crosshair marking a held paint ghost's center — the anchor touch taps/drags position. */
+    private readonly paintCenterMarker = new Graphics()
     private copyCursorBox: Container
     private selectionAreaUpdateFn: (endX: number, endY: number) => void
 
@@ -30,7 +32,13 @@ export class OverlayContainer extends Container {
         super()
         this.bpc = bpc
 
-        this.addChild(this.entityInfos, this.cursorBoxes, this.undergroundLines, this.selectionArea)
+        this.addChild(
+            this.entityInfos,
+            this.cursorBoxes,
+            this.undergroundLines,
+            this.selectionArea,
+            this.paintCenterMarker
+        )
     }
 
     public static createEntityInfo(entity: Entity, position: IPoint): Container {
@@ -531,5 +539,38 @@ export class OverlayContainer extends Container {
     public hideSelectionArea(): void {
         this.selectionArea.clear()
         this.bpc.gridData.off('update', this.selectionAreaUpdateFn, this)
+    }
+
+    /**
+     * (Re)draw the paint-ghost center crosshair at a world position (px). The
+     * holder of the ghost calls this whenever the ghost moves or shows — there's
+     * no listener here, so there's no event-ordering race against the ghost's
+     * own gridData-driven repositioning. Sized in screen px (divided by the
+     * viewport scale) so it stays a fixed-size anchor at any zoom.
+     */
+    public updatePaintCenterMarker(position: IPoint): void {
+        const s = this.bpc.getViewportScale()
+        const arm = 12 / s
+        const gap = 4 / s
+        const { x, y } = position
+        this.paintCenterMarker
+            .clear()
+            // four crosshair arms with a gap in the middle, so the exact center
+            // tile stays visible under the marker
+            .moveTo(x - arm, y)
+            .lineTo(x - gap, y)
+            .moveTo(x + gap, y)
+            .lineTo(x + arm, y)
+            .moveTo(x, y - arm)
+            .lineTo(x, y - gap)
+            .moveTo(x, y + gap)
+            .lineTo(x, y + arm)
+            .stroke({ width: 3 / s, color: 0xffffff, alpha: 0.9 })
+            .circle(x, y, gap)
+            .stroke({ width: 1.5 / s, color: 0xffffff, alpha: 0.9 })
+    }
+
+    public hidePaintCenterMarker(): void {
+        this.paintCenterMarker.clear()
     }
 }

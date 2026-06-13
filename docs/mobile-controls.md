@@ -144,8 +144,33 @@ pipelines at once made touch taps double-act via the browser's synthetic
   the BPC is necessarily outside) — so a stale editor doesn't linger when you tap
   away; re-tap an entity to open it. Covered in `e2e/touchPlacement.spec.ts`
   (`dialogOpen` added to the `?test` hook).
+- ✅ **Touch placement — drag / nudge / center** (issue #30) — a paste produces a
+  multi-entity ghost that used to be unplaceable on touch (the only option was to
+  blind-tap until it happened to land right); placing single entities was nearly as
+  fiddly. Now: a one-finger **drag that starts on the ghost grabs and moves it**
+  (tile-snapped, preserving the grab point so it doesn't jump) — for **both a single
+  entity and a pasted blueprint** (each reports its own footprint via
+  `containsWorldPoint`); a drag starting **off** the ghost still pans the camera and
+  two-finger pan/pinch always drives the viewport. **Fine-tune arrows** (▲◀▶▼) plus
+  **Place** (✓, green, centred like a gamepad's confirm) live in a **fixed
+  bottom-centre d-pad** — shown only in PAINT mode, in the band the retired quickbar
+  freed, so it never fights the rail's ⋯ overflow; the arrow keys drive the same
+  `moveEntity`/`GridData.nudge()` path on desktop. A **center crosshair** marks the
+  ghost's origin (= the blueprint's bounding-box center) so taps/drags have a visible
+  anchor. **Cancel** stays in the left rail. Seams: `BlueprintContainer` touch
+  handlers (`touchPan.target` classify-once, `grabsPaintGhost` via `toWorld` →
+  world-space hit-test, `moveEntity` PAINT branch), `GridData.nudge()` (exact
+  cached-coord shift, zoom-independent), `PaintContainer.containsWorldPoint()` /
+  `worldBoundsContain()`, `OverlayContainer.updatePaintCenterMarker()`, the
+  bottom d-pad + toast `pointer-events`/z-index fix (`actionToolbar.ts`,
+  `index.styl`). Covered by `e2e/touchPlacement*.spec.ts` (CDP drag for grab-vs-pan
+  on both ghost kinds, d-pad nudge, Place commit) via the `?test` hook (`paint.kind`
+    - `spawnPasteGhost`). Follow-up: fixed bottom-arrows idea realised; rail buttons
+      that are no-ops in the current mode should hide (#33).
 - ⬜ **Touch area/marquee select** — multi-select for copy/delete is desktop-only
-  (drag with a modifier); needs a touch gesture (e.g. long-press-drag).
+  (drag with a modifier); needs a touch gesture (issue #21). Pairs with the
+  placement work above: a marquee **copy** hands you exactly the paste ghost that
+  drag/nudge/center now makes placeable.
 - 🚧 **e2e coverage gaps**: pinch needs CDP `Input.dispatchTouchEvent` (the
   high-level touch API is single-touch). Tap-to-place is now covered —
   `EditorTestState` was extended with `paint` + `blueprint.entityCount` and

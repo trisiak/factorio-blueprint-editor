@@ -109,6 +109,8 @@ test.describe('action toolbar', () => {
             // test already covers visibility/tappability, and the actionability
             // wait on every button is what makes a 7-tap loop blow the test
             // timeout when several specs run in parallel against one render loop.
+            // (Place + the nudge arrows moved to the bottom paint d-pad; they're
+            // covered by touchPlacement*.spec.ts.)
             for (const title of [
                 'Rotate',
                 'Flip H',
@@ -116,7 +118,6 @@ test.describe('action toolbar', () => {
                 'Undo',
                 'Redo',
                 'Center',
-                'Place',
                 'Cancel',
             ]) {
                 await toolbar.locator(`button[title="${title}"]`).click({ force: true })

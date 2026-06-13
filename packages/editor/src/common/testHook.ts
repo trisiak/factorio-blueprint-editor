@@ -2,6 +2,7 @@ import G from './globals'
 import { inputMode, type InputMode } from './input'
 import { EditorMode } from '../containers/BlueprintContainer'
 import { PaintEntityContainer } from '../containers/PaintEntityContainer'
+import { PaintBlueprintContainer } from '../containers/PaintBlueprintContainer'
 import { Dialog } from '../UI/controls/Dialog'
 import { Entity } from '../core/Entity'
 
@@ -37,6 +38,12 @@ export interface EditorTestState {
         tile: { x: number; y: number } | null
         /** Held entity ghost's facing (0/4/8/12 cardinal); null for tiles/wires. */
         direction: number | null
+        /**
+         * What the cursor holds: a single `entity`, a pasted `blueprint`
+         * (multi-entity ghost, draggable/nudgeable on touch), or null when idle.
+         * Lets placement tests target the blueprint case specifically.
+         */
+        kind: 'entity' | 'blueprint' | null
     }
     /**
      * True while a modal dialog (e.g. an entity editor overlay) is open. On touch,
@@ -73,6 +80,13 @@ export function getEditorTestState(): EditorTestState {
                 painting && G.BPC.paintContainer instanceof PaintEntityContainer
                     ? G.BPC.paintContainer.getDirection()
                     : null,
+            kind: !painting
+                ? null
+                : G.BPC.paintContainer instanceof PaintBlueprintContainer
+                  ? 'blueprint'
+                  : G.BPC.paintContainer instanceof PaintEntityContainer
+                    ? 'entity'
+                    : null,
         },
         dialogOpen: Dialog.anyOpen(),
     }
@@ -96,6 +110,13 @@ export interface FbeTestHook {
     previewInventoryItem: (name: string) => void
     closeDialogs: () => void
     centerView: () => void
+    /**
+     * Pick up every entity in the blueprint as a paste ghost (a
+     * `PaintBlueprintContainer`), the same cursor a copy/paste produces. Lets
+     * placement tests exercise drag/nudge/center without a clipboard round-trip
+     * or the (not-yet-built) touch marquee. Returns false on an empty blueprint.
+     */
+    spawnPasteGhost: () => boolean
 }
 
 function findEntity(name: string): Entity | undefined {
@@ -135,6 +156,12 @@ export function installTestHook(win: Window = window): void {
         },
         closeDialogs: () => Dialog.closeAll(),
         centerView: () => G.BPC.centerViewport(),
+        spawnPasteGhost: () => {
+            const entities = G.bp.entities.valuesArray()
+            if (entities.length === 0) return false
+            G.BPC.spawnPaintContainer(entities)
+            return true
+        },
     }
     ;(win as unknown as Record<string, unknown>)[TEST_HOOK_KEY] = hook
 }
