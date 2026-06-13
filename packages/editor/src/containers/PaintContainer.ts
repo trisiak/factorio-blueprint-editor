@@ -111,6 +111,37 @@ export abstract class PaintContainer extends Container<EntitySprite> {
         }
     }
 
+    /**
+     * Whether a **world-space** point (px, i.e. `BlueprintContainer.toWorld(...)`)
+     * falls on the rendered ghost — the touch drag-to-move gesture uses this to
+     * decide if a one-finger drag grabs the ghost or pans the camera. World space
+     * (not the pointer's `global`) because the canvas is inset by the action rail,
+     * so `global` is offset from the container's coordinate space; `toWorld` is
+     * the conversion the rest of the pointer pipeline already uses. Default false
+     * (tiles/wires aren't draggable); entity and blueprint ghosts opt in via
+     * `worldBoundsContain`.
+     */
+    public containsWorldPoint(_x: number, _y: number): boolean {
+        return false
+    }
+
+    /**
+     * World-space AABB hit-test over the ghost's rendered sprites. The container
+     * has unit scale within the world, so its local bounds are world-unit offsets
+     * from `position` — works for any footprint without assuming where the origin
+     * sits relative to the sprites.
+     */
+    protected worldBoundsContain(x: number, y: number): boolean {
+        if (!this.visible || this.children.length === 0) return false
+        const b = this.getLocalBounds().rectangle
+        return (
+            x >= this.position.x + b.x &&
+            x <= this.position.x + b.x + b.width &&
+            y >= this.position.y + b.y &&
+            y <= this.position.y + b.y + b.height
+        )
+    }
+
     public setPosConstraint(axis?: Axis): void {
         this._posConstraint = axis
         this.moveAtCursor()

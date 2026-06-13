@@ -83,13 +83,24 @@ export class GridData extends EventEmitter<GridDataEvents> {
 
     /**
      * Shift the grid position by whole tiles — the fine-tune "nudge" for a held
-     * paint ghost (arrow keys on desktop, the rail's arrows on touch). Converts
-     * the tile offset to screen space so the regular update/emit pipeline (which
-     * everything, including the ghost, listens on) runs unchanged.
+     * paint ghost (arrow keys on desktop, the d-pad arrows on touch). Shifts the
+     * cached world position directly (rather than nudging the screen point and
+     * re-deriving through `toWorld`) so a nudge is *exactly* N tiles at any zoom,
+     * then re-emits so the ghost (which listens on these events) follows.
      */
     public nudge(dxTiles: number, dyTiles: number): void {
-        const s = this.bpc.getViewportScale()
-        this.update(this.lastMousePosX + dxTiles * 32 * s, this.lastMousePosY + dyTiles * 32 * s)
+        if (this.bpc.mode === EditorMode.PAN) return
+
+        this._x += dxTiles * 32
+        this._y += dyTiles * 32
+        this._x16 = Math.floor(this._x / 16)
+        this._y16 = Math.floor(this._y / 16)
+        this._x32 = Math.floor(this._x / 32)
+        this._y32 = Math.floor(this._y / 32)
+
+        this.emit('update', this._x, this._y)
+        this.emit('update16', this._x16, this._y16)
+        this.emit('update32', this._x32, this._y32, -dxTiles, -dyTiles)
     }
 
     private update(mouseX: number, mouseY: number): void {

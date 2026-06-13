@@ -39,6 +39,11 @@ export class PaintEntityContainer extends PaintContainer {
         return getEntitySize(FD.entities[this.name], this.direction)
     }
 
+    /** The held ghost is grabbable by touch (drag-to-move). */
+    public override containsWorldPoint(x: number, y: number): boolean {
+        return this.worldBoundsContain(x, y)
+    }
+
     public hide(): void {
         this.bpc.underlayContainer.deactivateActiveAreas()
         this.destroyUndergroundLine()

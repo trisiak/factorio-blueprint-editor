@@ -10,12 +10,6 @@ import { IConnectionPoint } from '../core/WireConnections'
 export class PaintBlueprintContainer extends PaintContainer {
     private readonly bp: Blueprint
     private readonly entities = new Map<Entity, PaintBlueprintEntityContainer>()
-    /**
-     * The pasted entities' bounding box in ghost-local tile space (the ghost's
-     * origin is the blueprint's center, see the constructor). Used to hit-test
-     * "did this touch land on the ghost" for the drag-to-move gesture.
-     */
-    private readonly localBounds: { minX: number; minY: number; maxX: number; maxY: number }
 
     public constructor(bpc: BlueprintContainer, entities: Entity[]) {
         super(bpc, 'blueprint')
@@ -40,13 +34,6 @@ export class PaintBlueprintContainer extends PaintContainer {
         const center = {
             x: Math.floor((minX + maxX) / 2),
             y: Math.floor((minY + maxY) / 2),
-        }
-
-        this.localBounds = {
-            minX: minX - center.x,
-            minY: minY - center.y,
-            maxX: maxX - center.x,
-            maxY: maxY - center.y,
         }
 
         const entNrWhitelist = new Set(entities.map(e => e.entityNumber))
@@ -103,20 +90,9 @@ export class PaintBlueprintContainer extends PaintContainer {
         super.destroy()
     }
 
-    /**
-     * Whether a world-space point (in px) falls inside the pasted entities'
-     * bounding box. The touch drag-to-move gesture uses this to decide if a
-     * one-finger drag grabs the ghost (starts on it) or pans the camera.
-     */
-    public containsWorldPoint(x: number, y: number): boolean {
-        const lx = (x - this.position.x) / 32
-        const ly = (y - this.position.y) / 32
-        return (
-            lx >= this.localBounds.minX &&
-            lx <= this.localBounds.maxX &&
-            ly >= this.localBounds.minY &&
-            ly <= this.localBounds.maxY
-        )
+    /** The pasted ghost is grabbable by touch (drag-to-move). */
+    public override containsWorldPoint(x: number, y: number): boolean {
+        return this.worldBoundsContain(x, y)
     }
 
     /**

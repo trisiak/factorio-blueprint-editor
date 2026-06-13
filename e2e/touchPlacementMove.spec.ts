@@ -3,9 +3,9 @@ import { test, expect, type Page } from '@playwright/test'
 // Placement of a *pasted blueprint* on touch (issue #30). A paste produces a
 // multi-entity ghost; before this, the only way to position it was to blind-tap
 // until it happened to land right. Now you can drag it (one finger, starting on
-// the ghost), nudge it a tile at a time (the rail arrows), and see its center
-// (a crosshair). Everything happens on the <canvas>, so these assert against the
-// `?test` state hook. See docs/mobile-controls.md.
+// the ghost), nudge it a tile at a time (the bottom d-pad arrows), and see its
+// center (a crosshair). Everything happens on the <canvas>, so these assert
+// against the `?test` state hook. See docs/mobile-controls.md.
 
 interface PaintState {
     paint: {
@@ -60,16 +60,22 @@ async function gotoWithPasteGhost(page: Page): Promise<number> {
 }
 
 // Drag a single finger across the canvas over CDP (Playwright's touchscreen API
-// is single-tap only). Same path the pan test uses.
+// is single-tap only). Coordinates are **canvas/element-relative** (same frame
+// as `locator.tap({position})`): CDP wants page coords and the canvas is inset
+// by the action rail, so add the `#editor` box offset — otherwise the touch
+// lands ~a rail-width off and misses the ghost you mean to grab.
 async function dragOneFinger(
     page: Page,
     from: { x: number; y: number },
     to: { x: number; y: number }
 ): Promise<void> {
+    const box = await page.locator('#editor').boundingBox()
+    const ox = box?.x ?? 0
+    const oy = box?.y ?? 0
     const cdp = await page.context().newCDPSession(page)
     await cdp.send('Input.dispatchTouchEvent', {
         type: 'touchStart',
-        touchPoints: [{ x: from.x, y: from.y }],
+        touchPoints: [{ x: ox + from.x, y: oy + from.y }],
     })
     const steps = 8
     for (let i = 1; i <= steps; i++) {
@@ -77,8 +83,8 @@ async function dragOneFinger(
             type: 'touchMove',
             touchPoints: [
                 {
-                    x: from.x + ((to.x - from.x) * i) / steps,
-                    y: from.y + ((to.y - from.y) * i) / steps,
+                    x: ox + from.x + ((to.x - from.x) * i) / steps,
+                    y: oy + from.y + ((to.y - from.y) * i) / steps,
                 },
             ],
         })
@@ -87,15 +93,13 @@ async function dragOneFinger(
     await cdp.detach()
 }
 
-// Tap a rail action that may sit in the ⋯ overflow (open it first if so). Force
-// clicks: the rail re-lays-out (ResizeObserver) so buttons aren't "stable".
-async function tapRailAction(page: Page, title: string): Promise<void> {
-    const toolbar = page.locator('#action-toolbar')
-    const btn = toolbar.locator(`button[title="${title}"]`)
-    if (!(await btn.isVisible())) {
-        await toolbar.locator('button.rail-more').click({ force: true })
-    }
-    await btn.click({ force: true })
+// Tap a button in the bottom paint d-pad (nudge arrows + Place). It's shown only
+// in PAINT mode, fixed bottom-center — no overflow to open. Force-tap: the
+// geometry is fixed and unobstructed, but the per-button actionability "stable"
+// wait gets flaky when specs run in parallel against one render loop (same
+// reason actionToolbar.spec.ts force-clicks).
+async function tapDpad(page: Page, title: string): Promise<void> {
+    await page.locator(`#paint-dpad button[title="${title}"]`).click({ force: true })
 }
 
 // Center-ish points, clear of the left rail gutter and the top/bottom chrome.
@@ -147,11 +151,11 @@ test.describe('touch placement of a pasted blueprint', () => {
         await page.locator('#editor').tap({ position: CENTER })
         const before = (await getState(page)).paint.tile
 
-        await tapRailAction(page, 'Up')
+        await tapDpad(page, 'Up')
         const up = (await getState(page)).paint.tile
         expect(up).toEqual({ x: before.x, y: before.y - 1 })
 
-        await tapRailAction(page, 'Right')
+        await tapDpad(page, 'Right')
         const right = (await getState(page)).paint.tile
         expect(right).toEqual({ x: up.x + 1, y: up.y })
     })
@@ -162,7 +166,7 @@ test.describe('touch placement of a pasted blueprint', () => {
         await page.locator('#editor').tap({ position: AWAY })
         expect(await entityCount(page)).toBe(original) // positioning places nothing
 
-        await tapRailAction(page, 'Place')
+        await tapDpad(page, 'Place')
 
         // Place commits the pasted entities (the count grows). It's not exactly
         // 2× because the ghost may overlap the originals at the chosen spot and

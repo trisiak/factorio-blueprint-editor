@@ -728,16 +728,13 @@ export class BlueprintContainer extends Container {
     }
 
     /**
-     * Whether a touch starting at this screen point lands on a held *paste*
-     * ghost (a multi-entity blueprint cursor) — if so, the drag moves the ghost
-     * instead of panning. Restricted to paste ghosts on purpose: single-entity
-     * paint repositions fine with taps, and a one-tile grab target would mostly
-     * steal pans.
+     * Whether a touch starting at this screen point lands on the held ghost's
+     * footprint — if so, the drag grabs and moves the ghost instead of panning.
+     * Works for both a single entity and a multi-entity paste (each reports its
+     * own footprint); tiles/wires opt out (containsWorldPoint defaults false).
      */
     private grabsPaintGhost(screenX: number, screenY: number): boolean {
-        if (this.mode !== EditorMode.PAINT) return false
-        if (!(this.paintContainer instanceof PaintBlueprintContainer)) return false
-        if (!this.paintContainer.visible) return false
+        if (this.mode !== EditorMode.PAINT || !this.paintContainer) return false
         const [worldX, worldY] = this.toWorld(screenX, screenY)
         return this.paintContainer.containsWorldPoint(worldX, worldY)
     }
