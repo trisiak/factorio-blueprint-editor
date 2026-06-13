@@ -989,6 +989,10 @@ export class BlueprintContainer extends Container {
         // Drop any in-flight cursor / prior selection so the drag is unambiguous.
         this.clearCursor()
         this.cancelMarquee()
+        // Clear any showing hover/info panel (e.g. from a prior tap-select, or if
+        // the marquee starts on an entity): hover updates are suppressed during
+        // the drag, so a lingering panel would otherwise never go away.
+        this.updateHoverContainer(true)
         this.marqueeArmed = true
         G.logger({ text: 'Drag a box to select entities', type: 'info' })
     }
@@ -1024,6 +1028,10 @@ export class BlueprintContainer extends Container {
         }
         this.marqueeUpdateFn(startPos.x, startPos.y)
         this.gridData.on('update32', this.marqueeUpdateFn, this)
+        // The seeding moveTo above fires update32 before the suppression guard is
+        // in place, so starting the box on an entity can flash its info panel —
+        // clear it now (updates stay suppressed for the rest of the drag).
+        this.updateHoverContainer(true)
     }
 
     /** Finish drawing: freeze the box and hold the selection (or cancel if empty). */

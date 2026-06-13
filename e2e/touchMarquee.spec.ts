@@ -10,6 +10,7 @@ interface MarqueeState {
     paint: { active: boolean; kind: 'entity' | 'blueprint' | null }
     blueprint: { entityCount: number }
     marquee: { count: number }
+    infoPanelVisible: boolean
 }
 
 // A small multi-entity vanilla blueprint (assemblers + inserters + a belt line);
@@ -120,6 +121,9 @@ test.describe('touch marquee select', () => {
         for (const title of ['Copy', 'Cut', 'Delete', 'Cancel']) {
             await expect(page.locator(`#marquee-bar button[title="${title}"]`)).toBeVisible()
         }
+        // The box sweeps over entities; the hover/info panel must stay hidden so it
+        // doesn't obscure the drawing (the panel is suppressed during select).
+        expect((await getState(page)).infoPanelVisible).toBe(false)
     })
 
     test('Copy picks the selection up as a paste ghost, leaving the originals', async ({
