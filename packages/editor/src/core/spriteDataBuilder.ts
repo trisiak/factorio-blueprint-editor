@@ -1031,9 +1031,11 @@ function draw_assembling_machine(
 ): (data: IDrawData) => readonly SpriteData[] {
     return (data: IDrawData) => {
         if (e.graphics_set.always_draw_idle_animation) {
-            // layersOf: idle_animation may be a plain (un-layered) animation —
-            // SE's casting machine is, so reading `.layers` gave undefined.
-            return layersOf(e.graphics_set.idle_animation as Animation)
+            // idle_animation may be plain OR directional ({north,east,…}); SE's
+            // casting machine is directional, so passing it whole to layersOf
+            // dropped the body. getAnimation picks this direction (returns the
+            // animation unchanged when it's already plain), then layersOf flattens.
+            return layersOf(getAnimation(e.graphics_set.idle_animation as Animation4Way, data.dir))
         } else {
             const out = [...layersOf(getAnimation(e.graphics_set.animation, data.dir))]
 

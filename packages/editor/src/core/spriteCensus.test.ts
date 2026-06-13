@@ -9,9 +9,10 @@ import { getSpriteData, clearSpriteDataCache, SPRITE_GENERATION_FAILED } from '.
  * Runs every entity of every committed data pack through getSpriteData and
  * tallies three buckets:
  *  - ok:      a non-empty sprite list, every visible part resolvable
- *  - partial: sprites generated, but some part has neither `filename` nor
- *             `filenames` (e.g. an un-flattened `{layers}` object) and is
- *             silently dropped by EntitySprite — the entity renders incomplete
+ *  - partial: sprites generated, but some part resolves to no texture — no
+ *             `filename`, `filenames`, or `stripes` (e.g. an un-flattened
+ *             `{layers}` object) — so EntitySprite drops it and the entity
+ *             renders incomplete
  *  - failed:  SPRITE_GENERATION_FAILED — the entity draws as the labeled
  *             UnknownEntitySprite box fallback
  *
@@ -23,7 +24,7 @@ import { getSpriteData, clearSpriteDataCache, SPRITE_GENERATION_FAILED } from '.
 const BASELINES: Record<string, { partial: number; failed: number }> = {
     'vanilla-2.0': { partial: 0, failed: 6 },
     'space-age': { partial: 0, failed: 7 },
-    'space-exploration': { partial: 9, failed: 19 },
+    'space-exploration': { partial: 0, failed: 19 },
 }
 
 describe.each(Object.keys(BASELINES))('sprite census: %s', pack => {
@@ -55,13 +56,16 @@ describe.each(Object.keys(BASELINES))('sprite census: %s', pack => {
             if (res === SPRITE_GENERATION_FAILED || (Array.isArray(res) && res.length === 0)) {
                 failed.push(name)
             } else if (
-                (res as readonly { draw_as_shadow?: boolean; filename?: string }[]).some(
-                    d =>
-                        d &&
-                        !d.draw_as_shadow &&
-                        !d.filename &&
-                        !(d as { filenames?: string[] }).filenames
-                )
+                (res as readonly { draw_as_shadow?: boolean; filename?: string }[]).some(d => {
+                    // Mirror EntitySprite's resolution: a part is dropped only if
+                    // it resolves to no texture — no filename, no `filenames`
+                    // (direction-indexed), and no `stripes` (multi-file frames).
+                    const p = d as {
+                        filenames?: unknown[]
+                        stripes?: unknown[]
+                    }
+                    return d && !d.draw_as_shadow && !d.filename && !p.filenames && !p.stripes
+                })
             ) {
                 partial.push(name)
             }
