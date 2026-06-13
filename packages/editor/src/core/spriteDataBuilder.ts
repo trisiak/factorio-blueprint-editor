@@ -703,6 +703,19 @@ function getAnimation(a: Animation4Way, dir: number): Animation {
  * AAI's plain `base`). Returns the flat layer list for either shape, and []
  * for an absent field, so call sites stop encoding one pack's conventions.
  */
+/**
+ * A `Sprite4Way` structure's sheet(s): vanilla belts/undergrounds carry one
+ * `sheet`, while modded ones (SE's deep-space belts) carry a layered `sheets`
+ * array. Return a flat list so callers render every layer either way (and [] if
+ * the field is absent), instead of reading `.sheet` and getting undefined.
+ */
+function structureSheets(s: Sprite4WayStruct | undefined | null): readonly SpriteData[] {
+    if (!s) return []
+    const ss = s as { sheet?: SpriteData; sheets?: SpriteData[] }
+    if (Array.isArray(ss.sheets)) return ss.sheets
+    return ss.sheet ? [ss.sheet] : []
+}
+
 function layersOf(s: SpriteData | Animation | undefined | null): readonly SpriteData[] {
     if (!s) return []
     const layers = (s as Animation).layers
@@ -1018,9 +1031,13 @@ function draw_assembling_machine(
 ): (data: IDrawData) => readonly SpriteData[] {
     return (data: IDrawData) => {
         if (e.graphics_set.always_draw_idle_animation) {
-            return (e.graphics_set.idle_animation as Animation).layers
+            // idle_animation may be plain OR directional ({north,east,…}); SE's
+            // casting machine is directional, so passing it whole to layersOf
+            // dropped the body. getAnimation picks this direction (returns the
+            // animation unchanged when it's already plain), then layersOf flattens.
+            return layersOf(getAnimation(e.graphics_set.idle_animation as Animation4Way, data.dir))
         } else {
-            const out = [...getAnimation(e.graphics_set.animation, data.dir).layers]
+            const out = [...layersOf(getAnimation(e.graphics_set.animation, data.dir))]
 
             const fbs = getFluidBoxes(
                 e,
@@ -1257,7 +1274,8 @@ function draw_constant_combinator(
     }
 }
 function draw_container(e: ContainerPrototype): (data: IDrawData) => readonly SpriteData[] {
-    return () => e.picture.layers
+    // picture may be a plain sprite (SE's rocket-launch-pad) or layered.
+    return () => layersOf((e as { picture?: unknown }).picture as Animation)
 }
 function draw_simple_entity(e: any): (data: IDrawData) => readonly SpriteData[] {
     return (data: IDrawData) => {
@@ -1392,7 +1410,8 @@ function draw_display_panel(e: DisplayPanelPrototype): (data: IDrawData) => read
 function draw_electric_energy_interface(
     e: ElectricEnergyInterfacePrototype
 ): (data: IDrawData) => readonly SpriteData[] {
-    return () => e.picture.layers
+    // picture may be a plain sprite (SE's gate energy interface) or layered.
+    return () => layersOf((e as { picture?: unknown }).picture as Animation)
 }
 function draw_electric_pole(e: ElectricPolePrototype): (data: IDrawData) => readonly SpriteData[] {
     return (data: IDrawData) => [
@@ -1556,8 +1575,9 @@ function draw_gate(e: GatePrototype): (data: IDrawData) => readonly SpriteData[]
     }
 }
 function draw_generator(e: GeneratorPrototype): (data: IDrawData) => readonly SpriteData[] {
+    // layersOf: SE's big-turbine generators use plain animations (no .layers)
     return (data: IDrawData) =>
-        data.dir % 8 === 0 ? e.vertical_animation.layers : e.horizontal_animation.layers
+        data.dir % 8 === 0 ? layersOf(e.vertical_animation) : layersOf(e.horizontal_animation)
 }
 function draw_heat_interface(
     e: HeatInterfacePrototype
@@ -1767,7 +1787,8 @@ function draw_lab(e: LabPrototype): (data: IDrawData) => readonly SpriteData[] {
     return () => e.off_animation.layers
 }
 function draw_lamp(e: LampPrototype): (data: IDrawData) => readonly SpriteData[] {
-    return () => e.picture_off.layers
+    // picture_off may be a plain sprite (SE's space-elevator lamp) or layered.
+    return () => layersOf(e.picture_off)
 }
 function draw_land_mine(e: LandMinePrototype): (data: IDrawData) => readonly SpriteData[] {
     return () => [e.picture_set]
@@ -1991,6 +2012,28 @@ function draw_mining_drill(e: MiningDrillPrototype): (data: IDrawData) => readon
                     .flatMap(vis => (vis.layers ? vis.layers : [vis]))
 
                 return [...layers0, ...layers1]
+            }
+
+        default:
+            // Modded drills (SE's core miner / area drill, Space Age's
+            // big-mining-drill) aren't named above. Render generically:
+            // base animation (directional or plain, via getAnimation+layersOf)
+            // plus any always-drawn working_visualisation for this direction.
+            return (data: IDrawData) => {
+                const gs = e.graphics_set as {
+                    animation?: Animation4WayStruct | Animation
+                    working_visualisations?: Record<string, unknown>[]
+                }
+                const base = gs.animation
+                    ? layersOf(getAnimation(gs.animation as Animation4Way, data.dir))
+                    : []
+                const dir = util.getDirName(data.dir)
+                const working = (gs.working_visualisations || [])
+                    .filter(vis => vis.always_draw)
+                    .map(vis => vis[`${dir}_animation`])
+                    .filter((vis): vis is object => !!vis)
+                    .flatMap(vis => layersOf(vis as Animation))
+                return [...base, ...working]
             }
     }
 }
@@ -2265,15 +2308,32 @@ function draw_splitter(e: SplitterPrototype): (data: IDrawData) => readonly Spri
     }
 }
 function draw_storage_tank(e: StorageTankPrototype): (data: IDrawData) => readonly SpriteData[] {
-    return (data: IDrawData) => [
-        addToShift([0, 1], util.duplicate(e.pictures.window_background)),
-        setPropertyUsing(
-            util.duplicate((e.pictures.picture as Sprite4WayStruct).sheets[0]),
-            'x',
-            'width',
-            Math.floor(data.dir / 4) % (e.pictures.picture as Sprite4WayStruct).sheets[0].frames
-        ),
-    ]
+    return (data: IDrawData) => {
+        const parts: SpriteData[] = []
+        if (e.pictures.window_background) {
+            parts.push(addToShift([0, 1], util.duplicate(e.pictures.window_background)))
+        }
+        const picture = e.pictures.picture as Sprite4WayStruct & {
+            sheets?: SpriteData[]
+            north?: SpriteData
+        }
+        if (picture?.sheets) {
+            // vanilla: one 4-way sheet, frame chosen by direction
+            const sheet = picture.sheets[0]
+            parts.push(
+                setPropertyUsing(
+                    util.duplicate(sheet),
+                    'x',
+                    'width',
+                    Math.floor(data.dir / 4) % sheet.frames
+                )
+            )
+        } else if (picture) {
+            // directional picture (SE space pipes): one sprite per direction
+            parts.push(...layersOf(getAnimation(picture as Animation4Way, data.dir)))
+        }
+        return parts
+    }
 }
 function draw_thruster(e: ThrusterPrototype): (data: IDrawData) => readonly SpriteData[] {
     return () => {
@@ -2435,43 +2495,35 @@ function draw_underground_belt(
         const structure = e.structure
         const sprites = []
 
+        // A Sprite4Way structure carries either one `sheet` (vanilla belts) or a
+        // layered `sheets` array (SE's deep-space belts). pushSheets renders
+        // whichever it is — reading `.sheet` alone gave `undefined` for the
+        // `sheets` form, which `duplicate()` then threw on (#28).
+        const pushSheets = (s: Sprite4WayStruct | undefined): void => {
+            const sheets = structureSheets(s)
+            for (const sheet of sheets) {
+                sprites.push(duplicateAndSetPropertyUsing(sheet, 'x', 'width', dir / 4))
+            }
+        }
+
         if (!sideloadingBack) {
-            sprites.push(
-                duplicateAndSetPropertyUsing(
-                    (structure.back_patch as Sprite4WayStruct).sheet,
-                    'x',
-                    'width',
-                    dir / 4
-                )
-            )
+            pushSheets(structure.back_patch as Sprite4WayStruct)
         }
 
         sprites.push(mainBelt)
 
-        sprites.push(
-            duplicateAndSetPropertyUsing(
-                sideloadingFront
-                    ? isInput
-                        ? (structure.direction_in_side_loading as Sprite4WayStruct).sheet
-                        : (structure.direction_out_side_loading as Sprite4WayStruct).sheet
-                    : isInput
-                      ? (structure.direction_in as Sprite4WayStruct).sheet
-                      : (structure.direction_out as Sprite4WayStruct).sheet,
-                'x',
-                'width',
-                dir / 4
-            )
+        pushSheets(
+            (sideloadingFront
+                ? isInput
+                    ? structure.direction_in_side_loading
+                    : structure.direction_out_side_loading
+                : isInput
+                  ? structure.direction_in
+                  : structure.direction_out) as Sprite4WayStruct
         )
 
         if (!sideloadingFront) {
-            sprites.push(
-                duplicateAndSetPropertyUsing(
-                    (structure.front_patch as Sprite4WayStruct).sheet,
-                    'x',
-                    'width',
-                    dir / 4
-                )
-            )
+            pushSheets(structure.front_patch as Sprite4WayStruct)
         }
 
         if (beltParts[1]) {
