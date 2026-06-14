@@ -20,6 +20,19 @@ The web server start has a 180s timeout because it does a full production build
 first; the initial run is slow, subsequent runs reuse the server locally
 (`reuseExistingServer` is on outside CI).
 
+### Parallelism & the render loop
+
+The whole app is one PixiJS `<canvas>`, so **every** spec is render-heavy and the
+render loop is the shared bottleneck. Run several workers and they fight over it:
+a CDP touch dispatch or a canvas state read-back that's instant in isolation
+takes _seconds_ under load. The config compensates with generous budgets
+**everywhere** (not just CI) — 60s per test, 10s per assertion, one local retry
+(two on CI) — and CI further serializes to a single worker. Earlier the local
+budgets were tight (30s/5s, assuming a quiet single run), which made the touch
+specs flaky under a full parallel `npm run test:e2e` even though single-test and
+sharded-CI runs passed. If you tighten these, expect the touch specs to flake
+first. (See also the slimmed CDP gesture helper under "Touch input" below.)
+
 ### Browser
 
 The suite uses Chromium only. This environment (and CI) already has a Chromium
@@ -61,15 +74,31 @@ that `?desktopOnly` restores it.
 
 ## Touch input: single- vs multi-touch
 
-Playwright's high-level `touchscreen` / `locator.tap()` API is **single-touch**.
-That's enough for the one-finger paths (tap-to-place, one-finger pan), e.g.:
+Playwright's high-level `touchscreen` / `locator.tap()` API is **single-touch**,
+and it only _taps_ — it can't drag. A single tap is enough for tap-to-place:
 
 ```ts
 await page.locator('#editor').tap()
 ```
 
-It **cannot** express a two-finger gesture, so **pinch-zoom / two-finger pan**
-needs raw CDP `Input.dispatchTouchEvent` with two touch points. Recipe:
+A one-finger **drag** (pan / grab-a-ghost / marquee) does need CDP, but it's a
+common enough need that the recipe is centralized in **`e2e/touchGestures.ts`** —
+import `dragOneFinger(page, from, to)` rather than re-rolling it per spec:
+
+```ts
+import { dragOneFinger } from './touchGestures'
+await dragOneFinger(page, { x: 70, y: 180 }, { x: 380, y: 700 })
+```
+
+That helper keeps the synthesized touch stream deliberately short and pipelines
+the dispatches (awaiting `touchEnd` last) so the gesture survives the parallel
+render-loop contention described above — `await`ing ~10 separate moves used to
+stack up and blow the test budget mid-drag. Coordinates are canvas-relative (same
+frame as `tap({position})`); the helper adds the `#editor` offset.
+
+A **two-finger** gesture (pinch-zoom / two-finger pan) the high-level API can't
+express at all, so it needs raw CDP `Input.dispatchTouchEvent` with two touch
+points. Recipe:
 
 ```ts
 const client = await page.context().newCDPSession(page)

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { dragOneFinger } from './touchGestures'
 
 // Slice 1 of natural touch placement: on mobile a tap positions/previews the
 // held ghost (the touch analogue of desktop hover) and only a *second* tap on
@@ -45,42 +46,6 @@ async function gotoHoldingItem(page: Page, item = 'transport-belt'): Promise<voi
     await page.locator('#editor').focus()
     await page.keyboard.press('1')
     await expect.poll(async () => (await getState(page)).paint.active).toBe(true)
-}
-
-// Drag a single finger across the canvas. Playwright's touchscreen API only
-// taps, so synthesize the touch stream over CDP. Coordinates are **canvas/
-// element-relative** (the same frame as `locator.tap({position})`): CDP wants
-// page coords, but the canvas is inset by the action rail, so we add the
-// `#editor` box offset. Skipping this would land the touch ~one rail-width left
-// of where a same-coord tap did — fine for a pan, but it would miss a small
-// ghost you're trying to grab.
-async function dragOneFinger(
-    page: Page,
-    from: { x: number; y: number },
-    to: { x: number; y: number }
-): Promise<void> {
-    const box = await page.locator('#editor').boundingBox()
-    const ox = box?.x ?? 0
-    const oy = box?.y ?? 0
-    const cdp = await page.context().newCDPSession(page)
-    await cdp.send('Input.dispatchTouchEvent', {
-        type: 'touchStart',
-        touchPoints: [{ x: ox + from.x, y: oy + from.y }],
-    })
-    const steps = 8
-    for (let i = 1; i <= steps; i++) {
-        await cdp.send('Input.dispatchTouchEvent', {
-            type: 'touchMove',
-            touchPoints: [
-                {
-                    x: ox + from.x + ((to.x - from.x) * i) / steps,
-                    y: oy + from.y + ((to.y - from.y) * i) / steps,
-                },
-            ],
-        })
-    }
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
-    await cdp.detach()
 }
 
 // Two clearly-separated points in the open canvas (away from the top toolbar,
