@@ -8,6 +8,11 @@ import { MiningEditor } from './MiningEditor'
 import { SplitterEditor } from './SplitterEditor'
 import { TempEditor } from './TempEditor'
 import { TrainStopEditor } from './TrainStopEditor'
+import { ArithmeticCombinatorEditor } from './ArithmeticCombinatorEditor'
+import { DeciderCombinatorEditor } from './DeciderCombinatorEditor'
+import { ConstantCombinatorEditor } from './ConstantCombinatorEditor'
+import { SelectorCombinatorEditor } from './SelectorCombinatorEditor'
+import { CircuitConditionEditor } from './CircuitConditionEditor'
 
 /**
  * Which editor an entity gets — or `undefined` for an entity with nothing to
@@ -23,8 +28,33 @@ export type EditorKind =
     | 'splitter'
     | 'temp'
     | 'trainstop'
+    | 'arithmetic-combinator'
+    | 'decider-combinator'
+    | 'constant-combinator'
+    | 'selector-combinator'
+    | 'circuit-condition'
 
 export function editorKindFor(entity: Entity): EditorKind | undefined {
+    // Circuit entities route off `entity.type`, not name, so any modded prototype
+    // of these types (not just the vanilla names) gets the editor — the data pack
+    // defines the signals, the editor adapts. See docs/circuit-editing (#31).
+    switch (entity.type) {
+        case 'arithmetic-combinator':
+            return 'arithmetic-combinator'
+        case 'decider-combinator':
+            return 'decider-combinator'
+        case 'constant-combinator':
+            return 'constant-combinator'
+        case 'selector-combinator':
+            return 'selector-combinator'
+        // Entities whose only configurable circuit feature is an enable/disable
+        // condition and which have no other editor. Inserters and mining drills
+        // are handled by their own (richer) editors below.
+        case 'pump':
+        case 'offshore-pump':
+        case 'transport-belt':
+            return 'circuit-condition'
+    }
     switch (entity.name) {
         case 'assembling-machine-1':
         case 'assembling-machine-2':
@@ -119,6 +149,16 @@ export function createEditor(entity: Entity): Editor {
             return new TempEditor(entity)
         case 'trainstop':
             return new TrainStopEditor(entity)
+        case 'arithmetic-combinator':
+            return new ArithmeticCombinatorEditor(entity)
+        case 'decider-combinator':
+            return new DeciderCombinatorEditor(entity)
+        case 'constant-combinator':
+            return new ConstantCombinatorEditor(entity)
+        case 'selector-combinator':
+            return new SelectorCombinatorEditor(entity)
+        case 'circuit-condition':
+            return new CircuitConditionEditor(entity)
         default:
             return undefined
     }

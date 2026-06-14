@@ -1,8 +1,8 @@
-import { FederatedPointerEvent } from 'pixi.js'
 import EventEmitter from 'eventemitter3'
 import G from '../../../common/globals'
 import { Entity, EntityEvents } from '../../../core/Entity'
 import { Slot } from '../../controls/Slot'
+import { bindSlotGestures } from '../../controls/gestures'
 import F from '../../controls/functions'
 
 /** Module Slots for Entity */
@@ -15,7 +15,21 @@ export class Recipe extends Slot<undefined> {
 
         this.m_Entity = entity
         this.updateContent(this.m_Entity.recipe)
-        this.on('pointerdown', this.onSlotPointerDown, this)
+        bindSlotGestures(
+            this,
+            () =>
+                G.UI.createInventory(
+                    'Select Recipe',
+                    this.m_Entity.acceptedRecipes,
+                    name => {
+                        this.m_Entity.recipe = name
+                    },
+                    'recipes'
+                ),
+            () => {
+                this.m_Entity.recipe = undefined
+            }
+        )
 
         this.onEntityChange('recipe', recipe => this.updateContent(recipe))
     }
@@ -38,22 +52,5 @@ export class Recipe extends Slot<undefined> {
             this.content = F.CreateIcon(recipe)
         }
         this.emit('changed')
-    }
-
-    /** Event handler for click on slot */
-    private onSlotPointerDown(e: FederatedPointerEvent): void {
-        e.stopPropagation()
-        if (e.button === 0) {
-            G.UI.createInventory(
-                'Select Recipe',
-                this.m_Entity.acceptedRecipes,
-                name => {
-                    this.m_Entity.recipe = name
-                },
-                'recipes'
-            )
-        } else if (e.button === 2) {
-            this.m_Entity.recipe = undefined
-        }
     }
 }
