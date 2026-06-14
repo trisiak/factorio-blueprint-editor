@@ -91,6 +91,27 @@ Thousands of sprites can be on screen. Mitigations, in priority order:
 
 ## Scope / open questions
 
+### Why a given entity does (or doesn't) animate — the taxonomy
+
+An entity animates in v1 **iff the specific part the draw function selects is a
+single-sheet `Animation` with `frame_count > 1`.** Four buckets cover what we see
+in practice (handy when triaging "why is X static?"):
+
+| Bucket                                                                                                                                 | Example                                                                                                                                                                                                 | v1                                                               |
+| -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| **Real animation** — drawn part has `frame_count > 1`                                                                                  | vanilla `steam-turbine` (a `generator`; `horizontal/vertical_animation` layer 0 is `frame_count: 8`), beacons                                                                                           | ✅ animates                                                      |
+| **Static-by-design idle** — drawn part is `frame_count: 1`; the motion lives on a `working_visualisation` _or a hidden sibling entity_ | SE `se-big-turbine`/`se-condenser-turbine` (`furnace`, only a `frame_count: 1` `idle_animation`); the spin is on hidden `se-big-turbine-generator-NW/-SE` `generator`s that never appear in a blueprint | ❌ static (correct — the motion isn't on the blueprinted entity) |
+| **Rotation, not animation** — `RotatedSprite`/`direction_count`, no `frame_count`                                                      | `radar` (`pictures` is a 64-`direction_count` rotated sprite; the in-game dish sweep is the engine stepping through _orientations_, not a fixed-speed frame loop)                                       | ❌ static                                                        |
+| **Multi-file frames** — `stripes`/`filenames`                                                                                          | SE core miner                                                                                                                                                                                           | ❌ frame 0 (deferred, below)                                     |
+
+The middle two are _correct_ to leave static: SE's turbine has no idle motion of
+its own, and the radar "motion" is a rotational sweep. **Radar is a candidate v2
+special-case** — synthesize a spin by cycling the `direction_count` orientations
+on a slow clock (a distinct path from the `frame_count` driver). The hidden-
+sibling-entity pattern (animation on a script-placed companion, not the
+blueprinted prototype) is generally out of scope — we render what's in the
+blueprint.
+
 - **Idle vs working semantics.** In-game, some animations only play while the
   entity is _working_ (assembling-machine craft cycle) while others play idle
   (beacons pulse, radar dishes, `always_draw` working-visualisations). The draw
