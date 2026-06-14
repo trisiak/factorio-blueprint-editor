@@ -117,9 +117,10 @@ blueprint.
   (beacons pulse, radar dishes, `always_draw` working-visualisations). The draw
   functions emit the entity's main animation regardless. **v1** treats this as a
   _preview_ toggle — animate every drawn multi-frame part — which is the simplest
-  honest interpretation of "turn on animations." **v2** could restrict to
-  genuinely-idle animations by keying off `always_draw` / the
-  idle-vs-working-visualisation distinction.
+  honest interpretation of "turn on animations." **v2** narrows this to keep the
+  good loops and drop the noisy/aggressive ones — see the dedicated
+  [Idle vs working — research & tuning plan](#idle-vs-working--research--tuning-plan-v2)
+  below.
 - **Multi-file animations** (`stripes`/`filenames`, 8 in SE) span files per
   frame; v1 animates only single-sheet parts (renders frame 0 for multi-file, as
   today). v2 extends the per-frame resolver to walk stripes/filenames.
@@ -127,14 +128,139 @@ blueprint.
   under active layout work; the new button slots into its existing priority/
   overflow scheme, but land it without regressing that.
 
+## Idle vs working — research & tuning plan (v2)
+
+> Goal: keep the loops that make the factory feel alive (belts, crafters,
+> beacons, the roboport antenna) and drop the ones that read as noise when looped
+> forever (gate open/close, the logistic-chest status blink, the rocket-silo
+> launch sequence). v1's blanket "animate every multi-frame part" is too eager.
+> Findings below are from a measurement pass over both packs' dumps — no scripts
+> were run, so this is what the _prototype data_ tells us; the in-game
+> idle/working truth lives in Lua we don't execute, so some hand-tuning is
+> unavoidable and expected.
+
+### Loop speed alone won't separate good from bad
+
+Loop time is `frame_count * 1000 / (animation_speed * 60)` ms (the driver's
+per-frame `frameMs * frame_count`). Measuring the _drawn_ part of each entity:
+
+| Entity (drawn part)                                 | frame_count | speed   | loop      | loops/s | verdict |
+| --------------------------------------------------- | ----------- | ------- | --------- | ------- | ------- |
+| transport-belt (`belt_animation_set.animation_set`) | 16          | 1.0     | 267ms     | 3.75    | ✅ keep |
+| roboport `base_animation` (antenna)                 | 8           | 0.5     | 267ms     | 3.75    | ✅ keep |
+| roboport `door_animation_up/down`                   | 16          | 1.0     | 267ms     | 3.75    | ❌ drop |
+| gate `vertical/horizontal_animation`                | 16          | 1.0     | 267ms     | 3.75    | ❌ drop |
+| logistic-container `animation`                      | 7–8         | 1.0     | 117–133ms | ~8      | ❌ drop |
+| rocket-silo `arm_*` / `satellite_animation`         | 32          | 0.3–0.4 | 1.3–1.8s  | ~0.6    | ❌ drop |
+| assembling-machine `graphics_set.animation`         | 32          | 1.0     | 533ms     | 1.88    | ✅ keep |
+| beacon `animation_list`                             | 45          | 0.5     | 1.5s      | 0.67    | ✅ keep |
+| centrifuge `graphics_set.idle_animation`            | 64          | 1.0     | 1067ms    | 0.94    | ✅ keep |
+| generator (steam engine/turbine `*_animation`)      | 32          | 1.0     | 533ms     | 1.88    | ✅ keep |
+| pumpjack `animation`                                | 40          | 0.5     | 1.3s      | 0.75    | ✅ keep |
+
+The roboport antenna and its doors loop at the **same** 267ms; gates are
+moderate; the rocket silo is _slow_ (0.6/s) yet clearly wrong. Only the logistic
+chest is genuinely fast. So a speed cut-off catches the chest, misses gate +
+silo, and a low cap would wrongly kill belts. **Speed is a secondary safety net,
+not the primary signal.**
+
+### The real signal is semantic — and it's in the field name
+
+What separates "loop forever is correct" from "looping is noise" is the _kind_ of
+motion the prototype field encodes, which Factorio expresses through field naming
+rather than any flag we can read generically:
+
+- **Continuous / genuinely idle → animate.** `belt_animation_set`,
+  `idle_animation` (centrifuge names it outright), roboport `base_animation`,
+  beacon `animation_list`, generator `horizontal/vertical_animation`.
+- **Event-driven → freeze.** roboport `door_animation_*` (opens when a bot
+  passes), gate `vertical/horizontal_animation` (opens on approach).
+- **One-shot sequence → freeze.** rocket-silo `arm_*` / `satellite_animation` /
+  `door_*` — the launch animation; looping the "ready" pose is the odd loop.
+- **Status indicator → freeze (or occasional "fun").** logistic-container
+  `animation` (the fast ~8/s blink), accumulator `charge_animation`, lab
+  `on_animation`.
+- **Working-while-crafting → keep as preview.** `working_visualisations[]`,
+  crafter `graphics_set.animation`. Technically working-only, but reads as the
+  classic "factory is alive" look.
+
+**The catch:** by the time a sprite reaches the driver the draw functions have
+flattened everything to `filename + frame_count` — the field name is gone. To act
+on this signal, `getParts` (or the draw functions) must tag each sprite with its
+**source field** (provenance). That tag is the one bit of plumbing beyond a pure
+data file, and it's exactly what roboport needs (animate `base_animation`, freeze
+`door_*` on the _same_ entity).
+
+### Entity `type` is the practical coarse bucket
+
+Maps cleanly to intent and fixes all three problem cases without per-part tagging:
+
+- **Always-on (continuous in-game):** transport-belt, underground-belt, splitter,
+  loader, generator, beacon → animate.
+- **Crafters (preview-nice):** assembling-machine, furnace, mining-drill,
+  chemical-plant → animate.
+- **Suppress by default (event / sequence / status):** `gate`,
+  `logistic-container`, `rocket-silo`.
+- **Mixed → needs per-part policy:** `roboport` (antenna yes, doors no).
+
+### Two incidental findings
+
+- **`run_mode`:** ~30% of all animations are `backward` or
+  `forward-then-backward` (ping-pong), but the driver is forward-only-modulo. The
+  drawn _main_ animations sampled are all `forward`, so it doesn't bite today —
+  but it will the moment working sub-parts get animated (already a v2 item).
+- **Belts already animate** — `belt_animation_set.animation_set` (`frame_count:
+16`) flows through `getBeltSprites` → `setupAnimation` intact. Worth a visual
+  confirm, but "keep belts" is the default, not new work.
+
+### Proposed rules file (shape, not yet built)
+
+A small declarative table, pack-overridable, tuned over time:
+
+```jsonc
+{
+    // default policy by entity type (everything not listed: 'animate')
+    "typePolicy": { "gate": "static", "logistic-container": "static", "rocket-silo": "static" },
+    // per-entity name overrides (pack-specific escape hatch)
+    "entityPolicy": {},
+    // per-part suppression by source field — needs the provenance tag
+    "partDenylist": [
+        "door_animation_up",
+        "door_animation_down",
+        "recharging_animation",
+        "charge_animation",
+    ],
+    // safety net for stray fast flickers
+    "maxLoopsPerSecond": 7,
+}
+```
+
+The type/entity/safety levers are pure data; only `partDenylist` needs the
+provenance tag to function (and it's what makes roboport behave).
+
+### Rollout (two slices, low debt)
+
+1. **Type denylist + safety cap** — pure data, no plumbing. Instantly fixes
+   gates, logistic chests, and rocket silos; leaves belts/crafters/beacons/
+   generators on. Ship this first.
+2. **Provenance tag + per-part policy** — tag sprites with their source field in
+   `getParts`, then apply `partDenylist`. Unlocks roboport (antenna on, doors
+   off) and any other mixed entity.
+
+Radar's rotation sweep (see the taxonomy table above) is a separate, optional
+slice — synthesize a spin from `direction_count`, not part of this idle/working
+work.
+
 ## Phasing
 
 - **v1** _(done)_ — metadata on sprites + per-frame texture resolver + shared
   ticker driver + `animationsEnabled` setting + Settings checkbox + action-rail
   button + viewport culling + zoom gate + hidden-tab guard. Single-sheet parts,
   "preview" semantics.
-- **v2** — idle-only semantics, `run_mode` fidelity, multi-file (stripes/
-  filenames) animations, optional per-entity-type opt-out for noisy ones.
+- **v2** — idle-vs-working tuning (see the research & tuning plan above: a
+  type-denylist + safety-cap slice, then a provenance-tag + per-part slice),
+  `run_mode` fidelity, multi-file (stripes/filenames) animations, and optionally
+  radar's rotation sweep.
 
 No new data or exporter work is required — this is purely an editor-rendering
 feature.
