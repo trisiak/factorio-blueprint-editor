@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { dragOneFinger } from './touchGestures'
 
 // Placement of a *pasted blueprint* on touch (issue #30). A paste produces a
 // multi-entity ghost; before this, the only way to position it was to blind-tap
@@ -57,40 +58,6 @@ async function gotoWithPasteGhost(page: Page): Promise<number> {
     expect(spawned).toBe(true)
     await expect.poll(async () => (await getState(page)).paint.kind).toBe('blueprint')
     return original
-}
-
-// Drag a single finger across the canvas over CDP (Playwright's touchscreen API
-// is single-tap only). Coordinates are **canvas/element-relative** (same frame
-// as `locator.tap({position})`): CDP wants page coords and the canvas is inset
-// by the action rail, so add the `#editor` box offset — otherwise the touch
-// lands ~a rail-width off and misses the ghost you mean to grab.
-async function dragOneFinger(
-    page: Page,
-    from: { x: number; y: number },
-    to: { x: number; y: number }
-): Promise<void> {
-    const box = await page.locator('#editor').boundingBox()
-    const ox = box?.x ?? 0
-    const oy = box?.y ?? 0
-    const cdp = await page.context().newCDPSession(page)
-    await cdp.send('Input.dispatchTouchEvent', {
-        type: 'touchStart',
-        touchPoints: [{ x: ox + from.x, y: oy + from.y }],
-    })
-    const steps = 8
-    for (let i = 1; i <= steps; i++) {
-        await cdp.send('Input.dispatchTouchEvent', {
-            type: 'touchMove',
-            touchPoints: [
-                {
-                    x: ox + from.x + ((to.x - from.x) * i) / steps,
-                    y: oy + from.y + ((to.y - from.y) * i) / steps,
-                },
-            ],
-        })
-    }
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
-    await cdp.detach()
 }
 
 // Tap a button in the bottom paint d-pad (nudge arrows + Place). It's shown only

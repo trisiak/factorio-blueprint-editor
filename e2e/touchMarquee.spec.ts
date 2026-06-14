@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { dragOneFinger } from './touchGestures'
 
 // Touch box-select / marquee (#21) + the SELECT-mode polish (#33-adjacent): one
 // button (Select) arms a box-select; releasing holds the selection and shows the
@@ -40,38 +41,6 @@ async function gotoWithBlueprint(page: Page): Promise<number> {
     await waitForLoaded(page)
     await expect.poll(() => entityCount(page)).toBeGreaterThan(1)
     return entityCount(page)
-}
-
-// One-finger CDP drag. Coords are element-relative (same frame as
-// locator.tap({position})): the canvas is inset by the rail, so add the #editor
-// box offset. (Mirrors the placement specs' helper.)
-async function dragOneFinger(
-    page: Page,
-    from: { x: number; y: number },
-    to: { x: number; y: number }
-): Promise<void> {
-    const box = await page.locator('#editor').boundingBox()
-    const ox = box?.x ?? 0
-    const oy = box?.y ?? 0
-    const cdp = await page.context().newCDPSession(page)
-    await cdp.send('Input.dispatchTouchEvent', {
-        type: 'touchStart',
-        touchPoints: [{ x: ox + from.x, y: oy + from.y }],
-    })
-    const steps = 10
-    for (let i = 1; i <= steps; i++) {
-        await cdp.send('Input.dispatchTouchEvent', {
-            type: 'touchMove',
-            touchPoints: [
-                {
-                    x: ox + from.x + ((to.x - from.x) * i) / steps,
-                    y: oy + from.y + ((to.y - from.y) * i) / steps,
-                },
-            ],
-        })
-    }
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
-    await cdp.detach()
 }
 
 // Tap the rail's Select button (open the ⋯ overflow first if it spilled there).
