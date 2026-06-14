@@ -61,6 +61,13 @@ export class EntityContainer {
             G.BPC.wiresContainer.update(this.m_Entity.entityNumber)
         }
 
+        const onMirrorChange = (): void => {
+            this.redraw()
+            this.redrawEntityInfo()
+            this.refreshCursorBox()
+            G.BPC.wiresContainer.update(this.m_Entity.entityNumber)
+        }
+
         const onDirectionTypeChange = (): void => {
             this.redraw()
             this.redrawSurroundingEntities()
@@ -107,6 +114,7 @@ export class EntityContainer {
 
         this.m_Entity.on('recipe', onRecipeChange)
         this.m_Entity.on('direction', onDirectionChange)
+        this.m_Entity.on('mirror', onMirrorChange)
         this.m_Entity.on('directionType', onDirectionTypeChange)
         this.m_Entity.on('position', onPositionChange)
         this.m_Entity.on('modules', onModulesChange)
@@ -121,6 +129,7 @@ export class EntityContainer {
         G.BPC.on('destroyed', () => {
             this.m_Entity.off('recipe', onRecipeChange)
             this.m_Entity.off('direction', onDirectionChange)
+            this.m_Entity.off('mirror', onMirrorChange)
             this.m_Entity.off('directionType', onDirectionTypeChange)
             this.m_Entity.off('position', onPositionChange)
             this.m_Entity.off('modules', onModulesChange)

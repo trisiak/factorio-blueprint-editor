@@ -43,10 +43,10 @@ async function tapRail(page: Page, title: string): Promise<void> {
 // Enter paint mode deterministically: seed a quickbar item (loaded from
 // localStorage on boot), then press the slot-1 key to pick it up. In PAINT the
 // rail surfaces the Cancel button, our DOM-observable proxy for "holding a cursor".
-async function gotoAndEnterPaint(page: Page): Promise<void> {
-    await page.addInitScript(() => {
-        window.localStorage.setItem('quickbarItemNames', JSON.stringify(['transport-belt']))
-    })
+async function gotoAndEnterPaint(page: Page, item = 'transport-belt'): Promise<void> {
+    await page.addInitScript(seed => {
+        window.localStorage.setItem('quickbarItemNames', JSON.stringify([seed]))
+    }, item)
     await page.goto('/')
     await waitForLoaded(page)
 
@@ -116,18 +116,31 @@ test.describe('action toolbar', () => {
             await expect(page.locator('#action-toolbar button[title="Select"]')).toBeVisible()
         })
 
-        test('PAINT mode surfaces rotate/pick/cancel; flip is cursor-aware', async ({ page }) => {
-            await gotoAndEnterPaint(page) // holding a single item (transport-belt)
+        test('PAINT surfaces rotate/flip/pick/cancel for a flippable held entity', async ({
+            page,
+        }) => {
+            await gotoAndEnterPaint(page) // a belt — directional, so flippable (#55)
 
             const toolbar = page.locator('#action-toolbar')
-            for (const title of ['Rotate', 'Pick', 'Cancel']) {
+            for (const title of ['Rotate', 'Flip H', 'Flip V', 'Pick', 'Cancel']) {
                 await expect(toolbar.locator(`button[title="${title}"]`)).toBeVisible()
             }
-            // Flip only works on a pasted-blueprint ghost, not a single held item,
-            // so it's hidden here; EDIT-only actions are hidden too.
-            for (const title of ['Flip H', 'Flip V', 'Delete', 'Copy cfg', 'Paste cfg']) {
+            // Delete / Copy cfg only make sense on a selected entity (EDIT).
+            for (const title of ['Delete', 'Copy cfg', 'Paste cfg']) {
                 await expect(toolbar.locator(`button[title="${title}"]`)).toHaveCount(0)
             }
+        })
+
+        test('Flip is cursor-aware: hidden for a non-flippable held entity', async ({ page }) => {
+            // A wooden chest has no direction and no fluidboxes → flipping is a
+            // no-op, so the Flip buttons stay hidden (rotate is mode-gated, not
+            // rotatability-gated, so it can still show — flip is the cursor-aware one).
+            await gotoAndEnterPaint(page, 'wooden-chest')
+
+            const toolbar = page.locator('#action-toolbar')
+            await expect(toolbar.locator('button[title="Cancel"]')).toBeVisible() // in paint
+            await expect(toolbar.locator('button[title="Flip H"]')).toHaveCount(0)
+            await expect(toolbar.locator('button[title="Flip V"]')).toHaveCount(0)
         })
 
         test('Flip buttons appear when holding a pasted-blueprint ghost', async ({ page }) => {

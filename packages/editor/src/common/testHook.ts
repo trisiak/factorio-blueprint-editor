@@ -38,6 +38,8 @@ export interface EditorTestState {
         tile: { x: number; y: number } | null
         /** Held entity ghost's facing (0/4/8/12 cardinal); null for tiles/wires. */
         direction: number | null
+        /** Held single-entity ghost's mirror (chirality) flag; null otherwise. */
+        mirror: boolean | null
         /**
          * What the cursor holds: a single `entity`, a pasted `blueprint`
          * (multi-entity ghost, draggable/nudgeable on touch), or null when idle.
@@ -94,6 +96,10 @@ export function getEditorTestState(): EditorTestState {
                 painting && G.BPC.paintContainer instanceof PaintEntityContainer
                     ? G.BPC.paintContainer.getDirection()
                     : null,
+            mirror:
+                painting && G.BPC.paintContainer instanceof PaintEntityContainer
+                    ? G.BPC.paintContainer.isMirrored()
+                    : null,
             kind: !painting
                 ? null
                 : G.BPC.paintContainer instanceof PaintBlueprintContainer
@@ -143,6 +149,8 @@ export interface FbeTestHook {
      * EDIT mode) without guessing coordinates.
      */
     entityScreenPos: (name: string) => { x: number; y: number } | null
+    /** A placed entity's `mirror` flag (round-trip / export-correctness check), or null if absent. */
+    entityMirror: (name: string) => boolean | null
     /**
      * Count rendered wire pixels per colour by extracting the wires container in
      * isolation (so combinator/pole sprites can't be mistaken for a wire). Backs
@@ -213,6 +221,10 @@ export function installTestHook(win: Window = window): void {
                 x: e.position.x * 32 * G.BPC.scale.x + G.BPC.x,
                 y: e.position.y * 32 * G.BPC.scale.y + G.BPC.y,
             }
+        },
+        entityMirror: name => {
+            const e = findEntity(name)
+            return e ? e.mirror : null
         },
         wireColorPixelCounts: () => {
             // Extract the wires container on its own — it holds only wire sprites,

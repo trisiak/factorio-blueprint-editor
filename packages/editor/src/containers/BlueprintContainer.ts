@@ -744,17 +744,32 @@ export class BlueprintContainer extends Container {
     }
 
     public flip(vertical: boolean): void {
-        if (this.mode === EditorMode.PAINT && this.paintContainer.canFlipOrRotateByCopying()) {
-            try {
-                const copies = this.paintContainer.flippedEntities(vertical)
-                this.paintContainer.destroy()
-                this.spawnPaintContainer(copies, 0)
-            } catch (e) {
-                if (e instanceof IllegalFlipError) {
-                    G.logger({ text: e.message, type: 'warning' })
+        try {
+            if (this.mode === EditorMode.EDIT) {
+                // A placed entity: flip it in place (wires preserved).
+                this.hoverContainer.entity.flipInPlace(vertical)
+            } else if (this.mode === EditorMode.PAINT) {
+                if (this.paintContainer.canFlipOrRotateByCopying()) {
+                    // Paste ghost: rebuild from flipped copies.
+                    const copies = this.paintContainer.flippedEntities(vertical)
+                    this.paintContainer.destroy()
+                    this.spawnPaintContainer(copies, 0)
                 } else {
-                    throw e
+                    // Single held entity: flip in place (no-op for tiles/wires).
+                    this.paintContainer.flip(vertical)
                 }
+            } else if (this.mode === EditorMode.SELECT) {
+                // A single held selection flips in place; group flip (pivot +
+                // collision/wire handling) is deferred, mirroring rotate (#52).
+                if (this.marqueeEntities.length === 1) {
+                    this.marqueeEntities[0].flipInPlace(vertical)
+                }
+            }
+        } catch (e) {
+            if (e instanceof IllegalFlipError) {
+                G.logger({ text: e.message, type: 'warning' })
+            } else {
+                throw e
             }
         }
     }
@@ -1077,6 +1092,11 @@ export class BlueprintContainer extends Container {
     public get marqueeDirection(): number | undefined {
         if (this.mode !== EditorMode.SELECT || this.marqueeEntities.length === 0) return undefined
         return this.marqueeEntities[0].direction
+    }
+
+    /** Whether a single-entity selection can be flipped in place (gates Flip; #55). */
+    public get marqueeCanFlip(): boolean {
+        return this.marqueeCount === 1 && this.marqueeEntities[0].canFlip
     }
 
     /** Copy the selection into a paste ghost (originals stay), previewed in place. */

@@ -127,12 +127,17 @@ export class Editor {
     }
 
     /**
-     * Whether the held cursor can be flipped — true only while holding a *pasted
-     * blueprint* (a single held entity has no flip path). Gates the rail's Flip
-     * buttons so they only show when flipping does something.
+     * Whether the current flip target can actually be flipped — a held cursor
+     * (a pasted blueprint, or a single held entity that's directional or chiral),
+     * a placed entity being edited, or a single-entity marquee selection (#55).
+     * Gates the rail's Flip buttons so they only show when flipping does something.
      */
     public get cursorCanFlip(): boolean {
-        return G.BPC.mode === EditorMode.PAINT && !!G.BPC.paintContainer?.canFlipOrRotateByCopying()
+        const mode = G.BPC.mode
+        if (mode === EditorMode.PAINT) return !!G.BPC.paintContainer?.canFlip()
+        if (mode === EditorMode.EDIT) return !!G.BPC.hoverContainer?.entity?.canFlip
+        if (mode === EditorMode.SELECT) return G.BPC.marqueeCanFlip
+        return false
     }
 
     // --- Touch marquee (#21) — thin delegators for the website's Select button
