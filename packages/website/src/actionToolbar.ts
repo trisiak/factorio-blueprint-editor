@@ -99,6 +99,10 @@ const BUTTONS: ToolbarButton[] = [
     },
     // Blueprint-level / management actions — global; keyboard-only otherwise, so
     // unreachable on touch (see issue #26). Low priority → live in the ⋯ overflow.
+    // Toggle idle-state entity animations (#29) — global (no mode gate), routed
+    // via a handler (an Editor setting, not a keybind action); the glyph flips
+    // ▶/⏸ to reflect state. Low priority so it sits in the ⋯ overflow.
+    { action: 'toggleAnimations', glyph: '▶', label: 'Animate' },
     { action: 'copyBlueprint', glyph: '📋', label: 'Copy BP' },
     { action: 'appendBlueprint', glyph: '📥', label: 'Paste BP' },
     { action: 'takePicture', glyph: '📷', label: 'Export' },
@@ -172,6 +176,9 @@ function isCancelableMode(mode: EditorMode): boolean {
  *   `EDITOR.callAction`.
  */
 export function initActionToolbar(editor: Editor, handlers: Record<string, () => void> = {}): void {
+    // Reflect the Animate button's state once it's built (assigned below).
+    let refreshAnimateBtn = (): void => {}
+
     // Built-in handlers for buttons backed by Editor methods rather than the
     // keybind registry. Caller overrides win.
     handlers = {
@@ -186,6 +193,10 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
         nudgeSelRight: () => editor.nudgeSelection({ x: 1, y: 0 }),
         selectHovered: () => editor.selectHovered(),
         editHovered: () => editor.editHovered(),
+        toggleAnimations: () => {
+            editor.animationsEnabled = !editor.animationsEnabled
+            refreshAnimateBtn()
+        },
         ...handlers,
     }
     const run = (action: string): void => {
@@ -249,6 +260,17 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
     })
     const byAction = (name: string): HTMLButtonElement | undefined =>
         buttons.find(b => b.spec.action === name)?.button
+
+    // Animate toggle: pressed look + ▶/⏸ glyph mirror editor.animationsEnabled.
+    refreshAnimateBtn = (): void => {
+        const b = byAction('toggleAnimations')
+        if (!b) return
+        const on = editor.animationsEnabled
+        b.classList.toggle('active', on)
+        const g = b.querySelector('.glyph')
+        if (g) g.textContent = on ? '⏸' : '▶'
+    }
+    refreshAnimateBtn()
 
     document.body.appendChild(rail)
 

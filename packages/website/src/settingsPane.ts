@@ -185,6 +185,20 @@ export function initSettingsPane(
             editor.limitWireReach = limitWireReach
         })
 
+    // Idle-state entity animations (#29). Off by default; mirrors the Animate
+    // button on the action rail. An accessor proxy over editor.animationsEnabled
+    // means .listen() reflects rail toggles back into the checkbox (and vice
+    // versa) — both sides read/write the single editor setting.
+    const animationsProxy = {
+        get animations(): boolean {
+            return editor.animationsEnabled
+        },
+        set animations(on: boolean) {
+            editor.animationsEnabled = on
+        },
+    }
+    gui.add(animationsProxy, 'animations').name('Animations').listen()
+
     if (localStorage.getItem('oilOutpostSettings')) {
         const settings = JSON.parse(localStorage.getItem('oilOutpostSettings'))
         editor.oilOutpostSettings = settings

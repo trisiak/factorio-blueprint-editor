@@ -1,11 +1,15 @@
 # Idle-state entity animations — design (#29)
 
-> Investigation + plan, not yet implemented. Goal: a **global toggle** that plays
-> entities' idle animations on the canvas (instead of the static frame 0 we draw
-> today), surfaced as a switch in Settings and a button on the mobile action rail
-> (see `mobile-controls.md`). Spun out of the Space Exploration work (#28); the
-> shape-normalized renderer there means animation metadata now reaches the
-> sprites uniformly across packs.
+> Goal: a **global toggle** that plays entities' idle animations on the canvas
+> (instead of the static frame 0 we draw today), surfaced as a switch in Settings
+> and a button on the mobile action rail (see `mobile-controls.md`). Spun out of
+> the Space Exploration work (#28); the shape-normalized renderer there means
+> animation metadata now reaches the sprites uniformly across packs.
+>
+> **Status: a basic POC has landed** (single-sheet animations + shared-clock
+> ticker driver + `animationsEnabled` setting + Settings checkbox + action-rail
+> Animate button). Remaining v1 hardening (viewport culling, pause-when-hidden,
+> zoom threshold) and all of v2 are still open — see Phasing.
 
 ## Why it's feasible (the data + plumbing already exist)
 

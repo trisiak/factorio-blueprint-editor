@@ -16,6 +16,20 @@ import {
     SPRITE_GENERATION_FAILED,
 } from '../core/spriteDataBuilder'
 import { UnknownEntitySprite } from './UnknownEntitySprite'
+
+/** How to address a multi-frame sprite's frames within its atlas sheet (#29). */
+interface AnimSpec {
+    filename: string
+    baseX: number
+    baseY: number
+    w: number
+    h: number
+    frames: number
+    /** frames per row in the sheet (`line_length`, or all-in-one-row) */
+    cols: number
+    /** ms per frame, from `animation_speed` (frames/tick at 60 ups) */
+    frameMs: number
+}
 import FD, { ColorWithAlpha, getColor, getEntitySize } from '../core/factorioData'
 import { BlendMode } from 'factorio:prototype'
 
@@ -64,6 +78,18 @@ export class EntitySprite extends Sprite {
     private __zIndex: number
     private zOrder: number
     private readonly entityPos: IPoint
+
+    // --- Idle-state animation (#29) ---------------------------------------
+    // A multi-frame sprite stashes how to address its frames in the atlas; the
+    // shared ticker driver below swaps the texture frame when animations are on.
+    private anim?: AnimSpec
+    private animFrame = 0
+
+    /** All animatable sprites currently alive — the driver iterates this. */
+    private static readonly animated = new Set<EntitySprite>()
+    private static animEnabled = false
+    private static animTickerCb?: () => void
+    private static animStartMs = 0
 
     public constructor(
         texture: Texture,
@@ -126,12 +152,104 @@ export class EntitySprite extends Sprite {
             })
         }
 
+        this.setupAnimation(data)
+
         return this
     }
 
     private static getNextID(): number {
         this.nextID += 1
         return this.nextID
+    }
+
+    /**
+     * Detect a multi-frame animation on this part and register it with the
+     * driver. POC scope (#29): single-sheet animations only — frames split
+     * across files (`filenames`/`stripes`) keep their static frame 0 for now.
+     */
+    private setupAnimation(data: ExtendedSpriteData): void {
+        const a = data as ExtendedSpriteData & {
+            frame_count?: number
+            line_length?: number
+            animation_speed?: number
+            filename?: string
+            filenames?: unknown
+            stripes?: unknown
+        }
+        if (!a.filename || a.filenames || a.stripes) return
+        const frames = a.frame_count ?? 1
+        if (frames <= 1) return
+        const speed = a.animation_speed ?? 1
+        if (speed <= 0) return
+        const size = Array.isArray(data.size) ? data.size : [data.size, data.size]
+        const w = data.width || size[0] || 0
+        const h = data.height || size[1] || 0
+        if (!w || !h) return
+        this.anim = {
+            filename: a.filename,
+            baseX: data.x || 0,
+            baseY: data.y || 0,
+            w,
+            h,
+            frames,
+            cols: a.line_length || frames,
+            frameMs: 1000 / (speed * 60),
+        }
+        EntitySprite.animated.add(this)
+        // Show the live frame immediately if animations are already on.
+        if (EntitySprite.animEnabled) EntitySprite.stepSprite(this, performance.now())
+    }
+
+    /** Point this sprite's texture at frame `idx` of its animation. */
+    private setAnimFrame(idx: number): void {
+        const a = this.anim
+        if (!a) return
+        this.animFrame = idx
+        this.texture = G.getTexture(
+            a.filename,
+            a.baseX + (idx % a.cols) * a.w,
+            a.baseY + Math.floor(idx / a.cols) * a.h,
+            a.w,
+            a.h
+        )
+    }
+
+    private static stepSprite(s: EntitySprite, nowMs: number): void {
+        const a = s.anim
+        if (!a) return
+        const idx = Math.floor((nowMs - EntitySprite.animStartMs) / a.frameMs) % a.frames
+        if (idx !== s.animFrame) s.setAnimFrame(idx)
+    }
+
+    public static get animationsEnabled(): boolean {
+        return EntitySprite.animEnabled
+    }
+
+    /**
+     * Global on/off for idle animations. When on, a single ticker advances a
+     * shared clock and steps every registered sprite; when off, the ticker is
+     * removed and every sprite resets to frame 0 (today's static render).
+     */
+    public static setAnimationsEnabled(on: boolean): void {
+        if (on === EntitySprite.animEnabled) return
+        EntitySprite.animEnabled = on
+        if (on) {
+            EntitySprite.animStartMs = performance.now()
+            EntitySprite.animTickerCb = () => {
+                const now = performance.now()
+                for (const s of EntitySprite.animated) EntitySprite.stepSprite(s, now)
+            }
+            G.app.ticker.add(EntitySprite.animTickerCb)
+        } else if (EntitySprite.animTickerCb) {
+            G.app.ticker.remove(EntitySprite.animTickerCb)
+            EntitySprite.animTickerCb = undefined
+            for (const s of EntitySprite.animated) s.setAnimFrame(0)
+        }
+    }
+
+    public override destroy(options?: Parameters<Sprite['destroy']>[0]): void {
+        EntitySprite.animated.delete(this)
+        super.destroy(options)
     }
 
     public static getParts(
