@@ -27,6 +27,15 @@ export class WireConnections extends EventEmitter<WireConnectionsEvents> {
     private bp: Blueprint
     private readonly connections = new WireConnectionMap()
 
+    // Cache of the per-colour network component map (see `circuitNetworkIds`),
+    // invalidated whenever a connection is added/removed. Keeps repeated lookups
+    // — e.g. the hover network-highlight — cheap on large blueprints.
+    private m_networkVersion = 0
+    private readonly m_networkCache = new Map<
+        'red' | 'green',
+        { version: number; ids: Map<string, number> }
+    >()
+
     public constructor(bp: Blueprint) {
         super()
         this.bp = bp
@@ -204,6 +213,7 @@ export class WireConnections extends EventEmitter<WireConnectionsEvents> {
     }
 
     private onCreateOrRemoveConnection(newValue: IConnection, oldValue: IConnection): void {
+        this.m_networkVersion++
         if (newValue) {
             this.emit('create', WireConnections.hash(newValue), newValue)
         } else if (oldValue) {
@@ -308,6 +318,9 @@ export class WireConnections extends EventEmitter<WireConnectionsEvents> {
      * panel / editor open. Mirrors what the game shows as the red/green network id.
      */
     private circuitNetworkIds(color: 'red' | 'green'): Map<string, number> {
+        const cached = this.m_networkCache.get(color)
+        if (cached && cached.version === this.m_networkVersion) return cached.ids
+
         const adj = new Map<string, Set<string>>()
         const node = (cp: IConnectionPoint): string => `${cp.entityNumber}-${cp.entitySide ?? 1}`
         const link = (a: string, b: string): void => {
@@ -338,7 +351,46 @@ export class WireConnections extends EventEmitter<WireConnectionsEvents> {
                 }
             }
         }
+        this.m_networkCache.set(color, { version: this.m_networkVersion, ids })
         return ids
+    }
+
+    /**
+     * The entities and wire hashes that share **any** circuit (red/green) network
+     * with `entityNumber` — for highlighting the network when the entity is
+     * hovered/selected. `entities` includes the queried entity itself.
+     */
+    public getConnectedNetwork(entityNumber: number): {
+        entities: Set<number>
+        hashes: Set<string>
+    } {
+        const entities = new Set<number>()
+        const hashes = new Set<string>()
+        for (const color of ['red', 'green'] as const) {
+            const ids = this.circuitNetworkIds(color)
+            // The network id(s) the entity belongs to on this colour.
+            const myIds = new Set<number>()
+            for (const conn of this.getEntityConnections(entityNumber)) {
+                if (conn.color !== color) continue
+                for (const cp of conn.cps) {
+                    if (cp.entityNumber !== entityNumber) continue
+                    const id = ids.get(`${cp.entityNumber}-${cp.entitySide ?? 1}`)
+                    if (id !== undefined) myIds.add(id)
+                }
+            }
+            if (myIds.size === 0) continue
+            // Every node (→ entity) in those networks.
+            for (const [nodeKey, id] of ids) {
+                if (myIds.has(id)) entities.add(Number(nodeKey.split('-')[0]))
+            }
+            // Every wire of those networks.
+            this.forEach((conn, hash) => {
+                if (conn.color !== color) return
+                const id = ids.get(`${conn.cps[0].entityNumber}-${conn.cps[0].entitySide ?? 1}`)
+                if (id !== undefined && myIds.has(id)) hashes.add(hash)
+            })
+        }
+        return { entities, hashes }
     }
 
     /** The red/green circuit network ids an entity's sides belong to. */

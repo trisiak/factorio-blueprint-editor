@@ -309,6 +309,17 @@ export class EntityContainer {
 
         G.UI.updateEntityInfoPanel(this.m_Entity)
         this.visualizationArea.show()
+
+        // Highlight the entity's circuit network — box the connected entities and
+        // dim the unrelated wires — so the signal network reads at a glance.
+        const net = G.bp.wireConnections.getConnectedNetwork(this.m_Entity.entityNumber)
+        if (net.hashes.size > 0) {
+            G.BPC.overlayContainer.showNetworkHighlight(
+                net.entities,
+                net.hashes,
+                this.m_Entity.entityNumber
+            )
+        }
     }
 
     public pointerOutEventHandler(): void {
@@ -317,6 +328,7 @@ export class EntityContainer {
 
         G.UI.updateEntityInfoPanel(undefined)
         this.visualizationArea.hide()
+        G.BPC.overlayContainer.clearNetworkHighlight()
     }
 
     private redrawSurroundingEntities(position: IPoint = this.m_Entity.position): void {

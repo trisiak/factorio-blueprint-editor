@@ -151,6 +151,8 @@ export interface FbeTestHook {
      * a paste that places entities but none of their connections) fails the test.
      */
     wireColorPixelCounts: () => { red: number; green: number; copper: number }
+    /** Number of circuit-network highlight boxes currently shown (#49 hover highlight). */
+    networkHighlightCount: () => number
 }
 
 /** Approximate per-channel match against a target colour (tolerant of AA edges). */
@@ -237,6 +239,7 @@ export function installTestHook(win: Window = window): void {
             }
             return { red, green, copper }
         },
+        networkHighlightCount: () => G.BPC.overlayContainer.networkHighlightCount,
     }
     ;(win as unknown as Record<string, unknown>)[TEST_HOOK_KEY] = hook
 }

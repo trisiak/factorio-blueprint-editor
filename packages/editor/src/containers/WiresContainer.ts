@@ -119,6 +119,18 @@ export class WiresContainer extends Container {
         }
     }
 
+    /** Dim every wire that isn't in `hashes` so a hovered entity's network pops. */
+    public highlightNetwork(hashes: Set<string>): void {
+        for (const [hash, sprite] of this.connectionToSprite) {
+            sprite.alpha = hashes.has(hash) ? 1 : 0.12
+        }
+    }
+
+    /** Restore all wires to full opacity (clears `highlightNetwork`). */
+    public clearHighlight(): void {
+        for (const sprite of this.connectionToSprite.values()) sprite.alpha = 1
+    }
+
     public update(entityNumber: number): void {
         const connections = this.bp.wireConnections.getEntityConnections(entityNumber)
 

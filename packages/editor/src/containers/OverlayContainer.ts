@@ -31,6 +31,8 @@ const combinatorOperatorStyle = new TextStyle({
 export class OverlayContainer extends Container {
     private readonly bpc: BlueprintContainer
     private readonly entityInfos = new Container()
+    /** Boxes marking the entities on a hovered entity's circuit network. */
+    private readonly networkBoxes = new Container()
     private readonly cursorBoxes = new Container()
     private readonly undergroundLines = new Container()
     private readonly selectionArea = new Graphics()
@@ -45,11 +47,41 @@ export class OverlayContainer extends Container {
 
         this.addChild(
             this.entityInfos,
+            this.networkBoxes,
             this.cursorBoxes,
             this.undergroundLines,
             this.selectionArea,
             this.paintCenterMarker
         )
+    }
+
+    /**
+     * Highlight a hovered entity's circuit network: box every connected entity
+     * (except the hovered one, which already has the regular cursor box) and dim
+     * the wires that aren't part of it. `clearNetworkHighlight` undoes both.
+     */
+    public showNetworkHighlight(entities: Set<number>, hashes: Set<string>, exclude: number): void {
+        this.clearNetworkHighlight()
+        for (const entityNumber of entities) {
+            if (entityNumber === exclude) continue
+            // The cursor box is positioned in overlay/world space — use the
+            // entity container's pixel position (like the regular cursor box),
+            // not the entity's tile position.
+            const ec = EntityContainer.mappings.get(entityNumber)
+            if (!ec) continue
+            this.createCursorBox(ec.position, ec.entity.size, 'pair', this.networkBoxes)
+        }
+        this.bpc.wiresContainer.highlightNetwork(hashes)
+    }
+
+    public clearNetworkHighlight(): void {
+        for (const c of this.networkBoxes.removeChildren()) c.destroy()
+        this.bpc.wiresContainer.clearHighlight()
+    }
+
+    /** Number of network-highlight boxes currently shown (for e2e). */
+    public get networkHighlightCount(): number {
+        return this.networkBoxes.children.length
     }
 
     public static createEntityInfo(entity: Entity, position: IPoint): Container {
@@ -425,12 +457,13 @@ export class OverlayContainer extends Container {
     public createCursorBox(
         position: IPoint,
         size: IPoint,
-        type: keyof CursorBoxSpecification = 'regular'
+        type: keyof CursorBoxSpecification = 'regular',
+        parent: Container = this.cursorBoxes
     ): Container {
         const cursorBox = new Container()
         cursorBox.scale.set(0.5, 0.5)
         cursorBox.position.set(position.x, position.y)
-        this.cursorBoxes.addChild(cursorBox)
+        parent.addChild(cursorBox)
 
         if (size.x === 1 && size.y === 1) {
             const data = FD.utilitySprites.cursor_box[type][0].sprite
