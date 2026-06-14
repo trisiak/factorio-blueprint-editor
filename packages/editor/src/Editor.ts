@@ -16,6 +16,7 @@ import G, { DATA_URL, Logger } from './common/globals'
 import { Entity } from './core/Entity'
 import { Blueprint, oilOutpostSettings, IOilOutpostSettings } from './core/Blueprint'
 import { BlueprintContainer, EditorMode, GridPattern } from './containers/BlueprintContainer'
+import { EntitySprite } from './containers/EntitySprite'
 import { PaintTileContainer } from './containers/PaintTileContainer'
 import { UIContainer } from './UI/UIContainer'
 import { Dialog } from './UI/controls/Dialog'
@@ -225,6 +226,14 @@ export class Editor {
     }
     public set limitWireReach(limit: boolean) {
         G.BPC.limitWireReach = limit
+    }
+
+    /** Global idle-state entity animations (#29). Off by default. */
+    public get animationsEnabled(): boolean {
+        return EntitySprite.animationsEnabled
+    }
+    public set animationsEnabled(on: boolean) {
+        EntitySprite.setAnimationsEnabled(on)
     }
 
     public get oilOutpostSettings(): IOilOutpostSettings {

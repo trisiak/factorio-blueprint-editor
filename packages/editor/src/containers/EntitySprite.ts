@@ -16,6 +16,24 @@ import {
     SPRITE_GENERATION_FAILED,
 } from '../core/spriteDataBuilder'
 import { UnknownEntitySprite } from './UnknownEntitySprite'
+// Type-only: read the live viewport transform/zoom for culling + the zoom gate
+// (#29 v1). BlueprintContainer imports EntitySprite, but a type import is erased
+// at runtime so this introduces no module cycle.
+import type { BlueprintContainer } from './BlueprintContainer'
+
+/** How to address a multi-frame sprite's frames within its atlas sheet (#29). */
+interface AnimSpec {
+    filename: string
+    baseX: number
+    baseY: number
+    w: number
+    h: number
+    frames: number
+    /** frames per row in the sheet (`line_length`, or all-in-one-row) */
+    cols: number
+    /** ms per frame, from `animation_speed` (frames/tick at 60 ups) */
+    frameMs: number
+}
 import FD, { ColorWithAlpha, getColor, getEntitySize } from '../core/factorioData'
 import { BlendMode } from 'factorio:prototype'
 
@@ -64,6 +82,28 @@ export class EntitySprite extends Sprite {
     private __zIndex: number
     private zOrder: number
     private readonly entityPos: IPoint
+
+    // --- Idle-state animation (#29) ---------------------------------------
+    // A multi-frame sprite stashes how to address its frames in the atlas; the
+    // shared ticker driver below swaps the texture frame when animations are on.
+    private anim?: AnimSpec
+    private animFrame = 0
+
+    /** All animatable sprites currently alive — the driver iterates this. */
+    private static readonly animated = new Set<EntitySprite>()
+    private static animEnabled = false
+    private static animTickerCb?: () => void
+    private static animStartMs = 0
+
+    /**
+     * Below this viewport scale a 32px sprite's frame-to-frame motion isn't
+     * worth the texture swaps, so the zoom gate holds everything on frame 0.
+     * Conservative on purpose (only kicks in when genuinely zoomed out) so
+     * toggling Animate at a normal editing zoom never looks like a no-op.
+     */
+    private static readonly ANIM_MIN_SCALE = 0.35
+    /** True while the zoom gate is holding sprites static (reset frames once). */
+    private static animDormant = false
 
     public constructor(
         texture: Texture,
@@ -126,12 +166,173 @@ export class EntitySprite extends Sprite {
             })
         }
 
+        this.setupAnimation(data)
+
         return this
     }
 
     private static getNextID(): number {
         this.nextID += 1
         return this.nextID
+    }
+
+    /**
+     * Detect a multi-frame animation on this part and register it with the
+     * driver. POC scope (#29): single-sheet animations only — frames split
+     * across files (`filenames`/`stripes`) keep their static frame 0 for now.
+     */
+    private setupAnimation(data: ExtendedSpriteData): void {
+        const a = data as ExtendedSpriteData & {
+            frame_count?: number
+            line_length?: number
+            animation_speed?: number
+            filename?: string
+            filenames?: unknown
+            stripes?: unknown
+        }
+        if (!a.filename || a.filenames || a.stripes) return
+        const frames = a.frame_count ?? 1
+        if (frames <= 1) return
+        const speed = a.animation_speed ?? 1
+        if (speed <= 0) return
+        const size = Array.isArray(data.size) ? data.size : [data.size, data.size]
+        const w = data.width || size[0] || 0
+        const h = data.height || size[1] || 0
+        if (!w || !h) return
+        this.anim = {
+            filename: a.filename,
+            baseX: data.x || 0,
+            baseY: data.y || 0,
+            w,
+            h,
+            frames,
+            cols: a.line_length || frames,
+            frameMs: 1000 / (speed * 60),
+        }
+        EntitySprite.animated.add(this)
+        // Show the live frame immediately if animations are already on.
+        if (EntitySprite.animEnabled) EntitySprite.stepSprite(this, performance.now())
+    }
+
+    /** Point this sprite's texture at frame `idx` of its animation. */
+    private setAnimFrame(idx: number): void {
+        const a = this.anim
+        if (!a) return
+        this.animFrame = idx
+        this.texture = G.getTexture(
+            a.filename,
+            a.baseX + (idx % a.cols) * a.w,
+            a.baseY + Math.floor(idx / a.cols) * a.h,
+            a.w,
+            a.h
+        )
+    }
+
+    private static stepSprite(s: EntitySprite, nowMs: number): void {
+        const a = s.anim
+        if (!a) return
+        const idx = Math.floor((nowMs - EntitySprite.animStartMs) / a.frameMs) % a.frames
+        if (idx !== s.animFrame) s.setAnimFrame(idx)
+    }
+
+    /**
+     * The shared driver, run once per Pixi tick while animations are on. Three
+     * cheap gates keep a large blueprint affordable (#29 v1):
+     *  - hidden tab: browsers already pause requestAnimationFrame (and thus
+     *    Pixi's ticker) for a backgrounded tab, so this seldom fires while
+     *    hidden — but bail anyway so a stray tick never churns textures.
+     *  - zoom gate: far enough out, sub-pixel motion isn't worth it; hold every
+     *    sprite on frame 0 below ANIM_MIN_SCALE.
+     *  - viewport culling: only step sprites whose tile is on (or near) screen,
+     *    so a huge off-screen factory costs a bounds check, not a texture swap.
+     */
+    private static tick(): void {
+        if (typeof document !== 'undefined' && document.hidden) return
+
+        const bpc = G.BPC
+        const scale = bpc ? bpc.getViewportScale() : 1
+        if (scale < EntitySprite.ANIM_MIN_SCALE) {
+            if (!EntitySprite.animDormant) {
+                for (const s of EntitySprite.animated) s.setAnimFrame(0)
+                EntitySprite.animDormant = true
+            }
+            return
+        }
+        EntitySprite.animDormant = false
+
+        const rect = EntitySprite.visibleRect(bpc)
+        const now = performance.now()
+        for (const s of EntitySprite.animated) {
+            if (rect && !EntitySprite.inRect(s, rect)) continue
+            EntitySprite.stepSprite(s, now)
+        }
+    }
+
+    /**
+     * The on-screen region in entitySprites-local (world-pixel) coordinates, or
+     * undefined when the scene isn't ready yet — in which case culling is
+     * disabled (animate everything) rather than risk hiding live sprites.
+     */
+    private static visibleRect(
+        bpc?: BlueprintContainer
+    ): { x0: number; x1: number; y0: number; y1: number } | undefined {
+        if (!bpc || !G.app?.screen) return undefined
+        const sx = bpc.scale.x || 1
+        const sy = bpc.scale.y || 1
+        const tx = bpc.position.x
+        const ty = bpc.position.y
+        // A screen point P maps to a local point L by P = L * scale + translation
+        // (the BlueprintContainer transform), so L = (P - t) / s inverts the two
+        // screen corners back into the world space the sprites live in.
+        return {
+            x0: (0 - tx) / sx,
+            x1: (G.app.screen.width - tx) / sx,
+            y0: (0 - ty) / sy,
+            y1: (G.app.screen.height - ty) / sy,
+        }
+    }
+
+    /**
+     * Is this sprite's tile inside `rect`, padded by the sprite's own extent so
+     * a part straddling the edge still animates (no pop-in at the border)?
+     */
+    private static inRect(
+        s: EntitySprite,
+        rect: { x0: number; x1: number; y0: number; y1: number }
+    ): boolean {
+        const a = s.anim
+        const m = a ? Math.max(a.w, a.h) : 64
+        const { x, y } = s.entityPos
+        return x + m >= rect.x0 && x - m <= rect.x1 && y + m >= rect.y0 && y - m <= rect.y1
+    }
+
+    public static get animationsEnabled(): boolean {
+        return EntitySprite.animEnabled
+    }
+
+    /**
+     * Global on/off for idle animations. When on, a single ticker advances a
+     * shared clock and steps every registered sprite; when off, the ticker is
+     * removed and every sprite resets to frame 0 (today's static render).
+     */
+    public static setAnimationsEnabled(on: boolean): void {
+        if (on === EntitySprite.animEnabled) return
+        EntitySprite.animEnabled = on
+        if (on) {
+            EntitySprite.animStartMs = performance.now()
+            EntitySprite.animDormant = false
+            EntitySprite.animTickerCb = EntitySprite.tick
+            G.app.ticker.add(EntitySprite.animTickerCb)
+        } else if (EntitySprite.animTickerCb) {
+            G.app.ticker.remove(EntitySprite.animTickerCb)
+            EntitySprite.animTickerCb = undefined
+            for (const s of EntitySprite.animated) s.setAnimFrame(0)
+        }
+    }
+
+    public override destroy(options?: Parameters<Sprite['destroy']>[0]): void {
+        EntitySprite.animated.delete(this)
+        super.destroy(options)
     }
 
     public static getParts(
