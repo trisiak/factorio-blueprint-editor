@@ -26,6 +26,11 @@ export class Editor {
     // blueprint load, so DOM consumers (the on-screen toolbar) subscribe here
     // once and we re-forward each new container's mode changes onto it.
     private readonly m_modeEmitter = new EventEmitter<{ mode: [EditorMode] }>()
+    // Stable blueprint-change emitter. Like the mode emitter, the active Blueprint
+    // is swapped on load, so DOM consumers (the action rail, which gates the
+    // box-select button on a non-empty blueprint) subscribe here once and we
+    // re-forward each new blueprint's create/remove-entity events onto it.
+    private readonly m_bpEmitter = new EventEmitter<{ change: [] }>()
 
     // Viewport insets (CSS px) reserved for DOM chrome — e.g. the mobile action
     // rail's left gutter. The canvas is sized to the remaining area and offset by
@@ -90,12 +95,18 @@ export class Editor {
         G.UI.showDebuggingLayer = G.debug
     }
 
-    /** Re-emit the active BlueprintContainer's mode changes on the stable emitter. */
+    /** Re-emit the active container's mode + the blueprint's entity changes on the stable emitters. */
     private bindBPCMode(): void {
         G.BPC.on('mode', (mode: EditorMode) => this.m_modeEmitter.emit('mode', mode))
+        G.bp.on('create-entity', () => this.m_bpEmitter.emit('change'))
+        G.bp.on('remove-entity', () => this.m_bpEmitter.emit('change'))
+        // Nudge consumers for the freshly-bound blueprint (e.g. after a load swaps
+        // it in). No-op at boot — nobody's subscribed yet (the rail's own initial
+        // layout covers the empty-blueprint start).
+        this.m_bpEmitter.emit('change')
     }
 
-    /** Current editor mode (NONE / EDIT / PAINT / PAN / COPY / DELETE). */
+    /** Current editor mode (NONE / EDIT / PAINT / PAN / COPY / DELETE / SELECT). */
     public get mode(): EditorMode {
         return G.BPC.mode
     }
@@ -103,6 +114,60 @@ export class Editor {
     /** Subscribe to editor mode changes — e.g. to show a "cancel paint" control. */
     public onModeChange(cb: (mode: EditorMode) => void): void {
         this.m_modeEmitter.on('mode', cb)
+    }
+
+    /** Subscribe to blueprint entity add/remove (across blueprint swaps on load). */
+    public onBlueprintChange(cb: () => void): void {
+        this.m_bpEmitter.on('change', cb)
+    }
+
+    /** Whether the working blueprint has no entities/tiles (gates the rail's Select). */
+    public get blueprintEmpty(): boolean {
+        return G.bp.isEmpty()
+    }
+
+    /**
+     * Whether the held cursor can be flipped — true only while holding a *pasted
+     * blueprint* (a single held entity has no flip path). Gates the rail's Flip
+     * buttons so they only show when flipping does something.
+     */
+    public get cursorCanFlip(): boolean {
+        return G.BPC.mode === EditorMode.PAINT && !!G.BPC.paintContainer?.canFlipOrRotateByCopying()
+    }
+
+    // --- Touch marquee (#21) — thin delegators for the website's Select button
+    // and the Copy/Cut/Delete bar (the gesture itself lives in BlueprintContainer).
+    /** Arm the marquee: the next one-finger drag draws a selection box (mobile). */
+    public armMarquee(): void {
+        G.BPC.armMarquee()
+    }
+    /** Entities in the held marquee selection (0 when not in SELECT mode). */
+    public get marqueeCount(): number {
+        return G.BPC.marqueeCount
+    }
+    public copyMarquee(): void {
+        G.BPC.copyMarquee()
+    }
+    public cutMarquee(): void {
+        G.BPC.cutMarquee()
+    }
+    public deleteMarquee(): void {
+        G.BPC.deleteMarquee()
+    }
+    public cancelMarquee(): void {
+        G.BPC.cancelMarquee()
+    }
+    /** Nudge the held selection one tile in place (preserves wiring). */
+    public nudgeSelection(offset: { x: number; y: number }): void {
+        G.BPC.nudgeSelection(offset)
+    }
+    /** EDIT bar: promote the tapped entity into a one-entity held selection. */
+    public selectHovered(): void {
+        G.BPC.selectHovered()
+    }
+    /** EDIT bar: open the tapped entity's editor. */
+    public editHovered(): void {
+        G.BPC.editHovered()
     }
 
     /**
@@ -193,7 +258,14 @@ export class Editor {
     }
 
     public async appendBlueprint(bp: Blueprint): Promise<void> {
-        const result = bp.entities.valuesArray().map(e => new Entity(e.rawEntity, G.BPC.bp))
+        // Keep the copies bound to the *source* blueprint `bp`, not the target
+        // `G.BPC.bp`: `PaintBlueprintContainer` rebuilds its ghost from
+        // `entities[0].Blueprint.wireConnections` (serializing the wires between the
+        // pasted entities), so binding to the empty target dropped every wire — a
+        // pasted blueprint placed with no circuit/copper connections. `bp` still
+        // holds the connections parsed on import, so the ghost (and the place that
+        // follows) carries them through.
+        const result = bp.entities.valuesArray().map(e => new Entity(e.rawEntity, bp))
 
         G.BPC.spawnPaintContainer(result, 0)
     }

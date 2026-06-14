@@ -103,6 +103,29 @@ export class GridData extends EventEmitter<GridDataEvents> {
         this.emit('update32', this._x32, this._y32, -dxTiles, -dyTiles)
     }
 
+    /**
+     * Force the grid position to a world-space point (px), bypassing the
+     * screen→world transform, and re-emit. Used to drop a held paint ghost at a
+     * known world location (e.g. a marquee Copy/Cut previewing in place) rather
+     * than under the finger.
+     */
+    public moveToWorld(worldX: number, worldY: number): void {
+        if (this.bpc.mode === EditorMode.PAN) return
+
+        const oldX32 = this._x32
+        const oldY32 = this._y32
+        this._x = Math.floor(worldX)
+        this._y = Math.floor(worldY)
+        this._x16 = Math.floor(this._x / 16)
+        this._y16 = Math.floor(this._y / 16)
+        this._x32 = Math.floor(this._x / 32)
+        this._y32 = Math.floor(this._y / 32)
+
+        this.emit('update', this._x, this._y)
+        this.emit('update16', this._x16, this._y16)
+        this.emit('update32', this._x32, this._y32, oldX32 - this._x32, oldY32 - this._y32)
+    }
+
     private update(mouseX: number, mouseY: number): void {
         if (!this.bpc) return
 

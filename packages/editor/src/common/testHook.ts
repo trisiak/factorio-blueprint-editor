@@ -51,6 +51,20 @@ export interface EditorTestState {
      * editor, so tests read this to confirm the overlay didn't pop on first touch.
      */
     dialogOpen: boolean
+    /**
+     * Touch box-select (#21): entities under the held marquee selection (0 unless
+     * a selection is held, i.e. mode SELECT with the action controls showing).
+     * `origin` is the selection's top-left tile — lets tests assert in-place
+     * nudging actually moved the entities.
+     */
+    marquee: {
+        count: number
+        origin: { x: number; y: number } | null
+        /** Direction of the first selected entity (for the rotate-in-select test). */
+        direction: number | null
+    }
+    /** Whether the top-right entity info panel is showing (hover/tap-select). */
+    infoPanelVisible: boolean
 }
 
 export function getEditorTestState(): EditorTestState {
@@ -89,6 +103,12 @@ export function getEditorTestState(): EditorTestState {
                     : null,
         },
         dialogOpen: Dialog.anyOpen(),
+        marquee: {
+            count: G.BPC.marqueeCount,
+            origin: G.BPC.marqueeOrigin ?? null,
+            direction: G.BPC.marqueeDirection ?? null,
+        },
+        infoPanelVisible: G.UI.entityInfoPanelVisible,
     }
 }
 
@@ -117,6 +137,28 @@ export interface FbeTestHook {
      * or the (not-yet-built) touch marquee. Returns false on an empty blueprint.
      */
     spawnPasteGhost: () => boolean
+    /**
+     * Screen-space (canvas-relative, CSS px) position of a named entity, or null
+     * if absent — lets touch tests tap an entity deterministically (e.g. to enter
+     * EDIT mode) without guessing coordinates.
+     */
+    entityScreenPos: (name: string) => { x: number; y: number } | null
+    /**
+     * Count rendered wire pixels per colour by extracting the wires container in
+     * isolation (so combinator/pole sprites can't be mistaken for a wire). Backs
+     * the e2e wire-visibility guards (`e2e/wires.spec.ts`) — asserting that every
+     * wire colour actually paints pixels, so a colour silently dropping out (e.g.
+     * a paste that places entities but none of their connections) fails the test.
+     */
+    wireColorPixelCounts: () => { red: number; green: number; copper: number }
+}
+
+/** Approximate per-channel match against a target colour (tolerant of AA edges). */
+function colorNear(r: number, g: number, b: number, target: number, tol = 36): boolean {
+    const R = (target >> 16) & 0xff
+    const G2 = (target >> 8) & 0xff
+    const B = target & 0xff
+    return Math.abs(r - R) <= tol && Math.abs(g - G2) <= tol && Math.abs(b - B) <= tol
 }
 
 function findEntity(name: string): Entity | undefined {
@@ -161,6 +203,39 @@ export function installTestHook(win: Window = window): void {
             if (entities.length === 0) return false
             G.BPC.spawnPaintContainer(entities)
             return true
+        },
+        entityScreenPos: name => {
+            const e = findEntity(name)
+            if (!e) return null
+            // World px → screen: the BlueprintContainer carries the viewport
+            // transform (position + scale), so screen = world*scale + offset.
+            return {
+                x: e.position.x * 32 * G.BPC.scale.x + G.BPC.x,
+                y: e.position.y * 32 * G.BPC.scale.y + G.BPC.y,
+            }
+        },
+        wireColorPixelCounts: () => {
+            // Extract the wires container on its own — it holds only wire sprites,
+            // so any red/green/copper pixel here is a wire, not an entity sprite.
+            const ex = (
+                G.app.renderer as unknown as {
+                    extract: { pixels: (t: unknown) => { pixels: Uint8Array } | Uint8Array }
+                }
+            ).extract.pixels(G.BPC.wiresContainer)
+            const px: Uint8Array = 'pixels' in ex ? ex.pixels : ex
+            let red = 0
+            let green = 0
+            let copper = 0
+            for (let i = 0; i < px.length; i += 4) {
+                if (px[i + 3] < 20) continue
+                const r = px[i]
+                const g = px[i + 1]
+                const b = px[i + 2]
+                if (colorNear(r, g, b, 0xc83718)) red++
+                if (colorNear(r, g, b, 0x588c38)) green++
+                if (colorNear(r, g, b, 0xcf7c00)) copper++
+            }
+            return { red, green, copper }
         },
     }
     ;(win as unknown as Record<string, unknown>)[TEST_HOOK_KEY] = hook

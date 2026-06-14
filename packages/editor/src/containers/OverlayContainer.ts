@@ -543,6 +543,8 @@ export class OverlayContainer extends Container {
     }
 
     public showSelectionArea(color: number): void {
+        // Reset any offset left by a previous selection's in-place nudges.
+        this.selectionArea.position.set(0, 0)
         const startPos = { x: this.bpc.gridData.x, y: this.bpc.gridData.y }
 
         this.selectionAreaUpdateFn = (endX: number, endY: number) => {
@@ -567,6 +569,22 @@ export class OverlayContainer extends Container {
     public hideSelectionArea(): void {
         this.selectionArea.clear()
         this.bpc.gridData.off('update', this.selectionAreaUpdateFn, this)
+    }
+
+    /**
+     * Stop the selection rectangle from tracking further grid updates, but leave
+     * it drawn. Used by the touch marquee: when the drag ends the box should
+     * freeze in place (a later tap moves the grid cursor and would otherwise
+     * redraw it) while the held selection awaits a Copy/Cut/Delete choice.
+     */
+    public freezeSelectionArea(): void {
+        this.bpc.gridData.off('update', this.selectionAreaUpdateFn, this)
+    }
+
+    /** Shift the frozen selection box by a tile offset (follows in-place nudges). */
+    public shiftSelectionArea(dxTiles: number, dyTiles: number): void {
+        this.selectionArea.position.x += dxTiles * 32
+        this.selectionArea.position.y += dyTiles * 32
     }
 
     /**

@@ -1,5 +1,13 @@
 # Mobile / touch controls
 
+> **Companion doc:** [`mobile-layout-inventory.md`](./mobile-layout-inventory.md)
+> (the screen-space map). **Open issues:** #52 (reposition a selection without
+> breaking wires — the broader problem behind the in-place nudge).
+> This doc is the source of truth for _what's done_ on the touch arc (it leads
+> the issue tracker) — when a slice lands, close/tick the matching issue in the
+> same change so they don't contradict each other. See CLAUDE.md "Keep issues
+> in sync with the work".
+
 Tracking doc for the touch-support arc: what's done, what's not, and where the
 pieces live. Intentionally light — update the checkboxes as work lands.
 
@@ -99,7 +107,7 @@ pipelines at once made touch taps double-act via the browser's synthetic
   competition; the wires panel re-centres at the bottom. `actionToolbar.ts`,
   `index.{styl,ts,html}`, `Editor.setViewportInsets`/`onModeChange`, `Panel`;
   e2e `actionToolbar.spec.ts` + `panels.spec.ts`. Remaining: real game-sprite
-  icons (unicode glyphs for now); touch box-select (#21).
+  icons (unicode glyphs for now).
 - ✅ **Item-selector overhaul** (`InventoryDialog`, the shared item/recipe/module
   picker) — now touch-usable: **scrollable** group-tabs (◀▶) and item grid (▲▼),
   masked with viewport-gated hit-testing; a **Recents tab** (first/active) with
@@ -110,6 +118,17 @@ pipelines at once made touch taps double-act via the browser's synthetic
   in-dialog and refreshes live; recipe-on-hover gated to desktop, fixing the stray
   touch-drag tooltip); and a **responsive body width** so the tab scroll only
   engages when the tabs truly can't fit (more item columns on wider screens).
+- ✅ **Pasted blueprints keep their wires** (issue #37) — the touch/drag paste mode
+  (#30) placed every entity but none of the wires: `Editor.appendBlueprint` rebound
+  the pasted entities to the (empty) target blueprint, so `PaintBlueprintContainer`
+  serialized its ghost from the wrong `wireConnections` and the placed paste had no
+  circuit/copper connections at all — while the same blueprint loaded via `?source`
+  (which keeps the source blueprint) wired up fine. Fix: keep the copies bound to
+  the source blueprint, which still holds the connections parsed on import. `Editor.ts`;
+  guarded by `e2e/wires.spec.ts`, which drives the real paste→place path and asserts
+  the placed wires survive (via a `wireColorPixelCounts()` `?test` hook that extracts
+  the wires container in isolation), plus `?source` load guards over a trivial and a
+  real 96-wire combinator blueprint (`e2e/fixtures/circuit-wire-blueprint.txt`).
 
 ## Not done / next
 
@@ -165,12 +184,74 @@ pipelines at once made touch taps double-act via the browser's synthetic
   bottom d-pad + toast `pointer-events`/z-index fix (`actionToolbar.ts`,
   `index.styl`). Covered by `e2e/touchPlacement*.spec.ts` (CDP drag for grab-vs-pan
   on both ghost kinds, d-pad nudge, Place commit) via the `?test` hook (`paint.kind`
-    - `spawnPasteGhost`). Follow-up: fixed bottom-arrows idea realised; rail buttons
-      that are no-ops in the current mode should hide (#33).
-- ⬜ **Touch area/marquee select** — multi-select for copy/delete is desktop-only
-  (drag with a modifier); needs a touch gesture (issue #21). Pairs with the
-  placement work above: a marquee **copy** hands you exactly the paste ghost that
-  drag/nudge/center now makes placeable.
+    - `spawnPasteGhost`). Follow-up: fixed bottom-arrows idea realised.
+- ✅ **Mode-gated action rail** (issue #33) — the rail now shows only the buttons
+  whose action is live in the current mode, instead of the full set at all times.
+  Each `ToolbarButton` declares the `modes` it's useful in (omit = global); a
+  `when` predicate adds non-mode conditions (Select needs a non-empty blueprint).
+  `layout()` filters to the live set on every mode change (`editor.onModeChange`)
+  and on entity add/remove (`editor.onBlueprintChange`, a new stable emitter that
+  survives blueprint swaps). Mapping: **global** Items/Undo/Redo/Center +
+  Copy/Paste BP/Export/New; **PAINT** Rotate/Flip H/Flip V/Pick/Cancel; **EDIT**
+  Rotate/Delete/Pick/Copy cfg/Paste cfg; **SELECT** Rotate/Cancel; **Select**
+  (marquee) in NONE/EDIT when non-empty. Priority order is preserved so the rail
+  collapses rather than reshuffling. `actionToolbar.ts`, `Editor.onBlueprintChange`
+  / `blueprintEmpty`; covered in `e2e/actionToolbar.spec.ts`.
+- ✅ **Touch box-select / marquee** (issue #21) — desktop area-select is
+  modifier+drag and commits on mouse-release (copy → paste ghost, delete →
+  remove); touch had no modifier and no way to _choose_ the action. Now **one
+  button**: the rail's **Select** arms the gesture, a **one-finger drag draws a
+  selection box**, and releasing **holds** the selection (new `EditorMode.SELECT`)
+  while a fixed bottom-center **Copy / Cut / Delete / Cancel** bar waits. **Copy** →
+  paste ghost (originals stay); **Cut** → ghost + remove originals; **Delete** →
+  remove; **Cancel** / Escape / tap-away / rail-Cancel drop it. Copy/Cut spawn the
+  ghost **over the source tiles** (`GridData.moveToWorld` to the selection's
+  bounding-box center) so it previews _in place_ — for Cut this reads as
+  move-in-place; the ghost is then the same paste ghost the placement work (#30)
+  makes drag/nudge/center-placeable, closing the cut/copy/paste loop on touch.
+  Reuses the desktop selection rectangle + `getEntitiesInArea` + cursor-box
+  highlight; `OverlayContainer.freezeSelectionArea()` pins the box on release.
+  While the box is drawn/held the hover/info panel is suppressed (it would
+  obscure the box), and a second finger mid-draw cleanly **abandons** the box so
+  pinch/zoom can't strand it. Seams: `BlueprintContainer`
+  (`armMarquee`/`begin`/`end`/`copy`/`cut`/`delete`/`cancelMarquee`,
+  `touchPan.target = 'marquee'`), `GridData.moveToWorld`, `Editor` delegators, the
+  Select button + marquee bar (`actionToolbar.ts`, `index.styl`). Covered by
+  `e2e/touchMarquee.spec.ts` (CDP box-drag → Copy/Cut/Delete/Cancel, plus Cut →
+  Place restoring the originals in place) via the `?test` hook (`marquee.count`).
+- ✅ **Selection nudge-in-place + EDIT bar + inventory focus-tap** (polish round) —
+  four touches on top of the above:
+    - **Held-selection nudge.** SELECT shows a **nudge d-pad** (4 arrows) that
+      moves the actual selected entities a tile at a time _in place_, preserving
+      wiring — `Blueprint.moveEntitiesBy` validates the group as a unit (lifting it
+      out of the position grid so members don't block each other) and applies
+      leading-edge-first via `Entity.forceMoveBy`. The wire-safe alternative to
+      cut→paste. **Single-entity Rotate** (rail) also works in SELECT (in place, no
+      pivot); multi-entity rotation is deferred (needs a pivot + collision/wire
+      handling). The cursor-box highlight now follows the entities as they move/
+      rotate (`EntityContainer.refreshCursorBox`).
+    - **Illegal-wire flag (first step).** In-place nudge/rotate bypass the wire-
+      reach guard, so a wire to a non-selected entity can stretch past the limit
+      (a blueprint that won't import). A move/rotate that _newly_ breaks reach now
+      **warns** (toast, counts affected entities). A persistent per-wire visual
+      marker is a follow-up.
+    - **Copy / Cut / Delete / Cancel** sit in a row below the d-pad (Cancel drops
+      the selection; any in-place nudges already applied persist).
+    - **EDIT bar.** Tapping a single entity (EDIT) shows a **Select / Edit** bar:
+      _Select_ promotes it to a one-entity held selection (so the nudge applies to
+      one entity too); _Edit_ **toggles** its editor (open, or close if already open).
+    - **Inventory focus-tap.** On touch, a **tap** in the item picker now _focuses_
+      the item (name/details + Confirm/Pin) instead of committing — selecting is a
+      deliberate two-step, fewer misclicks. Desktop click-to-commit is unchanged.
+    - **Overflow on top.** The rail's ⋯ overflow now renders above the contextual
+      bottom clusters (z22 > z21) so its buttons aren't hidden behind the d-pad.
+    - Seams: `Blueprint.moveEntitiesBy` / `Entity.forceMoveBy`, `BlueprintContainer`
+      `nudgeSelection`/`selectHovered`/`editHovered`/`rotate` (SELECT) +
+      `warnNewOverReach`, `EntityContainer.refreshCursorBox`, `Editor` delegators,
+      the contextual clusters in `actionToolbar.ts` + `index.styl`, `InventoryDialog`
+      pointerup. e2e in `touchMarquee.spec.ts` (nudge-in-place, EDIT bar, Edit
+      toggle, single-entity rotate) via `marquee.origin`/`marquee.direction` /
+      `entityScreenPos` hooks.
 - 🚧 **e2e coverage gaps**: pinch needs CDP `Input.dispatchTouchEvent` (the
   high-level touch API is single-touch). Tap-to-place is now covered —
   `EditorTestState` was extended with `paint` + `blueprint.entityCount` and

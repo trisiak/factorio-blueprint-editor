@@ -13,7 +13,7 @@ export class Modules extends Container<Slot<number>> {
     /** Field to hold data for module visualization */
     private readonly m_Modules: string[]
 
-    public constructor(entity: Entity) {
+    public constructor(entity: Entity, columns?: number) {
         super()
 
         // Store entity data reference for later usage
@@ -22,10 +22,15 @@ export class Modules extends Container<Slot<number>> {
         // Get modules from entity
         this.m_Modules = this.m_Entity.modules
 
+        // Lay slots out in a grid. Default to a single row (vanilla behavior);
+        // callers pass `columns` to wrap when an entity has more slots than fit
+        // the dialog width (SE wide beacons have up to 20). See editorLayout.
+        const cols = columns && columns > 0 ? columns : this.m_Modules.length || 1
+
         // Create slots for entity
         for (let slotIndex = 0; slotIndex < this.m_Modules.length; slotIndex++) {
             const slot = new Slot<number>()
-            slot.position.set(slotIndex * 38, 0)
+            slot.position.set((slotIndex % cols) * 38, Math.floor(slotIndex / cols) * 38)
             slot.data = slotIndex
             slot.on('pointerdown', this.onSlotPointerDown, this)
             if (this.m_Modules[slotIndex] !== undefined) {

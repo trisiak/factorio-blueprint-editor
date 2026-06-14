@@ -98,12 +98,17 @@ export function editorKindFor(entity: Entity): EditorKind | undefined {
             // configure — a selectable recipe (assembling-machine types; furnaces
             // and rocket silos auto-pick theirs) or module slots — so e.g. a plain
             // stone/steel furnace still opens nothing rather than a blank dialog.
-            //
-            // KNOWN GAP (#28): entities of type beacon/lab/mining-drill that
-            // aren't the vanilla name above but DO have module slots (SE's
-            // compact/wide beacons, burner-lab, se-space-science-lab,
-            // area-mining-drill) fall through to `undefined` — their modules are
-            // currently unreachable. Tracked by editorRouting.test.ts.
+
+            // Generalize the name-matched editor families above to their *type*,
+            // so modded variants reach the same editor (SE's compact/wide
+            // beacons, burner-lab/se-space-science-lab, area-mining-drill; Space
+            // Age's biolab/big-mining-drill). Only when there's a module slot to
+            // configure — these types have no recipe picker. (#28)
+            if (entity.moduleSlots > 0) {
+                if (entity.type === 'beacon') return 'beacon'
+                if (entity.type === 'mining-drill') return 'mining'
+                if (entity.type === 'lab') return 'temp'
+            }
             if (isCraftingMachine(entity.entityData)) {
                 const hasRecipePicker =
                     entity.acceptedRecipes.length > 0 &&

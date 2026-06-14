@@ -65,9 +65,10 @@ export abstract class Editor extends Dialog {
      * @description Defined in Base Editor class so extensions can use it when they need to
      * @param x - Horizontal position of Module Slots from top left corner
      * @param y - Vertical position of Module Slots from top left corner
+     * @param columns - Wrap the module grid at this many columns (default: one row)
      */
-    protected addModules(x = 208, y = 83): Modules {
-        const modules = new Modules(this.m_Entity)
+    protected addModules(x = 208, y = 83, columns?: number): Modules {
+        const modules = new Modules(this.m_Entity, columns)
         modules.position.set(x, y)
         this.addChild(modules)
 

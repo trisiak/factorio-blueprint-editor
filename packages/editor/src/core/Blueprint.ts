@@ -407,6 +407,47 @@ class Blueprint extends EventEmitter<BlueprintEvents> {
         this.history.commitTransaction()
     }
 
+    /**
+     * Shift a group of entities by a whole-tile offset, in place, preserving
+     * their relative layout (and therefore their intra-group wires; external
+     * wires move with them rather than being cut). Returns false without moving
+     * anything if any entity's destination is blocked by a non-selected entity.
+     *
+     * Validity is checked for the group as a unit (temporarily removing the
+     * group from the position grid so members don't block each other), then the
+     * moves are applied leading-edge-first so no two members transiently overlap
+     * — see `Entity.forceMoveBy`.
+     */
+    public moveEntitiesBy(entities: Entity[], offset: IPoint): boolean {
+        if (entities.length === 0) return false
+        if (offset.x === 0 && offset.y === 0) return true
+
+        // Availability check with the whole group lifted out of the grid, so a
+        // member's destination isn't reported as blocked by another member.
+        for (const e of entities) this.entityPositionGrid.removeTileData(e)
+        const allFree = entities.every(e =>
+            this.entityPositionGrid.isAreaAvailable(
+                e.name,
+                util.sumprod(e.position, offset),
+                e.direction
+            )
+        )
+        for (const e of entities) this.entityPositionGrid.setTileData(e)
+        if (!allFree) return false
+
+        // Apply leading edge first (the side the group moves toward) so each
+        // entity's destination is either outside the group or a tile a
+        // already-moved neighbour just vacated.
+        const lead = (e: Entity): number =>
+            offset.x !== 0 ? e.position.x * Math.sign(offset.x) : e.position.y * Math.sign(offset.y)
+        const ordered = [...entities].sort((a, b) => lead(b) - lead(a))
+
+        this.history.startTransaction('Move entities')
+        for (const e of ordered) e.forceMoveBy(offset)
+        this.history.commitTransaction()
+        return true
+    }
+
     public fastReplaceEntity(name: string, direction: number, position: IPoint): boolean {
         const entity = this.entityPositionGrid.checkFastReplaceableGroup(name, direction, position)
 

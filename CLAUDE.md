@@ -140,3 +140,33 @@ Before declaring a change done, run the relevant subset of:
   leaving the doc stale.
 - Prefer extending the existing `e2e/` specs and the `actions.ts`/`input.ts`
   seams over inventing parallel mechanisms.
+
+### Keep issues in sync with the work
+
+GitHub issues are the index; the `docs/` tracking files and the merged code are
+the durable record. They drift apart easily — keep them reconciled as you go,
+in the **same change** that lands the work (don't leave it for "later"):
+
+- **Reference the issue in commits** that advance it (`#NN` in the subject), so
+  the issue's timeline shows what touched it. Match the existing convention —
+  `(#30)` / `(issue #28)`.
+- **Tick the boxes / advance the ratchet.** Tracking issues (e.g. #28, #31) embed
+  checklists and ratchet numbers (the sprite census table, `partial`/`failed`
+  counts). When your work flips a box or lowers a count, edit the issue body in
+  the same change — use the repo's `~~old~~ **new**` strike style already in
+  those tables. A stale "38 failed" next to a green test is exactly the drift to
+  avoid.
+- **Close on completion, or say why not.** When an issue's work is fully done,
+  close it (`state: completed`) with a one-line pointer to the commit/PR. For a
+  _tracking_ issue, close only when every box is ticked; otherwise leave it open
+  and the unchecked boxes are the remaining backlog.
+- **Mind orphaned tickets.** Work often lands under a _different_ PR/issue number
+  than the one that filed it (e.g. #7's follow-up shipped under #38). When that
+  happens, cross-link and close the original rather than letting it linger.
+- **Cross-link docs ↔ issues.** A tracking issue and its companion doc
+  (`mobile-controls.md` ↔ the mobile issues; `space-exploration-modlist.md` /
+  the census ↔ #28) should point at each other and not contradict each other. If
+  the doc says ✅ and the issue is still open, one of them is wrong — fix it.
+- You have the GitHub tools to do this directly; if they're unavailable in your
+  environment, note the needed issue update in your summary so the maintainer can
+  apply it.

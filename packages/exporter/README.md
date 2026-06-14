@@ -41,9 +41,10 @@ The exporter reads `id` (the output sub-directory) and `mods` (which mods to
 enable for the run). **List `mods` in Factorio load order** (dependencies first,
 e.g. `base` before `space-age`): the order decides which mod wins when two
 define the same locale key — exactly as in-game — so e.g. Space Age's renames
-must come after `base`. The bundled packs today — `vanilla-2.0` and `space-age`
-— use mods that **ship inside the Factorio install** (the `base`/`space-age`/…
-data dirs), so no portal download is needed.
+must come after `base`. The `vanilla-2.0` and `space-age` packs use only mods
+that **ship inside the Factorio install** (the `base`/`space-age`/… data dirs),
+so they need no portal download; the `space-exploration` pack pulls its 33 mods
+from the portal (see *Adding a new pack*).
 
 ## Regenerating a pack
 
@@ -77,12 +78,16 @@ the website at it (`VITE_DATA_URL`) or just commit the new `data/output/<id>/`.
 
 ## Adding a new pack
 
-1. Add an entry to `packs.json` with a new `id` and its `mods`.
-2. `cargo run -- --pack <id>`.
+1. Add an entry to `packs.json` with a new `id` and its `mods` (load order).
+2. For **third-party mods** (e.g. Space Exploration), also pin each portal mod
+   under `versions` (`"name": "version"`) in that entry, and set
+   `FACTORIO_USERNAME` / `FACTORIO_TOKEN` in `.env`.
+3. `cargo run -- --pack <id>`.
 
-For packs whose mods ship with the game (DLC), that's all. For **third-party
-mods** (e.g. Space Exploration) the mods must be present in `data/factorio/mods/`
-first — Factorio can fetch them itself via `--sync-mods <save>`, but wiring that
-up plus reading sprites/locale out of the downloaded `.zip` mods is follow-up
-work (see issue #9). The sprite-path mapping is already mod-agnostic
-(`__<mod>__/…` → `<mod>/…`); the missing piece is zip-aware asset extraction.
+For packs whose mods ship with the game (DLC) that's steps 1 + 3 only. For
+third-party packs, `download_portal_mods` (in `setup.rs`) fetches each pinned mod
+from the mod portal into a zip cache (`data/mod-portal-cache/`, kept *outside*
+the Factorio install), extracts it to `<factorio>/mods/<name>/`, and verifies the
+extracted version against the pin before the long atlas build. The sprite-path
+mapping is mod-agnostic (`__<mod>__/…` → `<mod>/…`). The `space-exploration` pack
+(33 pinned portal mods) is generated exactly this way.

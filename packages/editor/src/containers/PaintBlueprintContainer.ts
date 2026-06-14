@@ -1,4 +1,5 @@
 import { Entity } from '../core/Entity'
+import { IPoint } from '../types'
 import { Blueprint } from '../core/Blueprint'
 import { inputMode } from '../common/input'
 import { EntitySprite } from './EntitySprite'
@@ -10,6 +11,13 @@ import { IConnectionPoint } from '../core/WireConnections'
 export class PaintBlueprintContainer extends PaintContainer {
     private readonly bp: Blueprint
     private readonly entities = new Map<Entity, PaintBlueprintEntityContainer>()
+    /**
+     * Tile the source entities were centered on (their bounding-box center). The
+     * ghost re-centers everything on this, so positioning the ghost at this world
+     * tile lands the entities back on their *original* positions — used to make a
+     * marquee Copy/Cut preview in place (see BlueprintContainer.copy/cutMarquee).
+     */
+    private readonly center: IPoint
 
     public constructor(bpc: BlueprintContainer, entities: Entity[]) {
         super(bpc, 'blueprint')
@@ -35,6 +43,7 @@ export class PaintBlueprintContainer extends PaintContainer {
             x: Math.floor((minX + maxX) / 2),
             y: Math.floor((minY + maxY) / 2),
         }
+        this.center = center
 
         const entNrWhitelist = new Set(entities.map(e => e.entityNumber))
         const wires = entities[0].Blueprint.wireConnections
@@ -108,6 +117,11 @@ export class PaintBlueprintContainer extends PaintContainer {
 
     public override getItemName(): string {
         return 'blueprint'
+    }
+
+    /** The source bounding-box center tile (see `center`). */
+    public getSourceCenter(): IPoint {
+        return this.center
     }
 
     public override rotate(_ccw?: boolean): void {}

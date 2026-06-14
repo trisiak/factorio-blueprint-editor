@@ -187,6 +187,12 @@ export class EntitySprite extends Sprite {
                 const filenames = (data as any).filenames as string[]
                 data.filename = filenames[Math.min(dirIndex, filenames.length - 1)]
             }
+            if (!data.filename && (data as any).stripes?.[0]?.filename) {
+                // Animations whose frames are split across multiple files via
+                // `stripes` (e.g. SE's core miner). Render the first frame, which
+                // is the top-left of the first stripe — data.x/y default to 0.
+                data.filename = (data as any).stripes[0].filename
+            }
             if (!data.filename) continue
 
             const texture = G.getTexture(

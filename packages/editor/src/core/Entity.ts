@@ -208,6 +208,29 @@ export class Entity extends EventEmitter<EntityEvents> {
         this.position = util.sumprod(this.position, offset)
     }
 
+    /**
+     * Move without the single-entity collision / wire-reach guards, updating
+     * history + the position grid + emitting like the normal setter. Used by
+     * group moves (`Blueprint.moveEntitiesBy`): the whole group shifts by one
+     * offset, so the caller validates the group as a unit up-front and the
+     * relative layout (and intra-group wires) is preserved — the per-entity
+     * guards would otherwise block on the group's own tiles or on stretched
+     * external wires.
+     */
+    public forceMoveBy(offset: IPoint): void {
+        const position = util.sumprod(this.position, offset)
+        if (util.areObjectsEquivalent(this.m_rawEntity.position, position)) return
+
+        this.m_BP.history
+            .updateValue(this.m_rawEntity, 'position', position, 'Move entities')
+            .onDone((newValue, oldValue) => {
+                this.m_BP.entityPositionGrid.removeTileData(this, oldValue)
+                this.m_BP.entityPositionGrid.setTileData(this, newValue)
+                this.emit('position', newValue, oldValue)
+            })
+            .commit()
+    }
+
     /** Entity direction */
     public get direction(): number {
         if (this.type === 'electric-pole') {
