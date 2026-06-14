@@ -68,6 +68,12 @@ export interface PackTree {
     children: LibraryNode[]
     /** Entry ids, most-recently-opened first, capped at the recents limit. */
     recents: string[]
+    /**
+     * The leaf currently being edited (the "working context"). Defaults to the
+     * scratchpad; persisted so a reload reopens the same project. May dangle if
+     * the entry was removed elsewhere — callers fall back to the scratchpad.
+     */
+    activeId?: string
 }
 
 /** The whole library — a single document, one entry per modpack. */
@@ -228,35 +234,75 @@ export function renameNode(tree: PackTree, id: string, name: string, now: Now = 
     return true
 }
 
+/** Find a top-level folder by name, or create it. Used for the "Imported" area. */
+export function ensureFolder(
+    tree: PackTree,
+    name: string,
+    now: Now = Date.now,
+    id: IdGen = genId
+): FolderEntry {
+    const existing = tree.children.find(
+        (c): c is FolderEntry => c.kind === 'folder' && c.name === name
+    )
+    if (existing) return existing
+    const folder = makeFolder(name, now, id)
+    tree.children.push(folder)
+    return folder
+}
+
 /**
- * Save a new encoded payload into a blueprint leaf, pushing the prior version
- * onto its snapshot stack (newest first, pruned to `limit`). A no-op prior value
- * (empty, or identical to the new one) is not snapshotted, so repeatedly saving
- * the same content doesn't churn history. Returns true if the leaf was found.
+ * Autosave: replace a leaf's live content *without* creating a checkpoint. This
+ * is the continuous "don't lose work on reload" path — the active leaf is the
+ * working context, so it tracks the canvas, but that must not churn version
+ * history. Returns true if the leaf was found.
  */
-export function saveEntryContent(
+export function updateEntryContent(
     tree: PackTree,
     id: string,
     encoded: string,
+    now: Now = Date.now
+): boolean {
+    const node = findNode(tree, id)
+    if (!node || node.kind !== 'blueprint') return false
+    node.encoded = encoded
+    node.updatedAt = now()
+    return true
+}
+
+/**
+ * Explicit Save: checkpoint the leaf's current content as a restore point
+ * (newest first, pruned to `limit`). A no-op when the content is empty or already
+ * matches the newest checkpoint, so repeatedly hitting Save doesn't pile up
+ * identical versions. Returns true if a checkpoint was actually created.
+ */
+export function checkpointEntry(
+    tree: PackTree,
+    id: string,
     now: Now = Date.now,
     limit = DEFAULT_SNAPSHOT_LIMIT
 ): boolean {
     const node = findNode(tree, id)
     if (!node || node.kind !== 'blueprint') return false
-    const t = now()
-    if (node.encoded && node.encoded !== encoded) {
-        node.snapshots.unshift({ encoded: node.encoded, savedAt: t })
-        if (node.snapshots.length > limit) node.snapshots.length = limit
-    }
-    node.encoded = encoded
-    node.updatedAt = t
+    if (!node.encoded) return false
+    if (node.snapshots[0]?.encoded === node.encoded) return false
+    node.snapshots.unshift({ encoded: node.encoded, savedAt: now() })
+    if (node.snapshots.length > limit) node.snapshots.length = limit
     return true
 }
 
 /**
- * Restore a snapshot (by index) into a leaf, treating the restore itself as a
- * save (so the pre-restore content is snapshotted and you can redo). Returns
- * true if the leaf and snapshot exist.
+ * True if a leaf has uncheckpointed edits — its live content differs from the
+ * newest checkpoint (or it has content but no checkpoint yet). Drives the
+ * "you have unsaved changes" prompt when starting/opening another project.
+ */
+export function hasUncheckpointedChanges(entry: BlueprintEntry): boolean {
+    return !!entry.encoded && entry.encoded !== (entry.snapshots[0]?.encoded ?? '')
+}
+
+/**
+ * Restore a checkpoint (by index) into a leaf's live content. The pre-restore
+ * content is checkpointed first (unless it's already the newest), so a restore
+ * is itself recoverable. Returns true if the leaf and checkpoint exist.
  */
 export function restoreSnapshot(
     tree: PackTree,
@@ -267,9 +313,13 @@ export function restoreSnapshot(
 ): boolean {
     const node = findNode(tree, id)
     if (!node || node.kind !== 'blueprint') return false
+    // Capture the target by reference — checkpointEntry's unshift would shift indices.
     const snap = node.snapshots[snapshotIndex]
     if (!snap) return false
-    return saveEntryContent(tree, id, snap.encoded, now, limit)
+    checkpointEntry(tree, id, now, limit)
+    node.encoded = snap.encoded
+    node.updatedAt = now()
+    return true
 }
 
 /** Record that an entry was just opened — most-recent first, deduped, capped. */

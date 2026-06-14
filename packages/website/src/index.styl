@@ -338,6 +338,204 @@ body.mobile
     &:active
         background-color: rgba(255, 255, 255, 0.1)
 
+// Library button in the top-left stack. Sits below Settings; styled to match it.
+// Its label uses the generic `#buttons button span` positioning (left: 25px); the
+// glyph is nudged to the icon column (left: 17px) where the others put their img.
+#buttons
+    .library-button
+        width: 110px
+        border-left: 5px solid #8a8a8a
+        background-color: #43464b
+        cursor: pointer
+        outline: none
+        .lib-icon
+            position: absolute
+            top: 50%
+            left: 17px
+            transform: translate(-50%, -50%)
+            font-size: 18px
+            line-height: 1
+
+// Mobile fold: square dark icon button, continuous with the action rail (mirrors
+// the Github/Settings treatment), showing only the glyph.
+body.mobile
+    #buttons
+        .library-button
+            display: flex
+            align-items: center
+            justify-content: center
+            width: 44px
+            height: 44px
+            padding: 0
+            border-left: 0
+            border-radius: 0
+            background: #3a3a3a
+            transform: none
+            &:hover
+            &:active
+            &:focus
+                transform: none
+                filter: brightness(1.15)
+            span:not(.lib-icon)
+                display: none
+            .lib-icon
+                position: static
+                top: auto
+                left: auto
+                transform: none
+
+// Active-project indicator: a small pill, top-centre, showing the working
+// blueprint's name. Click to open the library. Stays clear of the top-left stack.
+#active-project
+    position: fixed
+    z-index: 5
+    top: 8px
+    left: 50%
+    transform: translateX(-50%)
+    max-width: unquote('min(50vw, 360px)')
+    padding: 5px 12px
+    color: #eee
+    font-size: 13px
+    white-space: nowrap
+    overflow: hidden
+    text-overflow: ellipsis
+    background: rgba(48, 48, 48, 0.9)
+    border: 1px solid #888
+    border-radius: 14px
+    cursor: pointer
+    user-select: none
+    &:hover
+        background: rgba(64, 64, 64, 0.95)
+    // Unsaved-changes marker (a dot before the name), toggled from index.ts.
+    &.modified::before
+        content: "●"
+        color: #ffe6c0
+        margin-right: 6px
+
+// Library panel — DOM overlay (like #info-panel) listing the active pack's tree.
+#library-panel
+    display: none
+    position: fixed
+    top: 50vh
+    left: 50vw
+    transform: translate(-50%, -50%)
+    width: unquote('min(560px, 94vw)')
+    max-height: calc(100dvh - 32px)
+    z-index: 100
+    color: white
+    background-color: #303030
+    border: 1px solid #888
+    border-radius: 10px
+    overflow: hidden
+    &.active
+        display: flex
+        flex-direction: column
+
+    .library-header
+        display: flex
+        align-items: center
+        justify-content: space-between
+        padding: 8px 12px 8px 16px
+        border-bottom: 1px solid #555
+        h1
+            margin: 0
+            color: #ffe6c0
+            font-size: 1.4em
+            font-weight: 500
+    .library-close
+        width: 36px
+        height: 36px
+        padding: 0
+        line-height: 36px
+        font-size: 26px
+        color: white
+        background: transparent
+        border: 0
+        border-radius: 6px
+        cursor: pointer
+        &:hover
+            background-color: rgba(255, 255, 255, 0.1)
+
+    .library-actions
+        display: flex
+        gap: 8px
+        flex-wrap: wrap
+        padding: 10px 16px
+        border-bottom: 1px solid #555
+        button
+            flex: 1 1 auto
+            padding: 8px 10px
+            color: white
+            font-size: 13px
+            background: #43464b
+            border: 1px solid #6a6a6a
+            border-radius: 4px
+            cursor: pointer
+            &:hover
+                filter: brightness(1.15)
+
+    .library-body
+        overflow-y: auto
+        padding: 6px 0 10px 0
+
+    .library-section
+        padding: 10px 16px 4px 16px
+        color: #9fb4c0
+        font-size: 11px
+        letter-spacing: 0.6px
+        text-transform: uppercase
+
+    .library-empty
+        padding: 4px 16px
+        color: #aaa
+        font-size: 13px
+        font-style: italic
+
+    .library-folder
+        padding: 4px 16px
+        color: #ffe6c0
+        font-size: 13px
+
+    .library-row
+        display: flex
+        align-items: center
+        justify-content: space-between
+        gap: 8px
+        padding: 6px 16px
+        &:hover
+            background: rgba(255, 255, 255, 0.05)
+        &.active
+            background: rgba(39, 171, 219, 0.15)
+            box-shadow: inset 3px 0 0 #27ABDB
+    .library-row-name
+        flex: 1 1 auto
+        overflow: hidden
+        text-overflow: ellipsis
+        white-space: nowrap
+        font-size: 14px
+        cursor: pointer
+    .library-badge
+        margin-left: 8px
+        padding: 1px 6px
+        color: #cfe8f4
+        font-size: 11px
+        background: rgba(39, 171, 219, 0.25)
+        border-radius: 8px
+    .library-row-buttons
+        display: flex
+        gap: 4px
+        flex: 0 0 auto
+        button
+            padding: 4px 8px
+            color: #ddd
+            font-size: 12px
+            background: #3a3a3a
+            border: 1px solid #5a5a5a
+            border-radius: 3px
+            cursor: pointer
+            &:hover
+                background: #4a4a4a
+
 
 /* TOASTS */
 .toasts

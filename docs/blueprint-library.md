@@ -37,17 +37,25 @@ trajectory toward an OAuth-locked external backend (e.g. Firebase) later.
   default landing place for transient work, replacing today's single
   `fbe:blueprint` autosave (which is global and silently overwritten). Saving a
   named entry is always deliberate.
-- **Save model: explicit save + version snapshots.** Named entries are written
-  only on an explicit Save; overwriting prompts for confirmation; Save As makes a
-  new entry; each leaf keeps the last N snapshots so an iteration can be rolled
-  back. The scratchpad may keep snapshots too (its autosave history).
+- **The active leaf _is_ the working context.** Opening an entry makes it the
+  active leaf; the canvas edits it directly, and the active project's name is
+  shown in a top-centre indicator. Each pack remembers its own active leaf
+  (persisted), so a reload reopens what you were working on.
+- **Autosave (live) vs. Save (checkpoint).** The active leaf's content is
+  continuously **autosaved** (on `visibilitychange`) so a reload never loses
+  work — this updates live content only and never churns history. An explicit
+  **Save** creates a **version checkpoint** (the last N are kept, pruned, with
+  identical/empty saves skipped). "Modified" = the canvas differs from the active
+  leaf's newest checkpoint; that's what the new-project prompt and the indicator's
+  unsaved dot key off. **Save As** makes a new named leaf and switches to it.
 - **"Open a new project" + recents.** Loading the site with a `?source=` URL
-  creates an _implied separate entry_ rather than clobbering the scratchpad.
-  There's an explicit "open a new project" action that, when the current work is
-  _modified_, prompts for what to do with it (save / discard / keep as
-  scratchpad). A **recents** list keeps the last N entries opened. (Exactly what
-  becomes a recent vs. what merely modifies the scratchpad is a deliberately
-  deferred UX call — the data model carries both so we can decide later.)
+  creates an _implied separate entry_ under an auto-created **"Imported"** folder
+  (it joins recents and never clobbers the scratchpad). An explicit "new project"
+  action resets the scratchpad and, when there are unsaved changes, prompts first.
+  A **recents** list keeps the last N entries opened. (What becomes a recent vs.
+  what merely modifies the scratchpad, and how imported _books_ decompose into a
+  folder of blueprints, are deliberately deferred — the model carries what's
+  needed so we can decide later.)
 
 ## The modpack-encoding problem
 
@@ -105,39 +113,62 @@ problem only resurfaces at the **native interchange boundary**:
 - **Cross-pack open** — opening a leaf saved under a pack the app isn't currently
   on; handled by the pack-switch-on-open above.
 
-## Data model (Phase 0)
+## Data model + code map
 
-A single `LibraryState` document:
+A single `LibraryState` document, in `packages/website/src/library/`:
 
 - `packs: Record<packId, PackTree>` — top tier, one per modpack.
-- `PackTree`: `{ pack, scratchpad: BlueprintEntry, children: LibraryNode[], recents: string[] }`.
+- `PackTree`: `{ pack, scratchpad: BlueprintEntry, children: LibraryNode[], recents: string[], activeId? }`.
 - `LibraryNode = FolderEntry | BlueprintEntry` (folders nest via `children`).
 - `BlueprintEntry`: `{ id, kind:'blueprint', name, encoded, createdAt, updatedAt, snapshots: Snapshot[] }`.
 - `Snapshot`: `{ encoded, savedAt }` (newest first, capped at N).
 
-Lives in `packages/website/src/library/`:
-
-- `model.ts` — pure types + deterministic tree ops (id/now injectable), unit-tested.
+- `model.ts` — pure types + deterministic tree ops (id/now injectable),
+  unit-tested. Content ops split the two write paths: `updateEntryContent`
+  (autosave, no checkpoint) vs. `checkpointEntry` (explicit Save) /
+  `restoreSnapshot` / `hasUncheckpointedChanges`; plus `ensureFolder` for the
+  "Imported" area.
 - `store.ts` — `LibraryStore` interface + `IndexedDBLibraryStore` (real backing) +
-  `InMemoryLibraryStore` (tests / SSR fallback).
+  `InMemoryLibraryStore` (tests / SSR fallback) + `createLibraryStore()` picker.
+- `controller.ts` — `LibraryController`: owns session state (active pack + active
+  leaf), deals only in encoded strings (no editor import → unit-tested). The
+  autosave/Save/Save As/open/import/newScratch/seedScratchpad API `index.ts` calls.
+- `libraryPanel.ts` — the DOM browser overlay (no framework, matches the site
+  chrome). Verified by running the app, not unit-tested.
+- Wiring in `index.ts`: the active leaf replaces the legacy single-slot autosave
+  (migrated into the scratchpad once), the active-project indicator, and the
+  `#library-button` / `#active-project` chrome.
 
 ## Iterative slices (mirror of issue #50)
 
-- [ ] **Phase 0 — Store + model.** Rich JSON document; pure model + tree ops +
+- [x] **Phase 0 — Store + model.** Rich JSON document; pure model + tree ops +
       tests; `LibraryStore` interface with IndexedDB + in-memory impls.
-- [ ] **Phase 1 — Scratchpad + open/save (minimal UI).** Per-pack scratchpad
-      wired as the working context; explicit Save / Save As; DOM panel to browse +
-      Open a leaf (→ `loadBp`, with pack-switch prompt); "open a new project" with
-      the modified-work dialog; recents; per-leaf "Copy string".
+- [x] **Phase 1 — Scratchpad + open/save (minimal UI).** Per-pack scratchpad as
+      the working context; autosave → active leaf; explicit Save (checkpoint) /
+      Save As; DOM panel to browse + Open a leaf; active-project indicator;
+      `?source=` URL → implied "Imported" leaf + recents; "new project" with the
+      unsaved-changes prompt; per-leaf "Copy string"; legacy-autosave migration.
 - [ ] **Phase 2 — Organization.** Create / rename / delete / duplicate folders;
       move a blueprint or folder under another (the "push down" reorg).
 - [ ] **Phase 3 — Versioning UI.** View / restore / prune the last N snapshots
-      per leaf.
+      per leaf (the model already keeps them; `restoreSnapshot` exists).
 - [ ] **Phase 4 — Export / import hierarchy.** Export any node → native string
       (subtree extraction; leaf → bare bp string); modpack-label convention;
-      hierarchical import; whole-library export.
+      hierarchical import (decompose imported books); whole-library export.
 - [ ] **Phase 5 — External backend.** OAuth-locked remote store (e.g. Firebase)
       behind the `LibraryStore` interface; sync/merge story.
+
+## Deferred (carried over from Phase 1)
+
+- **Multi-pack browsing** — the panel shows only the active pack's subtree, so
+  the **pack-switch-on-open** isn't needed yet; it lands when you can browse
+  another pack's tree (Phase 2/4).
+- **Live unsaved-dot** — the indicator's "modified" dot refreshes on autosave
+  (tab hide), not on every edit; live tracking needs an editor change event.
+- **Richer dialogs** — Save As uses `window.prompt`; confirms use a sticky toast
+  (dismiss = cancel). A proper DOM modal can replace these.
+- **Imported books** — a `?source=` book is stored as a single leaf for now, not
+  decomposed into a folder (that's the Phase 4 hierarchical import).
 
 ## Not this (for now)
 

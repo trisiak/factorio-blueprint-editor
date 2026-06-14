@@ -13,16 +13,15 @@ import EDITOR, {
     encode,
     getBlueprintOrBookFromSource,
     installTestHook,
+    DATA_PACK,
 } from '@fbe/editor'
 import { initToasts } from './toasts'
 import { initSettingsPane } from './settingsPane'
 import { initActionToolbar } from './actionToolbar'
-import {
-    saveBlueprint,
-    loadSavedBlueprint,
-    clearSavedBlueprint,
-    planBlueprintLoad,
-} from './blueprintStorage'
+import { loadSavedBlueprint, clearSavedBlueprint } from './blueprintStorage'
+import { LibraryController } from './library/controller'
+import { createLibraryStore } from './library/store'
+import { initLibraryPanel, LibraryPanel, LibraryPanelCallbacks } from './library/libraryPanel'
 
 document.addEventListener('contextmenu', e => e.preventDefault())
 
@@ -34,6 +33,14 @@ const CANVAS = document.getElementById('editor') as HTMLCanvasElement
 
 let bp: Blueprint
 let book: Book
+
+// The in-app blueprint library: a persistent, organized home for projects (see
+// docs/blueprint-library.md / issue #50). The active leaf is the working context
+// — the canvas edits it, autosave mirrors it, and Save checkpoints a version.
+// Scoped to the active data pack (the library's top tier is per pack).
+const library = new LibraryController(createLibraryStore(), DATA_PACK)
+let libraryPanel: LibraryPanel
+let activeProjectEl: HTMLElement | null
 
 const loadingScreen = {
     el: document.getElementById('loadingScreen'),
@@ -111,7 +118,7 @@ let changeBookForIndexSelector: (bpOrBook: Book | Blueprint) => void
 
 editor
     .init(CANVAS, createToast)
-    .then(() => {
+    .then(async () => {
         if (localStorage.getItem('quickbarItemNames')) {
             const quickbarItems = JSON.parse(localStorage.getItem('quickbarItemNames'))
             editor.quickbarItems = quickbarItems
@@ -134,6 +141,20 @@ editor
         }
         changeBookForIndexSelector = initSettingsPane(editor, changeBookIndex).changeBook
 
+        // Bring up the library before deciding what to load: it resolves the
+        // active project for this pack and owns the autosave from here on.
+        await library.init()
+        // One-time migration: fold the legacy single-slot autosave into this
+        // pack's scratchpad (only if the scratchpad is still empty) so existing
+        // users don't lose their last blueprint when the library takes over.
+        const legacy = loadSavedBlueprint()
+        if (legacy) {
+            await library.seedScratchpad(legacy)
+            clearSavedBlueprint()
+        }
+        libraryPanel = initLibraryPanel(library, libraryCallbacks)
+        initLibraryChrome()
+
         loadInitialBlueprint()
             .then(() => createWelcomeMessage())
             .catch(error => createBPImportError(error))
@@ -148,85 +169,71 @@ window.addEventListener('visibilitychange', () => {
     localStorage.setItem('quickbarItemNames', JSON.stringify(editor.quickbarItems))
 })
 
-// Autosave the working blueprint so a reload (or a backgrounded mobile tab being
-// discarded) doesn't wipe it. Persisting on `visibilitychange` is the
-// recommended moment to checkpoint state — it fires when a tab is hidden, which
-// covers tab close, navigation and mobile app-switch. An empty blueprint clears
-// the save so a cleared editor stays cleared across reloads.
+// Encode the current canvas, normalizing an empty blueprint to '' so it matches
+// the library's "empty leaf" convention (an empty Blueprint still encodes to a
+// non-empty string otherwise).
+function currentEncodedString(): Promise<string> {
+    if (book === undefined && bp.isEmpty()) return Promise.resolve('')
+    return encode(book || bp)
+}
+
+// Autosave the working blueprint into the active library leaf so a reload (or a
+// backgrounded mobile tab being discarded) doesn't wipe it. `visibilitychange`
+// (fired on tab hide / close / navigation / mobile app-switch) is the
+// recommended checkpoint moment. This updates the leaf's live content only — it
+// does NOT create a version snapshot; that's what an explicit Save is for.
 window.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'hidden') return
     if (bp === undefined) return
 
-    const isEmpty = book === undefined && bp.isEmpty()
-    if (isEmpty) {
-        clearSavedBlueprint()
-        return
-    }
-
-    encode(book || bp)
-        .then(saveBlueprint)
+    currentEncodedString()
+        .then(enc => {
+            refreshModifiedIndicator(enc)
+            return library.autosave(enc)
+        })
         .catch(error => console.error('Failed to autosave blueprint', error))
 })
 
-// Reads the local autosave (if any) once, before init, so the loader can weigh
-// it against the URL `?source` argument.
-const savedBlueprint = loadSavedBlueprint()
-
-// Decide what to show on first load: the URL-named blueprint, the local
-// autosave, or a blank canvas — and, in the mixed case (URL + autosave), offer
-// to bring the autosave back.
+// Decide what to show on first load: a URL-named blueprint (imported as a new
+// leaf), or the active project (scratchpad by default), or a blank canvas.
 async function loadInitialBlueprint(): Promise<void> {
-    const plan = planBlueprintLoad(bpSource, savedBlueprint)
-
-    if (plan.kind === 'empty') {
-        await loadBp(new Blueprint())
-        return
-    }
-
-    if (plan.kind === 'restore') {
-        const bpOrBook = await getBlueprintOrBookFromSource(plan.source).catch(error => {
-            // A corrupt autosave shouldn't strand the user on the loading screen
-            // forever — drop it and fall back to a blank blueprint.
-            console.error('Failed to restore saved blueprint', error)
-            clearSavedBlueprint()
+    if (bpSource !== undefined) {
+        // The URL `?source` argument is an explicit request, so it wins.
+        const bpOrBook = await getBlueprintOrBookFromSource(bpSource).catch(error => {
+            createBPImportError(error)
             return undefined
         })
-        await loadBp(bpOrBook || new Blueprint(), 'Restored your previous blueprint')
+        await loadBp(bpOrBook || new Blueprint())
+        if (bpOrBook) {
+            // A URL-supplied blueprint becomes an implied entry under "Imported"
+            // (it joins recents and doesn't clobber the scratchpad). Re-encode so
+            // the stored string is normalized.
+            const enc = await encode(book || bp).catch(() => null)
+            if (enc) {
+                await library.importEntry(bp.name || 'Imported blueprint', enc)
+                updateActiveIndicator()
+            }
+        }
         return
     }
 
-    // plan.kind === 'url' — the URL argument is an explicit request, so it wins.
-    const bpOrBook = await getBlueprintOrBookFromSource(plan.source).catch(error => {
-        createBPImportError(error)
-        return undefined
-    })
-    await loadBp(bpOrBook || new Blueprint())
-
-    // Mixed state: there's also a local autosave. Only offer to restore it if it
-    // actually differs from what the URL just loaded, so re-opening the same
-    // link (autosave == URL blueprint) doesn't nag.
-    if (plan.savedString && bpOrBook) {
-        const urlString = await encode(book || bp).catch(() => null)
-        if (urlString !== plan.savedString) {
-            createToast({
-                text: 'You have a locally saved blueprint that differs from the one in this link.',
-                type: 'info',
-                timeout: Infinity,
-                action: {
-                    text: 'Restore my saved blueprint',
-                    callback: () => {
-                        loadingScreen.show()
-                        getBlueprintOrBookFromSource(plan.savedString)
-                            .then(saved => loadBp(saved, 'Restored your saved blueprint'))
-                            .catch(error => {
-                                loadingScreen.hide()
-                                createBPImportError(error)
-                            })
-                    },
-                },
-            })
-        }
+    // No URL → reopen the active project for this pack (the scratchpad by default).
+    const active = library.getActive()
+    if (active.encoded) {
+        const bpOrBook = await getBlueprintOrBookFromSource(active.encoded).catch(error => {
+            // A corrupt stored leaf shouldn't strand the user on the loading
+            // screen forever — fall back to a blank canvas.
+            console.error('Failed to open the active blueprint', error)
+            return undefined
+        })
+        const message = library.isScratchpad(active.id)
+            ? 'Restored your scratchpad'
+            : `Opened "${active.name}"`
+        await loadBp(bpOrBook || new Blueprint(), message)
+    } else {
+        await loadBp(new Blueprint())
     }
+    updateActiveIndicator()
 }
 
 async function loadBp(
@@ -292,11 +299,79 @@ document.addEventListener('copy', (e: ClipboardEvent) => {
     copyBlueprintToClipboard()
 })
 
-// Reset to a blank blueprint and drop the autosave. This swaps in a fresh
-// Blueprint (with its own History), so it's NOT undoable.
+// Reset to a blank blueprint. Routed through the library: it resets the active
+// pack's scratchpad and makes it the working context. Swaps in a fresh Blueprint
+// (with its own History), so it's NOT undoable.
 function clearBlueprint(): void {
-    clearSavedBlueprint()
-    loadBp(new Blueprint())
+    library
+        .newScratch()
+        .then(() => loadBp(new Blueprint()))
+        .then(() => {
+            updateActiveIndicator()
+            libraryPanel?.refresh()
+        })
+}
+
+// --- library chrome (panel callbacks + the active-project indicator) ---------
+
+// Update the top-centre indicator to the active project's name.
+function updateActiveIndicator(): void {
+    if (activeProjectEl) activeProjectEl.textContent = library.getActiveName()
+}
+
+// Toggle the indicator's "unsaved changes" dot from a known encoded snapshot of
+// the canvas (cheap to do where we already have one, e.g. on autosave).
+function refreshModifiedIndicator(encoded: string): void {
+    activeProjectEl?.classList.toggle('modified', library.isModified(encoded))
+}
+
+// Things the library panel needs from here that touch the PixiJS canvas or the
+// shared chrome (toasts/clipboard); everything else it does via the controller.
+const libraryCallbacks: LibraryPanelCallbacks = {
+    loadEncoded: async (encoded: string) => {
+        if (!encoded) {
+            await loadBp(new Blueprint())
+            return
+        }
+        const bpOrBook = await getBlueprintOrBookFromSource(encoded)
+        await loadBp(bpOrBook)
+    },
+    currentEncoded: currentEncodedString,
+    toast: (text, type = 'info') => createToast({ text, type }),
+    promptName: (message, defaultName) => window.prompt(message, defaultName),
+    copyText: (text: string) => {
+        navigator.clipboard
+            .writeText(text)
+            .then(() =>
+                createToast({ text: 'Blueprint string copied to clipboard', type: 'success' })
+            )
+            .catch(error => createErrorMessage('Blueprint string could not be copied.', error))
+    },
+    // Confirm via a sticky toast: the action button resolves `true`; dismissing
+    // the toast simply leaves the action un-taken (treated as "cancel").
+    confirm: (text, confirmLabel) =>
+        new Promise<boolean>(resolve => {
+            createToast({
+                text,
+                type: 'warning',
+                timeout: Infinity,
+                action: { text: confirmLabel, callback: () => resolve(true) },
+            })
+        }),
+    onActiveChange: () => {
+        updateActiveIndicator()
+        activeProjectEl?.classList.remove('modified')
+    },
+}
+
+// Wire the on-screen entry points to the panel once it exists.
+function initLibraryChrome(): void {
+    activeProjectEl = document.getElementById('active-project')
+    document
+        .getElementById('library-button')
+        ?.addEventListener('click', () => libraryPanel.toggle())
+    activeProjectEl?.addEventListener('click', () => libraryPanel.toggle())
+    updateActiveIndicator()
 }
 
 // The mobile action rail's "New" button. Because clearing can't be undone, gate

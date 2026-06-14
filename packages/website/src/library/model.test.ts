@@ -9,7 +9,10 @@ import {
     moveNode,
     renameNode,
     findNode,
-    saveEntryContent,
+    ensureFolder,
+    updateEntryContent,
+    checkpointEntry,
+    hasUncheckpointedChanges,
     restoreSnapshot,
     pushRecent,
     LIBRARY_VERSION,
@@ -142,64 +145,105 @@ describe('moveNode', () => {
     })
 })
 
-describe('saveEntryContent + snapshots', () => {
-    it('snapshots the prior version on a real change, newest first', () => {
+describe('ensureFolder', () => {
+    it('creates a top-level folder once, then returns the same one', () => {
+        const { now, id } = fixtures()
+        const tree = ensurePack(createLibrary(), 'p', now)
+        const a = ensureFolder(tree, 'Imported', now, id)
+        const b = ensureFolder(tree, 'Imported', now, id)
+        expect(a).toBe(b)
+        expect(tree.children.filter(c => c.kind === 'folder')).toHaveLength(1)
+    })
+})
+
+describe('content: autosave vs explicit checkpoint', () => {
+    it('updateEntryContent changes live content without checkpointing', () => {
         const { now, id } = fixtures()
         const tree = ensurePack(createLibrary(), 'p', now)
         const bp = makeBlueprint('a', '', now, id)
         addNode(tree, bp)
 
-        saveEntryContent(tree, bp.id, '0v1', now)
-        expect(bp.encoded).toBe('0v1')
-        expect(bp.snapshots).toHaveLength(0) // nothing to snapshot (was empty)
-
-        saveEntryContent(tree, bp.id, '0v2', now)
+        updateEntryContent(tree, bp.id, '0v1', now)
+        updateEntryContent(tree, bp.id, '0v2', now)
         expect(bp.encoded).toBe('0v2')
-        expect(bp.snapshots.map(s => s.encoded)).toEqual(['0v1'])
-
-        saveEntryContent(tree, bp.id, '0v3', now)
-        expect(bp.snapshots.map(s => s.encoded)).toEqual(['0v2', '0v1'])
+        expect(bp.snapshots).toHaveLength(0) // autosave never snapshots
     })
 
-    it('does not snapshot a no-op save (identical content)', () => {
-        const { now, id } = fixtures()
-        const tree = ensurePack(createLibrary(), 'p', now)
-        const bp = makeBlueprint('a', '0same', now, id)
-        addNode(tree, bp)
-        saveEntryContent(tree, bp.id, '0same', now)
-        expect(bp.snapshots).toHaveLength(0)
-    })
-
-    it('prunes snapshots to the limit', () => {
-        const { now, id } = fixtures()
-        const tree = ensurePack(createLibrary(), 'p', now)
-        const bp = makeBlueprint('a', '0v0', now, id)
-        addNode(tree, bp)
-        for (let i = 1; i <= 5; i++) saveEntryContent(tree, bp.id, `0v${i}`, now, 3)
-        expect(bp.snapshots).toHaveLength(3)
-        // Newest-first: the three most recent prior versions.
-        expect(bp.snapshots.map(s => s.encoded)).toEqual(['0v4', '0v3', '0v2'])
-    })
-
-    it('restoreSnapshot brings back a version and snapshots the pre-restore state', () => {
+    it('checkpointEntry captures the current content, newest first', () => {
         const { now, id } = fixtures()
         const tree = ensurePack(createLibrary(), 'p', now)
         const bp = makeBlueprint('a', '0v1', now, id)
         addNode(tree, bp)
-        saveEntryContent(tree, bp.id, '0v2', now) // snapshots 0v1
+
+        expect(checkpointEntry(tree, bp.id, now)).toBe(true)
+        updateEntryContent(tree, bp.id, '0v2', now)
+        expect(checkpointEntry(tree, bp.id, now)).toBe(true)
+        expect(bp.snapshots.map(s => s.encoded)).toEqual(['0v2', '0v1'])
+    })
+
+    it('checkpointEntry is a no-op on empty content or an unchanged checkpoint', () => {
+        const { now, id } = fixtures()
+        const tree = ensurePack(createLibrary(), 'p', now)
+        const empty = makeBlueprint('e', '', now, id)
+        addNode(tree, empty)
+        expect(checkpointEntry(tree, empty.id, now)).toBe(false)
+
+        const bp = makeBlueprint('a', '0v1', now, id)
+        addNode(tree, bp)
+        expect(checkpointEntry(tree, bp.id, now)).toBe(true)
+        expect(checkpointEntry(tree, bp.id, now)).toBe(false) // identical → skipped
+        expect(bp.snapshots).toHaveLength(1)
+    })
+
+    it('prunes checkpoints to the limit', () => {
+        const { now, id } = fixtures()
+        const tree = ensurePack(createLibrary(), 'p', now)
+        const bp = makeBlueprint('a', '0v0', now, id)
+        addNode(tree, bp)
+        for (let i = 1; i <= 5; i++) {
+            updateEntryContent(tree, bp.id, `0v${i}`, now)
+            checkpointEntry(tree, bp.id, now, 3)
+        }
+        expect(bp.snapshots).toHaveLength(3)
+        expect(bp.snapshots.map(s => s.encoded)).toEqual(['0v5', '0v4', '0v3'])
+    })
+
+    it('hasUncheckpointedChanges tracks edits since the last checkpoint', () => {
+        const { now, id } = fixtures()
+        const tree = ensurePack(createLibrary(), 'p', now)
+        const bp = makeBlueprint('a', '', now, id)
+        addNode(tree, bp)
+        expect(hasUncheckpointedChanges(bp)).toBe(false) // empty
+
+        updateEntryContent(tree, bp.id, '0v1', now)
+        expect(hasUncheckpointedChanges(bp)).toBe(true) // content, no checkpoint
+        checkpointEntry(tree, bp.id, now)
+        expect(hasUncheckpointedChanges(bp)).toBe(false) // matches checkpoint
+        updateEntryContent(tree, bp.id, '0v2', now)
+        expect(hasUncheckpointedChanges(bp)).toBe(true) // diverged again
+    })
+
+    it('restoreSnapshot brings back a version and preserves the pre-restore state', () => {
+        const { now, id } = fixtures()
+        const tree = ensurePack(createLibrary(), 'p', now)
+        const bp = makeBlueprint('a', '0v1', now, id)
+        addNode(tree, bp)
+        checkpointEntry(tree, bp.id, now) // snapshot 0v1 (index 0)
+        updateEntryContent(tree, bp.id, '0v2', now)
+
         expect(restoreSnapshot(tree, bp.id, 0, now)).toBe(true) // restore 0v1
         expect(bp.encoded).toBe('0v1')
-        // 0v2 (the pre-restore content) is now the newest snapshot.
+        // 0v2 (the pre-restore content) was checkpointed first → newest.
         expect(bp.snapshots[0].encoded).toBe('0v2')
     })
 
-    it('rejects saves/restores against folders or missing ids', () => {
+    it('rejects content ops against folders or missing ids', () => {
         const { now, id } = fixtures()
         const tree = ensurePack(createLibrary(), 'p', now)
         const folder = makeFolder('f', now, id)
         addNode(tree, folder)
-        expect(saveEntryContent(tree, folder.id, '0x', now)).toBe(false)
-        expect(saveEntryContent(tree, 'missing', '0x', now)).toBe(false)
+        expect(updateEntryContent(tree, folder.id, '0x', now)).toBe(false)
+        expect(checkpointEntry(tree, 'missing', now)).toBe(false)
         expect(restoreSnapshot(tree, folder.id, 0, now)).toBe(false)
     })
 })
