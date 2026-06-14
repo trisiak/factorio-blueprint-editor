@@ -1,7 +1,7 @@
 import { Container, Graphics, Text } from 'pixi.js'
 import { Button } from './controls/Button'
 import { Dialog } from './controls/Dialog'
-import { colors, styles } from './style'
+import { styles } from './style'
 
 /**
  * A PixiJS-native numeric keypad dialog. The editor's text fields use a DOM
@@ -25,31 +25,33 @@ export class NumericKeypad extends Dialog {
         super(NumericKeypad.W, NumericKeypad.H, title)
         this.value = initial !== undefined ? String(initial) : ''
 
-        // Value display
-        const box = new Graphics()
-            .roundRect(12, 40, NumericKeypad.W - 24, 36, 2)
-            .fill(colors.controls.textbox.background.color)
+        // Value display — dark field, light text (matches the dialog theme).
+        const box = new Graphics().roundRect(12, 40, NumericKeypad.W - 24, 36, 2).fill(0x2b2b2b)
         this.addChild(box)
         this.display = new Text({ text: this.value || '0', style: styles.dialog.title })
         this.display.anchor.set(1, 0.5)
         this.display.position.set(NumericKeypad.W - 20, 58)
         this.addChild(this.display)
 
-        // Keypad
+        // Keypad — respond on pointerdown so presses register instantly.
         const keys = ['7', '8', '9', '4', '5', '6', '1', '2', '3', '±', '0', '⌫']
         keys.forEach((k, i) => {
             const col = i % 3
             const row = Math.floor(i / 3)
             const b = this.key(k, 60, 44)
             b.position.set(12 + col * 64, 88 + row * 48)
-            b.on('pointertap', () => this.press(k))
+            b.on('pointerdown', e => {
+                e.stopPropagation()
+                this.press(k)
+            })
             this.addChild(b)
         })
 
         // Clear + Confirm
         const clear = this.key('C', 92, 30)
         clear.position.set(12, 88 + 4 * 48 + 4)
-        clear.on('pointertap', () => {
+        clear.on('pointerdown', e => {
+            e.stopPropagation()
             this.value = ''
             this.refresh()
         })
@@ -57,7 +59,8 @@ export class NumericKeypad extends Dialog {
 
         const confirm = this.barButton('✓ OK', 0x2f7d32)
         confirm.position.set(NumericKeypad.W - 12 - 92, 88 + 4 * 48 + 4)
-        confirm.on('pointertap', () => {
+        confirm.on('pointerdown', e => {
+            e.stopPropagation()
             this.onConfirm(this.parsed())
             this.close()
         })

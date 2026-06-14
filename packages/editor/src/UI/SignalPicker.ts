@@ -75,7 +75,10 @@ export class SignalPicker extends Dialog {
             label.anchor.set(0.5)
             tab.content = label
             tab.position.set(SignalPicker.PAD + i * 116, SignalPicker.TAB_Y)
-            tab.on('pointertap', () => this.showCategory(cat.id, tabButtons, tab, cols))
+            tab.on('pointerdown', e => {
+                e.stopPropagation()
+                this.showCategory(cat.id, tabButtons, tab, cols)
+            })
             this.addChild(tab)
             tabButtons.push(tab)
         })
@@ -147,7 +150,10 @@ export class SignalPicker extends Dialog {
         c.addChild(bg, t)
         c.eventMode = 'static'
         c.cursor = 'pointer'
-        c.on('pointertap', onTap)
+        c.on('pointerdown', e => {
+            e.stopPropagation()
+            onTap()
+        })
         return c
     }
 
@@ -168,7 +174,10 @@ export class SignalPicker extends Dialog {
         c.addChild(bg, t)
         c.eventMode = 'static'
         c.cursor = 'pointer'
-        c.on('pointertap', onTap)
+        c.on('pointerdown', e => {
+            e.stopPropagation()
+            onTap()
+        })
         return c
     }
 
@@ -200,8 +209,10 @@ export class SignalPicker extends Dialog {
             this.selectedButton.active = false
             this.selectedButton = undefined
         }
+        // The constant value is shown in the field itself, so don't duplicate it
+        // in the name label.
         this.preview = { constant: value }
-        this.nameLabel.text = `Constant: ${value}`
+        this.nameLabel.text = ''
         this.confirmBtn.visible = true
     }
 
@@ -238,7 +249,10 @@ export class SignalPicker extends Dialog {
                 (i % cols) * SignalPicker.STEP,
                 Math.floor(i / cols) * SignalPicker.STEP
             )
-            button.on('pointertap', () => this.selectSignal(name, cat, button))
+            button.on('pointerdown', e => {
+                e.stopPropagation()
+                this.selectSignal(name, cat, button)
+            })
             this.grid.addChild(button)
         })
 
