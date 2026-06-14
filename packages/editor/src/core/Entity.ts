@@ -1040,6 +1040,43 @@ export class Entity extends EventEmitter<EntityEvents> {
         return new Entity(updatedRawEntity, this.m_BP)
     }
 
+    /**
+     * Flip a *placed* entity in place — the EDIT/SELECT counterpart of
+     * {@link getFlippedCopy} (which builds a fresh entity for the paste path).
+     * Reflects the facing, toggles `mirror` for a chiral building, and swaps
+     * splitter priorities, all in one history transaction. Position and entity
+     * number are preserved, so existing wire connections stay intact.
+     */
+    public flipInPlace(vertical: boolean): void {
+        const non_flip_entities: EntityWithOwnerPrototype['type'][] = [
+            'train-stop',
+            'rail-chain-signal',
+            'rail-signal',
+        ]
+        if (non_flip_entities.includes(this.type))
+            throw new IllegalFlipError(`${this.name} cannot be flipped`)
+
+        const axisDir = vertical ? 12 : 8
+        const direction = this.constrainDirection((axisDir * 2 - this.direction) % 16)
+        // Chiral buildings (fluidboxes) toggle `mirror`; the direction reflection
+        // can't express their reflection. Directional entities flip via direction.
+        const mirror = this.isMirrorable ? !this.mirror : this.mirror
+
+        this.m_BP.history.startTransaction('Flip entity')
+        this.direction = direction
+        if (this.isMirrorable) this.mirror = mirror
+        if (
+            (vertical && (direction === 4 || direction === 8)) ||
+            (!vertical && (direction === 0 || direction === 12))
+        ) {
+            const ip = this.changePriority(this.m_rawEntity.input_priority)
+            const op = this.changePriority(this.m_rawEntity.output_priority)
+            if (ip !== undefined) this.splitterInputPriority = ip
+            if (op !== undefined) this.splitterOutputPriority = op
+        }
+        this.m_BP.history.commitTransaction()
+    }
+
     private rotateDir(ccw: boolean): number {
         if (!this.canBeRotated) return this.direction
         const pr = this.possibleRotations
@@ -1246,6 +1283,22 @@ export class Entity extends EventEmitter<EntityEvents> {
     public get isMirrorable(): boolean {
         const e = this.entityData
         return isCraftingMachine(e) && getFluidBoxes(e, true).length > 0
+    }
+
+    /**
+     * Whether flipping this entity does anything — it's directional (flips via
+     * `direction`) or chiral (toggles `mirror`), and isn't one of the types that
+     * throw {@link IllegalFlipError}. Gates the on-screen Flip buttons in EDIT /
+     * SELECT (#55), the placed counterpart of PaintEntityContainer.canFlip.
+     */
+    public get canFlip(): boolean {
+        const non_flip_entities: EntityWithOwnerPrototype['type'][] = [
+            'train-stop',
+            'rail-chain-signal',
+            'rail-signal',
+        ]
+        if (non_flip_entities.includes(this.type)) return false
+        return this.possibleRotations.length > 0 || this.isMirrorable
     }
 
     public get assemblerHasFluidInputs(): boolean {

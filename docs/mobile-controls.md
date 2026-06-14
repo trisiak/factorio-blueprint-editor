@@ -197,13 +197,17 @@ pipelines at once made touch taps double-act via the browser's synthetic
   history stack), rendered (`EntitySprite` mirrors the sprite via negative
   x-scale + shift; `OverlayContainer` mirrors the fluid in/out indicators), and
   round-tripped through export (`serialize` spreads the raw entity). Flip routes
-  through `Entity.getFlippedCopy` (a throwaway Entity reuses the core
-  direction+mirror math and the `IllegalFlipError` guard for non-flippable rail
-  pieces) for both the held ghost (`PaintEntityContainer.flip/canFlip`) and the
-  in-place case; the rail's Flip buttons are **cursor-aware** (`cursorCanFlip`
-  hidden for a non-flippable held entity). Covered by `e2e/mirror.spec.ts`
-  (chiral toggle, directional-via-direction, placed round-trip) via the `?test`
-  hook (`paint.mirror`, `entityMirror`). _Sprite-mirror rendering and the exact
+  through `Entity.getFlippedCopy` / `Entity.flipInPlace` (the held-ghost vs.
+  placed-entity halves, sharing the core direction+mirror math and the
+  `IllegalFlipError` guard for non-flippable rail pieces). Flip now works in
+  **three** places: a held ghost (`PaintEntityContainer.flip/canFlip`), a
+  **placed entity in EDIT** (tap-to-select → Flip mirrors it in place, wires
+  preserved), and a **single-entity marquee SELECT** — `BlueprintContainer.flip`
+  dispatches per mode and the rail's Flip buttons (now gated `PAINT/EDIT/SELECT`)
+  are **cursor-aware** via `Editor.cursorCanFlip` (resolves the flip target per
+  mode; hidden for a non-flippable target). Covered by `e2e/mirror.spec.ts`
+  (chiral toggle, directional-via-direction, placed round-trip, placed-in-EDIT
+  flip) via the `?test` hook (`paint.mirror`, `entityMirror`). _Sprite-mirror rendering and the exact
   flip-encoding heuristic still want a visual (preview) + in-game (export a
   flipped refinery, paste into Factorio) eyeball._
 - ✅ **Mode-gated action rail** (issue #33) — the rail now shows only the buttons

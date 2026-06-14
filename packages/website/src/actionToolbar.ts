@@ -63,7 +63,9 @@ const BUTTONS: ToolbarButton[] = [
     },
     // Cursor actions — only where they do something. Rotate works on a held
     // ghost, an edited entity, and a *single*-entity selection (group rotation
-    // isn't supported yet — #52); flip only works on a pasted-blueprint ghost.
+    // isn't supported yet — #52); flip works on a held ghost (single entity or
+    // pasted blueprint), a placed entity in EDIT, and a single-entity selection
+    // — `cursorCanFlip` resolves the right target per mode (#55).
     {
         action: 'rotate',
         glyph: '↻',
@@ -75,14 +77,14 @@ const BUTTONS: ToolbarButton[] = [
         action: 'flipHorizontal',
         glyph: '⇄',
         label: 'Flip H',
-        modes: [EM.PAINT],
+        modes: [EM.PAINT, EM.EDIT, EM.SELECT],
         when: e => e.cursorCanFlip,
     },
     {
         action: 'flipVertical',
         glyph: '⇅',
         label: 'Flip V',
-        modes: [EM.PAINT],
+        modes: [EM.PAINT, EM.EDIT, EM.SELECT],
         when: e => e.cursorCanFlip,
     },
     { action: 'pipette', glyph: '⊙', label: 'Pick', modes: [EM.PAINT, EM.EDIT] },

@@ -30,6 +30,22 @@ const entityMirror = (page: Page, name: string): Promise<boolean | null> =>
         name
     )
 
+// Tap a placed entity to enter EDIT mode (hover + edit-bar), the editor's touch
+// select. Uses the test hook for a deterministic screen position.
+async function tapEntity(page: Page, name: string): Promise<void> {
+    const pos = await page.evaluate(
+        n =>
+            (
+                window as unknown as {
+                    __FBE_TEST__: { entityScreenPos: (s: string) => { x: number; y: number } }
+                }
+            ).__FBE_TEST__.entityScreenPos(n),
+        name
+    )
+    expect(pos).not.toBeNull()
+    await page.locator('#editor').tap({ position: pos })
+}
+
 async function waitForLoaded(page: Page): Promise<void> {
     await expect(page.locator('#editor')).toBeVisible()
     await expect(page.locator('#loadingScreen')).not.toHaveClass(/active/, { timeout: 60_000 })
@@ -99,6 +115,25 @@ test.describe('single-entity flip + mirror', () => {
         const TILE = { x: 240, y: 480 }
         await page.locator('#editor').tap({ position: TILE })
         await page.locator('#editor').tap({ position: TILE })
+        await expect.poll(() => entityMirror(page, 'oil-refinery')).toBe(true)
+    })
+
+    test('flipping a *placed* refinery in EDIT mirrors it in place (#55)', async ({ page }) => {
+        // Place an un-flipped refinery, then drop the cursor so a tap edits it.
+        await gotoHolding(page, 'oil-refinery')
+        const TILE = { x: 240, y: 480 }
+        await page.locator('#editor').tap({ position: TILE })
+        await page.locator('#editor').tap({ position: TILE })
+        await expect.poll(() => entityMirror(page, 'oil-refinery')).toBe(false)
+        await page.keyboard.press('Escape')
+        await expect.poll(async () => (await getState(page)).paint.active).toBe(false)
+
+        // Tap it → EDIT mode → the rail offers Flip for the chiral building.
+        await tapEntity(page, 'oil-refinery')
+        await expect(page.locator('#action-toolbar button[title="Flip H"]')).toBeVisible()
+
+        await flipH(page)
+        // The placed entity is mirrored in place (same entity, wires preserved).
         await expect.poll(() => entityMirror(page, 'oil-refinery')).toBe(true)
     })
 })
