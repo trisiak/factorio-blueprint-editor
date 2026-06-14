@@ -129,6 +129,14 @@ pipelines at once made touch taps double-act via the browser's synthetic
   the placed wires survive (via a `wireColorPixelCounts()` `?test` hook that extracts
   the wires container in isolation), plus `?source` load guards over a trivial and a
   real 96-wire combinator blueprint (`e2e/fixtures/circuit-wire-blueprint.txt`).
+- ✅ **Circuit editing is touch-usable** — the combinator / enable-condition editors
+  (see `docs/circuit-editing.md`, #44) were built touch-first: signal selection goes
+  through a full-size `SignalPicker` (so the editor itself stays a few compact rows,
+  not a cramped inline list), numeric entry uses a **canvas-rendered keypad**
+  (`NumericKeypad`) instead of the touch-broken DOM `TextInput` (#56), controls fire
+  on `pointerdown`, and **long-press clears** a slot (touch has no right-click). The
+  base `Dialog` scales each editor to fit a narrow viewport. Known debt: the editors
+  use ad-hoc absolute layout (#59).
 
 ## Not done / next
 
