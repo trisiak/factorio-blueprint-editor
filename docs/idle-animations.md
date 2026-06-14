@@ -6,10 +6,11 @@
 > the Space Exploration work (#28); the shape-normalized renderer there means
 > animation metadata now reaches the sprites uniformly across packs.
 >
-> **Status: a basic POC has landed** (single-sheet animations + shared-clock
-> ticker driver + `animationsEnabled` setting + Settings checkbox + action-rail
-> Animate button). Remaining v1 hardening (viewport culling, pause-when-hidden,
-> zoom threshold) and all of v2 are still open — see Phasing.
+> **Status: v1 has landed** (single-sheet animations + shared-clock ticker
+> driver + `animationsEnabled` setting + Settings checkbox + action-rail Animate
+> button + viewport culling + zoom gate + hidden-tab guard). All of v2 (idle-only
+> semantics, `run_mode` fidelity, multi-file animations) is still open — see
+> Phasing.
 
 ## Why it's feasible (the data + plumbing already exist)
 
@@ -73,14 +74,20 @@ Thousands of sprites can be on screen. Mitigations, in priority order:
 - **Off by default**; zero cost until toggled.
 - **Shared clock, integer frame index** computed per tick; sprites only swap
   `texture` when their frame index actually changes (skip no-op swaps).
-- **Viewport culling** — only step sprites whose entity is within the visible
-  viewport (the `Viewport`/`PositionGrid` already know on-screen bounds); a huge
-  off-screen factory costs nothing.
-- **Pause when hidden** — drop the ticker callback on `visibilitychange`
-  (pattern already used in `settingsPane`/`index.ts`).
-- Optional **zoom threshold** (don't animate when zoomed far out — sub-pixel
-  motion isn't visible anyway) and a **hard cap** with graceful "animate the
-  first N on-screen" if a blueprint is pathologically large.
+- **Viewport culling** _(landed, v1)_ — each tick inverts the live
+  `BlueprintContainer` transform (`getViewportScale` + `position`/`scale`) into a
+  world-space rect and skips stepping any sprite whose tile (padded by its own
+  extent) falls outside it. Off-screen sprites cost a bounds check, not a texture
+  swap; `EntitySprite.visibleRect` / `inRect`.
+- **Pause when hidden** _(landed, v1)_ — browsers already pause
+  `requestAnimationFrame` (and thus Pixi's ticker) for a backgrounded tab, so the
+  driver simply early-returns on `document.hidden` as an explicit belt-and-braces
+  guard rather than wiring a separate `visibilitychange` listener.
+- **Zoom threshold** _(landed, v1)_ — below `ANIM_MIN_SCALE` (0.35) the driver
+  holds every sprite on frame 0; the reset runs once on the transition (tracked
+  by `animDormant`), not every tick.
+- Still open: a **hard cap** with graceful "animate the first N on-screen" if a
+  blueprint is pathologically large (the culling above makes this lower-priority).
 
 ## Scope / open questions
 
@@ -101,9 +108,10 @@ Thousands of sprites can be on screen. Mitigations, in priority order:
 
 ## Phasing
 
-- **v1** — metadata on sprites + per-frame texture resolver + shared ticker
-  driver + `animationsEnabled` setting + Settings checkbox + action-rail button +
-  viewport culling + pause-when-hidden. Single-sheet parts, "preview" semantics.
+- **v1** _(done)_ — metadata on sprites + per-frame texture resolver + shared
+  ticker driver + `animationsEnabled` setting + Settings checkbox + action-rail
+  button + viewport culling + zoom gate + hidden-tab guard. Single-sheet parts,
+  "preview" semantics.
 - **v2** — idle-only semantics, `run_mode` fidelity, multi-file (stripes/
   filenames) animations, optional per-entity-type opt-out for noisy ones.
 

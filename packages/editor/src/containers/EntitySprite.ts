@@ -16,6 +16,10 @@ import {
     SPRITE_GENERATION_FAILED,
 } from '../core/spriteDataBuilder'
 import { UnknownEntitySprite } from './UnknownEntitySprite'
+// Type-only: read the live viewport transform/zoom for culling + the zoom gate
+// (#29 v1). BlueprintContainer imports EntitySprite, but a type import is erased
+// at runtime so this introduces no module cycle.
+import type { BlueprintContainer } from './BlueprintContainer'
 
 /** How to address a multi-frame sprite's frames within its atlas sheet (#29). */
 interface AnimSpec {
@@ -90,6 +94,16 @@ export class EntitySprite extends Sprite {
     private static animEnabled = false
     private static animTickerCb?: () => void
     private static animStartMs = 0
+
+    /**
+     * Below this viewport scale a 32px sprite's frame-to-frame motion isn't
+     * worth the texture swaps, so the zoom gate holds everything on frame 0.
+     * Conservative on purpose (only kicks in when genuinely zoomed out) so
+     * toggling Animate at a normal editing zoom never looks like a no-op.
+     */
+    private static readonly ANIM_MIN_SCALE = 0.35
+    /** True while the zoom gate is holding sprites static (reset frames once). */
+    private static animDormant = false
 
     public constructor(
         texture: Texture,
@@ -221,6 +235,77 @@ export class EntitySprite extends Sprite {
         if (idx !== s.animFrame) s.setAnimFrame(idx)
     }
 
+    /**
+     * The shared driver, run once per Pixi tick while animations are on. Three
+     * cheap gates keep a large blueprint affordable (#29 v1):
+     *  - hidden tab: browsers already pause requestAnimationFrame (and thus
+     *    Pixi's ticker) for a backgrounded tab, so this seldom fires while
+     *    hidden — but bail anyway so a stray tick never churns textures.
+     *  - zoom gate: far enough out, sub-pixel motion isn't worth it; hold every
+     *    sprite on frame 0 below ANIM_MIN_SCALE.
+     *  - viewport culling: only step sprites whose tile is on (or near) screen,
+     *    so a huge off-screen factory costs a bounds check, not a texture swap.
+     */
+    private static tick(): void {
+        if (typeof document !== 'undefined' && document.hidden) return
+
+        const bpc = G.BPC
+        const scale = bpc ? bpc.getViewportScale() : 1
+        if (scale < EntitySprite.ANIM_MIN_SCALE) {
+            if (!EntitySprite.animDormant) {
+                for (const s of EntitySprite.animated) s.setAnimFrame(0)
+                EntitySprite.animDormant = true
+            }
+            return
+        }
+        EntitySprite.animDormant = false
+
+        const rect = EntitySprite.visibleRect(bpc)
+        const now = performance.now()
+        for (const s of EntitySprite.animated) {
+            if (rect && !EntitySprite.inRect(s, rect)) continue
+            EntitySprite.stepSprite(s, now)
+        }
+    }
+
+    /**
+     * The on-screen region in entitySprites-local (world-pixel) coordinates, or
+     * undefined when the scene isn't ready yet — in which case culling is
+     * disabled (animate everything) rather than risk hiding live sprites.
+     */
+    private static visibleRect(
+        bpc?: BlueprintContainer
+    ): { x0: number; x1: number; y0: number; y1: number } | undefined {
+        if (!bpc || !G.app?.screen) return undefined
+        const sx = bpc.scale.x || 1
+        const sy = bpc.scale.y || 1
+        const tx = bpc.position.x
+        const ty = bpc.position.y
+        // A screen point P maps to a local point L by P = L * scale + translation
+        // (the BlueprintContainer transform), so L = (P - t) / s inverts the two
+        // screen corners back into the world space the sprites live in.
+        return {
+            x0: (0 - tx) / sx,
+            x1: (G.app.screen.width - tx) / sx,
+            y0: (0 - ty) / sy,
+            y1: (G.app.screen.height - ty) / sy,
+        }
+    }
+
+    /**
+     * Is this sprite's tile inside `rect`, padded by the sprite's own extent so
+     * a part straddling the edge still animates (no pop-in at the border)?
+     */
+    private static inRect(
+        s: EntitySprite,
+        rect: { x0: number; x1: number; y0: number; y1: number }
+    ): boolean {
+        const a = s.anim
+        const m = a ? Math.max(a.w, a.h) : 64
+        const { x, y } = s.entityPos
+        return x + m >= rect.x0 && x - m <= rect.x1 && y + m >= rect.y0 && y - m <= rect.y1
+    }
+
     public static get animationsEnabled(): boolean {
         return EntitySprite.animEnabled
     }
@@ -235,10 +320,8 @@ export class EntitySprite extends Sprite {
         EntitySprite.animEnabled = on
         if (on) {
             EntitySprite.animStartMs = performance.now()
-            EntitySprite.animTickerCb = () => {
-                const now = performance.now()
-                for (const s of EntitySprite.animated) EntitySprite.stepSprite(s, now)
-            }
+            EntitySprite.animDormant = false
+            EntitySprite.animTickerCb = EntitySprite.tick
             G.app.ticker.add(EntitySprite.animTickerCb)
         } else if (EntitySprite.animTickerCb) {
             G.app.ticker.remove(EntitySprite.animTickerCb)
