@@ -356,16 +356,12 @@ export class WireConnections extends EventEmitter<WireConnectionsEvents> {
     }
 
     /**
-     * The entities and wire hashes that share **any** circuit (red/green) network
-     * with `entityNumber` — for highlighting the network when the entity is
-     * hovered/selected. `entities` includes the queried entity itself.
+     * The entities that share **any** circuit (red/green) network with
+     * `entityNumber` — for highlighting the network when the entity is
+     * hovered/selected. The returned set includes the queried entity itself.
      */
-    public getConnectedNetwork(entityNumber: number): {
-        entities: Set<number>
-        hashes: Set<string>
-    } {
+    public getConnectedNetwork(entityNumber: number): { entities: Set<number> } {
         const entities = new Set<number>()
-        const hashes = new Set<string>()
         for (const color of ['red', 'green'] as const) {
             const ids = this.circuitNetworkIds(color)
             // The network id(s) the entity belongs to on this colour.
@@ -383,14 +379,8 @@ export class WireConnections extends EventEmitter<WireConnectionsEvents> {
             for (const [nodeKey, id] of ids) {
                 if (myIds.has(id)) entities.add(Number(nodeKey.split('-')[0]))
             }
-            // Every wire of those networks.
-            this.forEach((conn, hash) => {
-                if (conn.color !== color) return
-                const id = ids.get(`${conn.cps[0].entityNumber}-${conn.cps[0].entitySide ?? 1}`)
-                if (id !== undefined && myIds.has(id)) hashes.add(hash)
-            })
         }
-        return { entities, hashes }
+        return { entities }
     }
 
     /** The red/green circuit network ids an entity's sides belong to. */

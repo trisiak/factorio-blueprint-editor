@@ -119,45 +119,6 @@ export class WiresContainer extends Container {
         }
     }
 
-    /** Dim every wire that isn't in `hashes` so a hovered entity's network pops. */
-    public highlightNetwork(hashes: Set<string>): void {
-        for (const [hash, sprite] of this.connectionToSprite) {
-            sprite.alpha = hashes.has(hash) ? 1 : 0.12
-        }
-    }
-
-    /** Restore all wires to full opacity (clears `highlightNetwork`). */
-    public clearHighlight(): void {
-        for (const sprite of this.connectionToSprite.values()) sprite.alpha = 1
-    }
-
-    /**
-     * World-space (pixel) endpoints + colour of a connection, for drawing a
-     * highlight line over it. Returns undefined if an endpoint can't be resolved.
-     */
-    public getWireEndpoints(
-        connection: IConnection
-    ): { p1: IPoint; p2: IPoint; color: WireColor } | undefined {
-        const pos = (cp: IConnectionPoint): IPoint | undefined => {
-            if (cp.entityNumber) {
-                const entity = this.bp.entities.get(cp.entityNumber)
-                if (!entity) return undefined
-                const point = entity.getWireConnectionPoint(connection.color, cp.entitySide)
-                if (!point) return undefined
-                return {
-                    x: (entity.position.x + point[0]) * 32,
-                    y: (entity.position.y + point[1]) * 32,
-                }
-            }
-            if (cp.position) return { x: cp.position.x * 32, y: cp.position.y * 32 }
-            return undefined
-        }
-        const p1 = pos(connection.cps[0])
-        const p2 = pos(connection.cps[1])
-        if (!p1 || !p2) return undefined
-        return { p1, p2, color: connection.color }
-    }
-
     public update(entityNumber: number): void {
         const connections = this.bp.wireConnections.getEntityConnections(entityNumber)
 

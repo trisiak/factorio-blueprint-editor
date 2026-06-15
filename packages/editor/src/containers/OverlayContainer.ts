@@ -31,8 +31,6 @@ const combinatorOperatorStyle = new TextStyle({
 export class OverlayContainer extends Container {
     private readonly bpc: BlueprintContainer
     private readonly entityInfos = new Container()
-    /** Bright overlay redraw of a hovered entity's circuit-network wires. */
-    private readonly highlightWires = new Graphics()
     /** Boxes marking the entities on a hovered entity's circuit network. */
     private readonly networkBoxes = new Container()
     private readonly cursorBoxes = new Container()
@@ -49,7 +47,6 @@ export class OverlayContainer extends Container {
 
         this.addChild(
             this.entityInfos,
-            this.highlightWires,
             this.networkBoxes,
             this.cursorBoxes,
             this.undergroundLines,
@@ -59,11 +56,11 @@ export class OverlayContainer extends Container {
     }
 
     /**
-     * Highlight a hovered entity's circuit network: box every connected entity
-     * (except the hovered one, which already has the regular cursor box) and dim
-     * the wires that aren't part of it. `clearNetworkHighlight` undoes both.
+     * Highlight a hovered entity's circuit network by boxing every connected
+     * entity (except the hovered one, which already has the regular cursor box).
+     * `clearNetworkHighlight` removes the boxes.
      */
-    public showNetworkHighlight(entities: Set<number>, hashes: Set<string>, exclude: number): void {
+    public showNetworkHighlight(entities: Set<number>, exclude: number): void {
         this.clearNetworkHighlight()
         for (const entityNumber of entities) {
             if (entityNumber === exclude) continue
@@ -74,33 +71,10 @@ export class OverlayContainer extends Container {
             if (!ec) continue
             this.createCursorBox(ec.position, ec.entity.size, 'pair', this.networkBoxes)
         }
-
-        // Dim the unrelated wires and redraw the network's own wires as bright
-        // bold lines on top, so the hovered entity's signal network reads at a
-        // glance (on desktop and touch).
-        this.bpc.wiresContainer.highlightNetwork(hashes)
-        for (const hash of hashes) {
-            const conn = this.bpc.bp.wireConnections.get(hash)
-            if (!conn) continue
-            const e = this.bpc.wiresContainer.getWireEndpoints(conn)
-            if (!e) continue
-            const droop = Math.min(1, Math.hypot(e.p2.x - e.p1.x, e.p2.y - e.p1.y) / 96) * 18
-            this.highlightWires
-                .moveTo(e.p1.x, e.p1.y)
-                .quadraticCurveTo(
-                    (e.p1.x + e.p2.x) / 2,
-                    (e.p1.y + e.p2.y) / 2 + droop,
-                    e.p2.x,
-                    e.p2.y
-                )
-                .stroke({ width: 3, color: e.color === 'green' ? 0x7ad24a : 0xff5a3a, alpha: 0.95 })
-        }
     }
 
     public clearNetworkHighlight(): void {
         for (const c of this.networkBoxes.removeChildren()) c.destroy()
-        this.highlightWires.clear()
-        this.bpc.wiresContainer.clearHighlight()
     }
 
     /** Number of network-highlight boxes currently shown (for e2e). */
