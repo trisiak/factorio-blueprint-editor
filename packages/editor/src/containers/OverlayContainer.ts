@@ -75,10 +75,9 @@ export class OverlayContainer extends Container {
             this.createCursorBox(ec.position, ec.entity.size, 'pair', this.networkBoxes)
         }
 
-        // Dim the unrelated wires (desktop), AND redraw the network's own wires as
-        // bright bold lines on top. The base wires are RenderTexture sprites that
-        // don't paint on high-DPI mobile (#37), so this overlay is what makes the
-        // network visible there — and it pops on desktop too.
+        // Dim the unrelated wires and redraw the network's own wires as bright
+        // bold lines on top, so the hovered entity's signal network reads at a
+        // glance (on desktop and touch).
         this.bpc.wiresContainer.highlightNetwork(hashes)
         for (const hash of hashes) {
             const conn = this.bpc.bp.wireConnections.get(hash)
