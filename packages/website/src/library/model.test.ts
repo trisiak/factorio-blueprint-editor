@@ -223,18 +223,26 @@ describe('content: autosave vs explicit checkpoint', () => {
         expect(hasUncheckpointedChanges(bp)).toBe(true) // diverged again
     })
 
-    it('restoreSnapshot brings back a version and preserves the pre-restore state', () => {
+    it('restoreSnapshot overwrites live content (explicit-only; no implicit checkpoint)', () => {
         const { now, id } = fixtures()
         const tree = ensurePack(createLibrary(), 'p', now)
         const bp = makeBlueprint('a', '0v1', now, id)
         addNode(tree, bp)
-        checkpointEntry(tree, bp.id, now) // snapshot 0v1 (index 0)
+        checkpointEntry(tree, bp.id, now) // versions: ['0v1']
         updateEntryContent(tree, bp.id, '0v2', now)
+        checkpointEntry(tree, bp.id, now) // versions: ['0v2','0v1']
+        updateEntryContent(tree, bp.id, '0v3', now) // uncommitted edits on top
 
-        expect(restoreSnapshot(tree, bp.id, 0, now)).toBe(true) // restore 0v1
+        // Restore the older version: live content becomes 0v1, the uncommitted
+        // 0v3 is overwritten, and history is untouched (no auto-snapshot).
+        expect(restoreSnapshot(tree, bp.id, 1, now)).toBe(true)
         expect(bp.encoded).toBe('0v1')
-        // 0v2 (the pre-restore content) was checkpointed first → newest.
-        expect(bp.snapshots[0].encoded).toBe('0v2')
+        expect(bp.snapshots.map(s => s.encoded)).toEqual(['0v2', '0v1'])
+
+        // Saving now records the restored content as the new newest version —
+        // time-linear, duplicates allowed.
+        expect(checkpointEntry(tree, bp.id, now)).toBe(true)
+        expect(bp.snapshots.map(s => s.encoded)).toEqual(['0v1', '0v2', '0v1'])
     })
 
     it('rejects content ops against folders or missing ids', () => {

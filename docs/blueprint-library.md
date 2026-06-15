@@ -42,16 +42,19 @@ trajectory toward an OAuth-locked external backend (e.g. Firebase) later.
   active leaf; the canvas edits it directly, and the active project's name is
   shown in a top-centre indicator. Each pack remembers its own active leaf
   (persisted), so a reload reopens what you were working on.
-- **Autosave (live) vs. Save (checkpoint).** The active leaf's content is
-  continuously **autosaved** (on `visibilitychange`) so a reload never loses
-  work — this updates live content only and never churns history. An explicit
-  **Save** creates a **version checkpoint** (the last N kept, pruned, with
-  identical/empty saves skipped) — stored in the leaf's `snapshots[]`, so specific
-  versions can be pulled back later (Phase 3 restore UI; `restoreSnapshot` already
-  exists). "Modified" = the canvas differs from the active leaf's newest
-  checkpoint (i.e. uncheckpointed edits) — what the indicator's unsaved dot shows.
-  The **scratchpad is exempt** (always live, no versions, never modified). **Save
-  As** makes a new named leaf and switches to it.
+- **Autosave (live) vs. Save (checkpoint) — a backup model.** A leaf has two
+  things: its **live `encoded`** (continuously autosaved on `visibilitychange`,
+  so uncommitted edits are _persisted_ and survive reloads) and **`snapshots[]`**
+  — explicit version checkpoints (last N kept, pruned, identical/empty saves
+  skipped). "Modified" is **derived, not transient**: it's simply `encoded ≠
+newest snapshot` (uncommitted edits), recomputed on load and shown as the
+  indicator's dot. **Restore** (Phase 3 UI; `restoreSnapshot` exists) overwrites
+  the live content with a chosen version — explicit-only, so it does _not_
+  auto-snapshot, and the UI should confirm when there are uncommitted edits to
+  overwrite; saving afterward records the restored content as the new newest
+  version. So history is **time-linear, per-leaf, no branches/tags** — a backup,
+  not a VCS. The **scratchpad is exempt** (always live, no versions, never
+  modified). **Save As** makes a new named leaf and switches to it.
 - **"Open a new project" + recents.** Loading the site with a `?source=` URL
   creates an _implied separate entry_ under an auto-created **"Imported"** folder
   (it joins recents and never clobbers the scratchpad). An explicit "new project"

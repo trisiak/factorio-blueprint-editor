@@ -300,23 +300,24 @@ export function hasUncheckpointedChanges(entry: BlueprintEntry): boolean {
 }
 
 /**
- * Restore a checkpoint (by index) into a leaf's live content. The pre-restore
- * content is checkpointed first (unless it's already the newest), so a restore
- * is itself recoverable. Returns true if the leaf and checkpoint exist.
+ * Restore a checkpoint (by index) into a leaf's live content. Checkpoints are
+ * explicit-only, so this does NOT auto-snapshot — it just replaces the live
+ * (uncommitted) content with the chosen version, overwriting any uncommitted
+ * edits. Saving afterward records the restored content as a new newest version,
+ * keeping history time-linear (a backup model, not a branching one). The restore
+ * UI should confirm when there are uncommitted edits to overwrite. Returns true
+ * if the leaf and checkpoint exist.
  */
 export function restoreSnapshot(
     tree: PackTree,
     id: string,
     snapshotIndex: number,
-    now: Now = Date.now,
-    limit = DEFAULT_SNAPSHOT_LIMIT
+    now: Now = Date.now
 ): boolean {
     const node = findNode(tree, id)
     if (!node || node.kind !== 'blueprint') return false
-    // Capture the target by reference — checkpointEntry's unshift would shift indices.
     const snap = node.snapshots[snapshotIndex]
     if (!snap) return false
-    checkpointEntry(tree, id, now, limit)
     node.encoded = snap.encoded
     node.updatedAt = now()
     return true

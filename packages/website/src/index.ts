@@ -230,6 +230,9 @@ async function loadInitialBlueprint(): Promise<void> {
             ? 'Restored your scratchpad'
             : `Opened "${active.name}"`
         await loadBp(bpOrBook || new Blueprint(), message)
+        // The "modified" (uncommitted-since-last-version) state is persisted, not
+        // transient — reflect it on the indicator straight from the stored content.
+        refreshModifiedIndicator(active.encoded)
     } else {
         await loadBp(new Blueprint())
     }
