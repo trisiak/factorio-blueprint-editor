@@ -31,6 +31,8 @@ const combinatorOperatorStyle = new TextStyle({
 export class OverlayContainer extends Container {
     private readonly bpc: BlueprintContainer
     private readonly entityInfos = new Container()
+    /** Bright overlay redraw of a hovered entity's circuit-network wires. */
+    private readonly highlightWires = new Graphics()
     /** Boxes marking the entities on a hovered entity's circuit network. */
     private readonly networkBoxes = new Container()
     private readonly cursorBoxes = new Container()
@@ -47,6 +49,7 @@ export class OverlayContainer extends Container {
 
         this.addChild(
             this.entityInfos,
+            this.highlightWires,
             this.networkBoxes,
             this.cursorBoxes,
             this.undergroundLines,
@@ -71,11 +74,33 @@ export class OverlayContainer extends Container {
             if (!ec) continue
             this.createCursorBox(ec.position, ec.entity.size, 'pair', this.networkBoxes)
         }
+
+        // Dim the unrelated wires (desktop), AND redraw the network's own wires as
+        // bright bold lines on top. The base wires are RenderTexture sprites that
+        // don't paint on high-DPI mobile (#37), so this overlay is what makes the
+        // network visible there — and it pops on desktop too.
         this.bpc.wiresContainer.highlightNetwork(hashes)
+        for (const hash of hashes) {
+            const conn = this.bpc.bp.wireConnections.get(hash)
+            if (!conn) continue
+            const e = this.bpc.wiresContainer.getWireEndpoints(conn)
+            if (!e) continue
+            const droop = Math.min(1, Math.hypot(e.p2.x - e.p1.x, e.p2.y - e.p1.y) / 96) * 18
+            this.highlightWires
+                .moveTo(e.p1.x, e.p1.y)
+                .quadraticCurveTo(
+                    (e.p1.x + e.p2.x) / 2,
+                    (e.p1.y + e.p2.y) / 2 + droop,
+                    e.p2.x,
+                    e.p2.y
+                )
+                .stroke({ width: 3, color: e.color === 'green' ? 0x7ad24a : 0xff5a3a, alpha: 0.95 })
+        }
     }
 
     public clearNetworkHighlight(): void {
         for (const c of this.networkBoxes.removeChildren()) c.destroy()
+        this.highlightWires.clear()
         this.bpc.wiresContainer.clearHighlight()
     }
 
