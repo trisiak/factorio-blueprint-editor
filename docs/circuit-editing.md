@@ -86,6 +86,10 @@ whole editor to fit a narrow viewport.
 
 - **#31** — tracking issue / index.
 - **#37** — mobile: red/green circuit wires don't render (separate `WiresContainer` bug).
-- **#49** — highlight connected entities/wires of a network on select.
+- **#49** — ✅ highlight a hovered entity's circuit network (#60): boxes the
+  connected entities (`OverlayContainer.showNetworkHighlight` via
+  `WireConnections.getConnectedNetwork`), dims the unrelated wires, and redraws
+  the network's own wires as bright overlay lines so they're visible even on
+  mobile (where the base wires don't render — #37).
 - **#56** — DOM `TextInput` broken on touch (station name, chest counts).
 - **#59** — ad-hoc editor layout / shared form-layout helper.
