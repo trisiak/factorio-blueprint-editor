@@ -1,14 +1,14 @@
 import { test, expect, type Page } from '@playwright/test'
 
 /**
- * #49 — hovering/selecting a wired entity highlights the entities and wires on
- * its circuit network. Drives the real hover (via the `entityScreenPos` test
- * hook, so no guessed coordinates) and checks the highlight-box count.
+ * #49 — hovering/selecting a wired entity highlights the other entities on its
+ * circuit network (with boxes). Drives the real hover (via the `entityScreenPos`
+ * test hook, so no guessed coordinates) and checks the highlight-box count.
  *
  * Blueprint: a const→arith→decider chain (the arith shares a network with both
  * neighbours) plus an unrelated const–const red wire. Hovering the arithmetic
- * combinator highlights its two neighbours; the decider only neighbours the
- * arith; moving onto empty space clears the highlight.
+ * combinator boxes its two neighbours; the decider only neighbours the arith;
+ * moving onto empty space clears the highlight.
  */
 const BP =
     '0eJyVU9tugzAM/Rc/TunEtVWRth9BFQqQrpYgYSF0rRD/PgfonXZDeYgv+Njn4LSQFo2oNEoDUQtoRAnRVYzBXugalYQoXHrrYL0OA89ZrYIlAyENGhQ1RHE7OMdENmUqNEQuA8lLQViZkrXh0iwyVaYouVGaUCtVU62FbeEAkfMeMjj2d8cgRy2yIeswC2C0KpJU7PgeqZpK6iFf39o0BspcHPr2WywMjX4XHYdCreSiKrgRNIs5Vn3Mcmfw3fCCmFBAKl3yAuwEZcV1P3kEH32gsXqF3YZO17EH+t65E9dodqUwmL0UwBsFcP9F/wKaUDrHsxZb1LVJavySNDj5f9GlbqoSRK3vBm+UJjkJMjn9Noh8+qYxVTOBm6mKqqeRJ3Xxz7rkIsOcal+JEswSZUS8U+Tai58KNAQWgme7C489akPLYEW62YDPfgNO8riO021OEg1NZsI/2aFg3hNyR7GChyc0gR3Ow/afYxP1H/It8dhlLvOYu2GxvemQ5TGfjo0FlA3JIra/6EeA9A=='
@@ -36,10 +36,11 @@ const count = (page: Page) =>
     )
 
 test('highlights a hovered entity circuit network', async ({ page }, info) => {
-    test.skip(
-        info.project.name !== 'desktop-chromium',
-        'desktop hover only; touch needs the highlight tied to a persistent selection (#49 follow-up)'
-    )
+    // The highlight works on desktop (hover) and touch (a tap leaves the hover
+    // stuck on the entity). This spec drives it via Playwright `mouse.move`,
+    // which doesn't exercise the mobile touch-select path, so it runs on desktop;
+    // touch is verified manually.
+    test.skip(info.project.name !== 'desktop-chromium', 'driven via mouse hover')
     await page.goto(`/?test&source=${encodeURIComponent(BP)}`)
     await waitForAppReady(page)
     await page.waitForTimeout(400)
