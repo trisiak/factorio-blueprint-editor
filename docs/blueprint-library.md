@@ -134,7 +134,7 @@ A single `LibraryState` document, in `packages/website/src/library/`:
   leaf), deals only in encoded strings (no editor import → unit-tested). The
   autosave/Save/Save As/open/import/newScratch/seedScratchpad API `index.ts` calls.
 - `libraryPanel.ts` — the DOM browser overlay (no framework, matches the site
-  chrome). Verified by running the app, not unit-tested.
+  chrome). Verified by running the app + `e2e/library.spec.ts`.
 - Wiring in `index.ts`: the active leaf replaces the legacy single-slot autosave
   (migrated into the scratchpad once), the active-project indicator, and the
   `#library-button` / `#active-project` chrome.
