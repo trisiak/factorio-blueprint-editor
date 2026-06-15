@@ -473,6 +473,11 @@ body.mobile
             cursor: pointer
             &:hover
                 filter: brightness(1.15)
+            &:disabled
+                opacity: 0.45
+                cursor: not-allowed
+                &:hover
+                    filter: none
 
     .library-body
         overflow-y: auto

@@ -33,10 +33,11 @@ trajectory toward an OAuth-locked external backend (e.g. Firebase) later.
   Factorio string; import a pasted string by grafting it as a subtree under a
   chosen parent. The native string is for portability/sharing, never the system
   of record.
-- **Per-modpack scratchpad.** Each pack subtree always has a Scratchpad — the
-  default landing place for transient work, replacing today's single
-  `fbe:blueprint` autosave (which is global and silently overwritten). Saving a
-  named entry is always deliberate.
+- **Per-modpack scratchpad — always live, never versioned.** Each pack subtree
+  always has a Scratchpad: the default landing place for transient work, replacing
+  today's single `fbe:blueprint` autosave (global, silently overwritten). It's
+  continuously autosaved but holds **no versions** — you can't Save a checkpoint
+  into it, only **Save as…** a named copy. It's never reported as "modified".
 - **The active leaf _is_ the working context.** Opening an entry makes it the
   active leaf; the canvas edits it directly, and the active project's name is
   shown in a top-centre indicator. Each pack remembers its own active leaf
@@ -44,10 +45,13 @@ trajectory toward an OAuth-locked external backend (e.g. Firebase) later.
 - **Autosave (live) vs. Save (checkpoint).** The active leaf's content is
   continuously **autosaved** (on `visibilitychange`) so a reload never loses
   work — this updates live content only and never churns history. An explicit
-  **Save** creates a **version checkpoint** (the last N are kept, pruned, with
-  identical/empty saves skipped). "Modified" = the canvas differs from the active
-  leaf's newest checkpoint; that's what the new-project prompt and the indicator's
-  unsaved dot key off. **Save As** makes a new named leaf and switches to it.
+  **Save** creates a **version checkpoint** (the last N kept, pruned, with
+  identical/empty saves skipped) — stored in the leaf's `snapshots[]`, so specific
+  versions can be pulled back later (Phase 3 restore UI; `restoreSnapshot` already
+  exists). "Modified" = the canvas differs from the active leaf's newest
+  checkpoint (i.e. uncheckpointed edits) — what the indicator's unsaved dot shows.
+  The **scratchpad is exempt** (always live, no versions, never modified). **Save
+  As** makes a new named leaf and switches to it.
 - **"Open a new project" + recents.** Loading the site with a `?source=` URL
   creates an _implied separate entry_ under an auto-created **"Imported"** folder
   (it joins recents and never clobbers the scratchpad). An explicit "new project"

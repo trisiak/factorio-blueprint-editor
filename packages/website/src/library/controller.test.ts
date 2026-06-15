@@ -61,24 +61,34 @@ describe('autosave vs save', () => {
         expect(ctl.getActive().snapshots).toHaveLength(0)
     })
 
-    it('save checkpoints the active leaf and reports whether a version was made', async () => {
+    it('save checkpoints a named leaf and reports whether a version was made', async () => {
         const { ctl } = newController()
         await ctl.init()
-        expect(await ctl.save('0v1')).toBe(true)
+        await ctl.saveAs('proj', '0v1') // move active off the scratchpad; checkpoints 0v1
         expect(ctl.getActive().snapshots.map(s => s.encoded)).toEqual(['0v1'])
         expect(await ctl.save('0v1')).toBe(false) // unchanged → no new version
         expect(await ctl.save('0v2')).toBe(true)
         expect(ctl.getActive().snapshots.map(s => s.encoded)).toEqual(['0v2', '0v1'])
     })
 
-    it('isModified compares the canvas to the last checkpoint', async () => {
+    it('isModified compares a named leaf to its last checkpoint', async () => {
         const { ctl } = newController()
         await ctl.init()
-        expect(ctl.isModified('')).toBe(false)
-        expect(ctl.isModified('0v1')).toBe(true)
-        await ctl.save('0v1')
+        await ctl.saveAs('proj', '0v1') // checkpoints 0v1
         expect(ctl.isModified('0v1')).toBe(false)
         expect(ctl.isModified('0v2')).toBe(true)
+    })
+
+    it('the scratchpad is always live — it holds no versions and is never modified', async () => {
+        const { ctl } = newController()
+        await ctl.init() // active = scratchpad
+        await ctl.autosave('0work')
+        // Saving the scratchpad never checkpoints it.
+        expect(await ctl.save('0work')).toBe(false)
+        expect(ctl.getActive().snapshots).toHaveLength(0)
+        // ...and it's never reported as modified, however much it changes.
+        expect(ctl.isModified('0work')).toBe(false)
+        expect(ctl.isModified('0other')).toBe(false)
     })
 })
 

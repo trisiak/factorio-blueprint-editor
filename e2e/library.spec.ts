@@ -49,6 +49,9 @@ test.describe('blueprint library', () => {
         await expect(panel(page).getByText(/Scratchpad/)).toBeVisible()
         await expect(panel(page).getByText(/No saved blueprints yet/i)).toBeVisible()
 
+        // The scratchpad is always live — you can't save a version into it.
+        await expect(panel(page).getByRole('button', { name: /save version/i })).toBeDisabled()
+
         // The close button dismisses the panel.
         await panel(page).locator('.library-close').click()
         await expect(panel(page)).not.toHaveClass(/active/)
@@ -70,6 +73,8 @@ test.describe('blueprint library', () => {
         // The new project becomes the working context and appears in the tree.
         await expect(indicator(page)).toHaveText('Chest project')
         await expect(panel(page).getByText('Chest project').first()).toBeVisible()
+        // A named entry (unlike the scratchpad) can hold versions, so Save is live.
+        await expect(panel(page).getByRole('button', { name: /save version/i })).toBeEnabled()
 
         // Start a fresh project (no unsaved changes → no prompt) — canvas clears.
         await panel(page)
@@ -101,9 +106,24 @@ test.describe('blueprint library', () => {
         await expect(panel(page).locator('.library-folder', { hasText: 'Imported' })).toBeVisible()
     })
 
-    test('new project discards unsaved work after confirming', async ({ page }) => {
-        await page.goto(`/?test&source=${encodeURIComponent(CHEST)}`)
+    test('new project discards live scratchpad work after confirming', async ({ page }) => {
+        // Build an entity straight onto the (empty) scratchpad via the quickbar —
+        // the only at-risk work "New project" warns about. Mirrors desktopBuild.
+        await page.addInitScript(() => {
+            window.localStorage.setItem(
+                'quickbarItemNames',
+                JSON.stringify(['assembling-machine-2'])
+            )
+        })
+        await page.goto('/?test')
         await waitForReady(page)
+        await expect(indicator(page)).toHaveText('Scratchpad')
+
+        const at = { x: 320, y: 360 } // open canvas, clear of corner/side UI
+        await page.locator('#editor').focus()
+        await page.mouse.move(at.x, at.y)
+        await page.keyboard.press('1') // hold assembling-machine-2 (paint)
+        await page.mouse.click(at.x, at.y) // build into the scratchpad
         await expect.poll(() => entityCount(page)).toBe(1)
 
         await openPanel(page)
@@ -111,8 +131,8 @@ test.describe('blueprint library', () => {
             .getByRole('button', { name: /new project/i })
             .click()
 
-        // The imported blueprint has unsaved (uncheckpointed) changes, so a sticky
-        // confirm toast appears; confirming discards and starts fresh.
+        // Live scratchpad content is at risk, so a sticky confirm toast appears;
+        // confirming discards it and starts fresh.
         const discard = page.getByRole('button', { name: /discard & start new/i })
         await expect(discard).toBeVisible()
         await discard.click()

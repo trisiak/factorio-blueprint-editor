@@ -105,21 +105,28 @@ export class LibraryController {
 
     /**
      * Whether `encoded` (the current canvas) has changes since the active leaf's
-     * last checkpoint — drives the "unsaved changes" prompt.
+     * last checkpoint — drives the "unsaved changes" prompt and the indicator dot.
+     * The scratchpad is always live (it holds no versions), so it's never
+     * "modified".
      */
     public isModified(encoded: string): boolean {
+        if (this.isScratchpad(this.getActiveId())) return false
         const active = this.getActive()
         return !!encoded && encoded !== (active.snapshots[0]?.encoded ?? '')
     }
 
     /**
      * Explicit Save: mirror the latest content, then checkpoint the active leaf.
-     * Returns true if a new version was actually recorded.
+     * Returns true if a new version was actually recorded. The scratchpad can't
+     * hold versions (it's always live) — saving it is a no-op here; the UI routes
+     * the scratchpad to "Save as…" instead.
      */
     public async save(encoded: string): Promise<boolean> {
         const tree = this.tree()
         updateEntryContent(tree, tree.activeId, encoded, this.now)
-        const made = checkpointEntry(tree, tree.activeId, this.now)
+        const made = this.isScratchpad(tree.activeId)
+            ? false
+            : checkpointEntry(tree, tree.activeId, this.now)
         await this.persist()
         return made
     }

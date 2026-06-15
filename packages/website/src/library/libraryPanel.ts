@@ -79,9 +79,13 @@ export function initLibraryPanel(
 
     actionButton('New project', async () => {
         const current = await cb.currentEncoded().catch(() => '')
-        if (controller.isModified(current)) {
+        // "New project" wipes the scratchpad and starts there. Switching off a
+        // *named* entry loses nothing (its content is already saved/reopenable),
+        // so the only work at risk is live scratchpad content — warn just for that.
+        const onScratchpad = controller.isScratchpad(controller.getActiveId())
+        if (onScratchpad && current) {
             const go = await cb.confirm(
-                'You have unsaved changes. Start a new project anyway?',
+                'Discard your current scratchpad work and start fresh?',
                 'Discard & start new'
             )
             if (!go) return
@@ -93,7 +97,13 @@ export function initLibraryPanel(
         cb.toast('Started a new project', 'success')
     })
 
-    actionButton('Save version', async () => {
+    // The scratchpad is always live and can't hold versions; "Save version" is
+    // disabled there (see refresh) and routes the user to "Save as…".
+    const saveBtn = actionButton('Save version', async () => {
+        if (controller.isScratchpad(controller.getActiveId())) {
+            cb.toast('The scratchpad is always live — use “Save as…” to keep a copy.', 'info')
+            return
+        }
         const current = await cb.currentEncoded().catch(() => '')
         if (!current) {
             cb.toast('Nothing to save — the blueprint is empty.', 'info')
@@ -168,7 +178,8 @@ export function initLibraryPanel(
         const name = document.createElement('span')
         name.className = 'library-row-name'
         name.textContent = (opts.isScratchpad ? '✎ ' : '') + node.name
-        if (node.snapshots.length) {
+        // The scratchpad is always live — it never carries a version count.
+        if (!opts.isScratchpad && node.snapshots.length) {
             const badge = document.createElement('span')
             badge.className = 'library-badge'
             badge.textContent = `v${node.snapshots.length}`
@@ -221,6 +232,14 @@ export function initLibraryPanel(
     function refresh(): void {
         body.replaceChildren()
         const tree = controller.getTree()
+
+        // The scratchpad is always live — you can't save a version into it, only
+        // "Save as…" a named copy. Reflect that on the Save button.
+        const onScratchpad = controller.isScratchpad(controller.getActiveId())
+        saveBtn.disabled = onScratchpad
+        saveBtn.title = onScratchpad
+            ? 'The scratchpad is always live — use “Save as…” to keep a named copy.'
+            : ''
 
         // Scratchpad — always present, pinned at the top.
         section('Working')
