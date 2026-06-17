@@ -14,6 +14,8 @@ import EDITOR, {
     getBlueprintOrBookFromSource,
     installTestHook,
     DATA_PACK,
+    DATA_ROOT,
+    setDataPack,
 } from '@fbe/editor'
 import { initToasts } from './toasts'
 import { initSettingsPane } from './settingsPane'
@@ -41,6 +43,10 @@ let book: Book
 const library = new LibraryController(createLibraryStore(), DATA_PACK)
 let libraryPanel: LibraryPanel
 let activeProjectEl: HTMLElement | null
+// The data-pack manifest (id + label), for the library panel's pack drop-down.
+// Loaded once at init from packs.json (same source as the settings pane); the
+// active pack is always present even if the manifest fetch fails.
+let packManifest: { id: string; label: string }[] = [{ id: DATA_PACK, label: DATA_PACK }]
 
 const loadingScreen = {
     el: document.getElementById('loadingScreen'),
@@ -144,6 +150,16 @@ editor
         // Bring up the library before deciding what to load: it resolves the
         // active project for this pack and owns the autosave from here on.
         await library.init()
+        // Load the pack manifest for the library panel's pack drop-down (best
+        // effort — the active pack alone is a fine fallback if it's missing).
+        await fetch(`${DATA_ROOT}/packs.json`)
+            .then(r => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+            .then((packs: { id: string; label?: string }[]) => {
+                packManifest = packs.map(p => ({ id: p.id, label: p.label ?? p.id }))
+            })
+            .catch(() => {
+                /* keep the default single-pack manifest */
+            })
         // One-time migration: fold the legacy single-slot autosave into this
         // pack's scratchpad (only if the scratchpad is still empty) so existing
         // users don't lose their last blueprint when the library takes over.
@@ -365,6 +381,17 @@ const libraryCallbacks: LibraryPanelCallbacks = {
         updateActiveIndicator()
         activeProjectEl?.classList.remove('modified')
     },
+    // Packs the panel can browse: the manifest (so you can copy into a pack you've
+    // never used) unioned with whatever the library already holds.
+    packList: () => {
+        const labels = new Map(packManifest.map(p => [p.id, p.label]))
+        const ids = new Set<string>([...packManifest.map(p => p.id), ...library.getPacks()])
+        return [...ids].map(id => ({ id, label: labels.get(id) ?? id }))
+    },
+    // Switching the rendered pack swaps the whole data set + atlas, so it goes
+    // through setDataPack (which persists the choice and reloads). The panel has
+    // already persisted the target pack's activeId, so the reload reopens it.
+    requestPackSwitch: (pack: string) => setDataPack(pack),
 }
 
 // Wire the on-screen entry points to the panel once it exists.

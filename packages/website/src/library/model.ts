@@ -251,6 +251,55 @@ export function ensureFolder(
 }
 
 /**
+ * Deep-clone a node with fresh ids and reset timestamps. Blueprint content is
+ * copied but **version history is dropped** (snapshots never travel on a
+ * copy/duplicate/cross-pack move — they describe edits made under the original's
+ * context). Folders clone their whole subtree.
+ */
+export function cloneNode(node: LibraryNode, now: Now = Date.now, id: IdGen = genId): LibraryNode {
+    const t = now()
+    if (node.kind === 'blueprint') {
+        return {
+            id: id(),
+            kind: 'blueprint',
+            name: node.name,
+            encoded: node.encoded,
+            createdAt: t,
+            updatedAt: t,
+            snapshots: [],
+        }
+    }
+    return {
+        id: id(),
+        kind: 'folder',
+        name: node.name,
+        createdAt: t,
+        updatedAt: t,
+        children: node.children.map(c => cloneNode(c, now, id)),
+    }
+}
+
+/**
+ * Duplicate a node in place: clone it (see `cloneNode` — no version history),
+ * name it "<name> (copy)", and insert the copy right after the original among
+ * its siblings. Returns the clone, or null if the id isn't found (the scratchpad
+ * lives outside the tree, so it can't be duplicated this way).
+ */
+export function duplicateNode(
+    tree: PackTree,
+    id: string,
+    now: Now = Date.now,
+    idGen: IdGen = genId
+): LibraryNode | null {
+    const hit = locate(tree.children, id)
+    if (!hit) return null
+    const clone = cloneNode(hit.node, now, idGen)
+    clone.name = `${hit.node.name} (copy)`
+    hit.siblings.splice(hit.siblings.indexOf(hit.node) + 1, 0, clone)
+    return clone
+}
+
+/**
  * Autosave: replace a leaf's live content *without* creating a checkpoint. This
  * is the continuous "don't lose work on reload" path — the active leaf is the
  * working context, so it tracks the canvas, but that must not churn version

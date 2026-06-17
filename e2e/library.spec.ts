@@ -141,3 +141,94 @@ test.describe('blueprint library', () => {
         await expect(indicator(page)).toHaveText('Scratchpad')
     })
 })
+
+test.describe('blueprint library — organization & multi-pack (Phase 2)', () => {
+    test.beforeEach(() => {
+        test.skip(
+            test.info().project.name !== 'desktop-chromium',
+            'library DOM flows run on the desktop project only'
+        )
+    })
+
+    // Open the ⋯ menu for the first row matching `name`, then click a menu item.
+    async function rowAction(page: Page, name: string, item: RegExp): Promise<void> {
+        await panel(page)
+            .locator('.library-row', { hasText: name })
+            .first()
+            .getByRole('button', { name: 'More' })
+            .click()
+        await page.locator('.library-menu').getByRole('button', { name: item }).click()
+    }
+
+    test('creates a folder and moves a blueprint into it', async ({ page }) => {
+        page.on('dialog', d => d.accept(/folder/i.test(d.message()) ? 'Logistics' : 'Mall'))
+        await page.goto(`/?test&source=${encodeURIComponent(CHEST)}`)
+        await waitForReady(page)
+        await expect.poll(() => entityCount(page)).toBe(1)
+
+        await openPanel(page)
+        // A named, root-level entry to move, and a folder to move it into.
+        await panel(page)
+            .getByRole('button', { name: /save as/i })
+            .click()
+        await expect(indicator(page)).toHaveText('Mall')
+        await panel(page)
+            .getByRole('button', { name: /new folder/i })
+            .click()
+        await expect(panel(page).locator('.library-folder', { hasText: 'Logistics' })).toBeVisible()
+
+        // ⋯ → Move to… → pick the Logistics folder in the destination picker.
+        await rowAction(page, 'Mall', /move to/i)
+        await panel(page)
+            .locator('.library-picker-list button', { hasText: 'Vanilla 2.0 / Logistics' })
+            .click()
+
+        // Mall is now nested one level deep (padding-left 24px = 8 + 1×16).
+        await expect(
+            panel(page).locator('.library-row[style*="padding-left: 24px"]', { hasText: 'Mall' })
+        ).toHaveCount(1)
+    })
+
+    test('duplicates a blueprint in place', async ({ page }) => {
+        page.on('dialog', d => d.accept('Mall'))
+        await page.goto(`/?test&source=${encodeURIComponent(CHEST)}`)
+        await waitForReady(page)
+        await expect.poll(() => entityCount(page)).toBe(1)
+
+        await openPanel(page)
+        await panel(page)
+            .getByRole('button', { name: /save as/i })
+            .click()
+        await expect(indicator(page)).toHaveText('Mall')
+
+        await rowAction(page, 'Mall', /duplicate/i)
+        await expect(panel(page).getByText('Mall (copy)')).toBeVisible()
+    })
+
+    test('copies a blueprint to another pack and browses it there', async ({ page }) => {
+        page.on('dialog', d => d.accept('Mall'))
+        await page.goto(`/?test&source=${encodeURIComponent(CHEST)}`)
+        await waitForReady(page)
+        await expect.poll(() => entityCount(page)).toBe(1)
+
+        await openPanel(page)
+        await panel(page)
+            .getByRole('button', { name: /save as/i })
+            .click()
+        await expect(indicator(page)).toHaveText('Mall')
+
+        // ⋯ → Copy to… → Space Age root.
+        await rowAction(page, 'Mall', /copy to/i)
+        await panel(page)
+            .locator('.library-picker-list button', { hasText: 'Space Age (2.0) / (root)' })
+            .click()
+
+        // Switch the pack drop-down to Space Age and confirm the copy is there.
+        await panel(page)
+            .locator('.library-packbar select')
+            .selectOption({ label: 'Space Age (2.0)' })
+        await expect(panel(page).locator('.library-row', { hasText: 'Mall' })).toHaveCount(1)
+        // Browsing a non-active pack disables the active-pack save actions.
+        await expect(panel(page).getByRole('button', { name: /save as/i })).toBeDisabled()
+    })
+})

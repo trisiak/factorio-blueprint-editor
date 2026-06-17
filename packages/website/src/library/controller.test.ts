@@ -44,7 +44,7 @@ describe('LibraryController.init', () => {
         const a = newController(store).ctl
         await a.init()
         const leaf = await a.saveAs('temp', '0temp')
-        await a.remove(leaf.id)
+        await a.remove(a.getActivePack(), leaf.id)
 
         const b = newController(store).ctl
         await b.init()
@@ -150,11 +150,104 @@ describe('import / new / remove', () => {
     it('remove refuses the scratchpad and reassigns active to it', async () => {
         const { ctl } = newController()
         await ctl.init()
+        const p = ctl.getActivePack()
         const leaf = await ctl.saveAs('x', '0x')
-        expect(await ctl.remove(ctl.getTree().scratchpad.id)).toBe(false)
+        expect(await ctl.remove(p, ctl.getTree().scratchpad.id)).toBe(false)
 
-        expect(await ctl.remove(leaf.id)).toBe(true)
+        expect(await ctl.remove(p, leaf.id)).toBe(true)
         expect(ctl.isScratchpad(ctl.getActiveId())).toBe(true)
+    })
+})
+
+describe('organization (Phase 2)', () => {
+    it('creates folders, moves a leaf into one, and renames nodes', async () => {
+        const { ctl } = newController()
+        await ctl.init()
+        const p = ctl.getActivePack()
+        const leaf = await ctl.saveAs('mall', '0mall') // at root
+        await ctl.createFolder(p, 'Logistics')
+        const folder = ctl
+            .getTree()
+            .children.find(c => c.kind === 'folder' && c.name === 'Logistics')!
+
+        expect(await ctl.move(p, leaf.id, folder.id)).toBe(true)
+        expect(folder.kind === 'folder' && folder.children.some(c => c.id === leaf.id)).toBe(true)
+        expect(ctl.getTree().children).not.toContain(leaf)
+
+        await ctl.rename(p, folder.id, 'Logistics v2')
+        expect(ctl.getTree().children.find(c => c.id === folder.id)?.name).toBe('Logistics v2')
+    })
+
+    it('duplicates a leaf in place without its version history', async () => {
+        const { ctl } = newController()
+        await ctl.init()
+        const p = ctl.getActivePack()
+        const leaf = await ctl.saveAs('belt', '0belt')
+        await ctl.save('0belt2') // give the original a version
+        expect(ctl.getActive().snapshots.length).toBeGreaterThan(0)
+
+        const clone = await ctl.duplicate(p, leaf.id)
+        expect(clone?.kind).toBe('blueprint')
+        if (clone?.kind === 'blueprint') {
+            expect(clone.name).toBe('belt (copy)')
+            expect(clone.encoded).toBe(ctl.getActive().encoded) // current content copied
+            expect(clone.snapshots).toHaveLength(0) // history does not travel
+        }
+    })
+})
+
+describe('cross-pack copy / move (Phase 2)', () => {
+    it('copies a leaf into another pack (optimistic, no history) and leaves the original', async () => {
+        const { ctl } = newController()
+        await ctl.init()
+        const from = ctl.getActivePack()
+        const leaf = await ctl.saveAs('reactor', '0reactor')
+        await ctl.save('0reactor2') // a version on the original
+
+        const clone = await ctl.copyToPack(from, leaf.id, 'space-age')
+        expect(clone?.kind).toBe('blueprint')
+        // Original stays put...
+        expect(ctl.getTreeFor(from).children.some(c => c.id === leaf.id)).toBe(true)
+        // ...and the copy lands in the target pack without snapshots.
+        const target = ctl.getTreeFor('space-age')
+        const copied = target.children.find(c => c.id === clone!.id)
+        expect(copied?.kind).toBe('blueprint')
+        if (copied?.kind === 'blueprint') {
+            expect(copied.encoded).toBe('0reactor2')
+            expect(copied.snapshots).toHaveLength(0)
+        }
+        expect(ctl.getPacks()).toContain('space-age')
+    })
+
+    it('moves a leaf to another pack and removes the original', async () => {
+        const { ctl } = newController()
+        await ctl.init()
+        const from = ctl.getActivePack()
+        const leaf = await ctl.saveAs('outpost', '0outpost')
+
+        expect(await ctl.moveToPack(from, leaf.id, 'space-age')).toBe(true)
+        expect(ctl.getTreeFor(from).children.some(c => c.id === leaf.id)).toBe(false)
+        expect(ctl.getTreeFor('space-age').children.some(c => c.kind === 'blueprint')).toBe(true)
+        // Active leaf was moved out of the active pack → falls back to scratchpad.
+        expect(ctl.isScratchpad(ctl.getActiveId())).toBe(true)
+    })
+
+    it('setActiveForPack records the cross-pack-open handoff', async () => {
+        const store = new InMemoryLibraryStore()
+        const a = newController(store).ctl
+        await a.init()
+        const clone = await a.copyToPack(
+            a.getActivePack(),
+            (await a.saveAs('x', '0x')).id,
+            'space-age'
+        )
+        expect(await a.setActiveForPack('space-age', clone!.id)).toBe(true)
+
+        // A controller booting on space-age reopens that entry.
+        const { now, id } = fixtures()
+        const b = new LibraryController(store, 'space-age', now, id)
+        await b.init()
+        expect(b.getActiveId()).toBe(clone!.id)
     })
 })
 

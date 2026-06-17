@@ -1,14 +1,19 @@
 // Blueprint library — DOM panel.
 //
 // A hand-built (no framework, matching the rest of the website chrome) overlay
-// that browses the active pack's library tree and drives the controller. Like
-// `#info-panel` it's a fixed, centered, dark panel toggled from the top-left
-// button stack. It's intentionally scoped to the *active* pack for now — multi-
-// pack browsing (and the pack-switch-on-open it implies) is a later slice.
+// that browses the library tree and drives the controller. Like `#info-panel`
+// it's a fixed, centered, dark panel toggled from the top-left button stack.
+//
+// Phase 2 adds organization + multi-pack: a pack drop-down browses any pack's
+// tree without reloading; per-row "⋯" menus expose rename/duplicate/move/copy/
+// delete; a destination picker spans packs (so move/copy can cross packs). The
+// editor's rendering pack only switches when you *open* a project from a
+// non-active pack (via `requestPackSwitch` → a `setDataPack` reload), using the
+// persisted activeId as the handoff.
 //
 // The panel owns its widget tree and model operations; it calls back into
-// `index.ts` only for things that need the PixiJS canvas (load/encode) or the
-// shared toast/confirm/clipboard chrome.
+// `index.ts` only for things that need the PixiJS canvas (load/encode), the
+// shared toast/confirm/clipboard chrome, or the pack switch.
 
 import { LibraryController } from './controller'
 import { LibraryNode } from './model'
@@ -28,6 +33,10 @@ export interface LibraryPanelCallbacks {
     confirm(text: string, confirmLabel: string): Promise<boolean>
     /** Notify that the active project changed (so the indicator can refresh). */
     onActiveChange(): void
+    /** Available packs (manifest ∪ what's in the library), for the drop-down. */
+    packList(): { id: string; label: string }[]
+    /** Switch the editor's rendering pack (a `setDataPack` reload). */
+    requestPackSwitch(pack: string): void
 }
 
 export interface LibraryPanel {
@@ -41,11 +50,20 @@ export function initLibraryPanel(
     controller: LibraryController,
     cb: LibraryPanelCallbacks
 ): LibraryPanel {
+    // Which pack's tree is being browsed (defaults to the active/rendered one).
+    let browsedPack = controller.getActivePack()
+    const onActivePack = (): boolean => browsedPack === controller.getActivePack()
+    const packLabel = (id: string): string => cb.packList().find(p => p.id === id)?.label ?? id
+
     const panel = document.createElement('div')
     panel.id = 'library-panel'
 
-    const close = (): void => panel.classList.remove('active')
+    const close = (): void => {
+        closeMenu()
+        panel.classList.remove('active')
+    }
     const open = (): void => {
+        browsedPack = controller.getActivePack()
         refresh()
         panel.classList.add('active')
     }
@@ -64,7 +82,19 @@ export function initLibraryPanel(
     closeBtn.addEventListener('click', close)
     header.append(title, closeBtn)
 
-    // --- top action row (New / Save / Save As) ------------------------------
+    // --- pack drop-down -----------------------------------------------------
+    const packBar = document.createElement('div')
+    packBar.className = 'library-packbar'
+    const packLabelEl = document.createElement('label')
+    packLabelEl.textContent = 'Pack'
+    const packSelect = document.createElement('select')
+    packSelect.addEventListener('change', () => {
+        browsedPack = packSelect.value
+        refresh()
+    })
+    packBar.append(packLabelEl, packSelect)
+
+    // --- action row ---------------------------------------------------------
     const actions = document.createElement('div')
     actions.className = 'library-actions'
 
@@ -77,7 +107,9 @@ export function initLibraryPanel(
         return b
     }
 
-    actionButton('New project', async () => {
+    actionButton('New folder', () => newFolder())
+
+    const newProjectBtn = actionButton('New project', async () => {
         const current = await cb.currentEncoded().catch(() => '')
         // "New project" wipes the scratchpad and starts there. Switching off a
         // *named* entry loses nothing (its content is already saved/reopenable),
@@ -114,7 +146,7 @@ export function initLibraryPanel(
         refresh()
     })
 
-    actionButton('Save as…', async () => {
+    const saveAsBtn = actionButton('Save as…', async () => {
         const current = await cb.currentEncoded().catch(() => '')
         if (!current) {
             cb.toast('Nothing to save — the blueprint is empty.', 'info')
@@ -128,37 +160,209 @@ export function initLibraryPanel(
         cb.toast(`Saved "${name}"`, 'success')
     })
 
-    // --- scrollable body (recents + tree) -----------------------------------
+    // --- scrollable body ----------------------------------------------------
     const body = document.createElement('div')
     body.className = 'library-body'
 
-    panel.append(header, actions, body)
+    panel.append(header, packBar, actions, body)
     document.body.appendChild(panel)
 
-    // Open a leaf as the working context, then load it onto the canvas.
-    const openLeaf = async (id: string): Promise<void> => {
-        const encoded = await controller.open(id)
-        if (encoded === null) return
-        await cb.loadEncoded(encoded)
-        cb.onActiveChange()
-        refresh()
-        close()
+    // --- a small popover menu (the per-row "⋯") -----------------------------
+    interface MenuItem {
+        label: string
+        run: () => void
+    }
+    let openMenuEl: HTMLElement | null = null
+    const closeMenu = (): void => {
+        openMenuEl?.remove()
+        openMenuEl = null
+    }
+    const showMenu = (anchor: HTMLElement, items: MenuItem[]): void => {
+        closeMenu()
+        const menu = document.createElement('div')
+        menu.className = 'library-menu'
+        for (const item of items) {
+            const b = document.createElement('button')
+            b.type = 'button'
+            b.textContent = item.label
+            b.addEventListener('click', () => {
+                closeMenu()
+                item.run()
+            })
+            menu.appendChild(b)
+        }
+        document.body.appendChild(menu)
+        const r = anchor.getBoundingClientRect()
+        // Right-align the menu under the ⋯ button, clamped to the viewport.
+        const width = 180
+        menu.style.top = `${Math.round(r.bottom + 2)}px`
+        menu.style.left = `${Math.round(Math.min(r.right - width, window.innerWidth - width - 8))}px`
+        openMenuEl = menu
+    }
+    // A pointerdown outside the open menu dismisses it.
+    window.addEventListener('pointerdown', e => {
+        if (openMenuEl && !openMenuEl.contains(e.target as Node)) closeMenu()
+    })
+
+    // --- destination picker (Move to… / Copy to…) ---------------------------
+    interface Destination {
+        pack: string
+        parentId?: string
+        label: string
+    }
+    // Every place a node can land: each pack's root + every folder (path-labelled).
+    const enumerateDestinations = (): Destination[] => {
+        const dests: Destination[] = []
+        for (const p of cb.packList()) {
+            const tree = controller.getTreeFor(p.id)
+            dests.push({ pack: p.id, parentId: undefined, label: `${p.label} / (root)` })
+            const walk = (nodes: LibraryNode[], prefix: string): void => {
+                for (const n of nodes) {
+                    if (n.kind !== 'folder') continue
+                    const path = prefix + n.name
+                    dests.push({ pack: p.id, parentId: n.id, label: `${p.label} / ${path}` })
+                    walk(n.children, `${path} / `)
+                }
+            }
+            walk(tree.children, '')
+        }
+        return dests
+    }
+    const pickDestination = (heading: string): Promise<Destination | null> =>
+        new Promise(resolve => {
+            const overlay = document.createElement('div')
+            overlay.className = 'library-picker'
+            const box = document.createElement('div')
+            box.className = 'library-picker-box'
+            const h = document.createElement('div')
+            h.className = 'library-picker-title'
+            h.textContent = heading
+            const list = document.createElement('div')
+            list.className = 'library-picker-list'
+            const done = (d: Destination | null): void => {
+                overlay.remove()
+                resolve(d)
+            }
+            for (const dest of enumerateDestinations()) {
+                const b = document.createElement('button')
+                b.type = 'button'
+                b.textContent = dest.label
+                b.addEventListener('click', () => done(dest))
+                list.appendChild(b)
+            }
+            const cancel = document.createElement('button')
+            cancel.type = 'button'
+            cancel.className = 'library-picker-cancel'
+            cancel.textContent = 'Cancel'
+            cancel.addEventListener('click', () => done(null))
+            box.append(h, list, cancel)
+            overlay.appendChild(box)
+            overlay.addEventListener('click', e => {
+                if (e.target === overlay) done(null)
+            })
+            panel.appendChild(overlay)
+        })
+
+    // --- node operations ----------------------------------------------------
+
+    // Open a leaf as the working context. From a non-active pack this reloads the
+    // editor onto that pack (the only thing that switches the rendered pack).
+    const openEntry = async (id: string): Promise<void> => {
+        if (onActivePack()) {
+            const encoded = await controller.open(id)
+            if (encoded === null) return
+            await cb.loadEncoded(encoded)
+            cb.onActiveChange()
+            refresh()
+            close()
+            return
+        }
+        const go = await cb.confirm(
+            `Open this in ${packLabel(browsedPack)}? The editor will reload to switch packs.`,
+            'Switch & open'
+        )
+        if (!go) return
+        await controller.setActiveForPack(browsedPack, id)
+        cb.requestPackSwitch(browsedPack) // setDataPack → reload → reopens this entry
     }
 
-    const removeNode = async (id: string, name: string): Promise<void> => {
-        const ok = await cb.confirm(`Delete "${name}"? This can't be undone.`, 'Delete')
+    // After a structural change, reload the canvas if the active leaf was affected.
+    const reflectActive = async (touchedId: string): Promise<void> => {
+        if (!onActivePack()) return
+        if (touchedId === controller.getActiveId()) return // unchanged identity
+        await cb.loadEncoded(controller.getActive().encoded)
+        cb.onActiveChange()
+    }
+
+    const renameNode = async (node: LibraryNode): Promise<void> => {
+        const name = cb.promptName('Rename', node.name)
+        if (!name) return
+        await controller.rename(browsedPack, node.id, name)
+        if (onActivePack() && node.id === controller.getActiveId()) cb.onActiveChange()
+        refresh()
+    }
+
+    const duplicateNode = async (id: string): Promise<void> => {
+        await controller.duplicate(browsedPack, id)
+        refresh()
+        cb.toast('Duplicated', 'success')
+    }
+
+    const deleteNode = async (node: LibraryNode): Promise<void> => {
+        const extra = node.kind === 'folder' ? ' and everything in it' : ''
+        const ok = await cb.confirm(
+            `Delete "${node.name}"${extra}? This can't be undone.`,
+            'Delete'
+        )
         if (!ok) return
-        const wasActive = controller.getActiveId() === id
-        await controller.remove(id)
+        const wasActive = onActivePack() && node.id === controller.getActiveId()
+        await controller.remove(browsedPack, node.id)
         if (wasActive) {
-            // Active was deleted → controller reassigned the scratchpad; reflect it.
             await cb.loadEncoded(controller.getActive().encoded)
             cb.onActiveChange()
         }
         refresh()
     }
 
-    const copyLeaf = (encoded: string): void => {
+    const moveNode = async (id: string): Promise<void> => {
+        const dest = await pickDestination('Move to…')
+        if (!dest) return
+        const ok =
+            dest.pack === browsedPack
+                ? await controller.move(browsedPack, id, dest.parentId)
+                : await controller.moveToPack(browsedPack, id, dest.pack, dest.parentId)
+        if (!ok) {
+            cb.toast('Couldn’t move there (a folder can’t go inside itself).', 'warning')
+            return
+        }
+        await reflectActive(id)
+        refresh()
+        cb.toast('Moved', 'success')
+    }
+
+    const copyNode = async (id: string): Promise<void> => {
+        const dest = await pickDestination('Copy to…')
+        if (!dest) return
+        const clone = await controller.copyToPack(browsedPack, id, dest.pack, dest.parentId)
+        if (!clone) {
+            cb.toast('Couldn’t copy there.', 'warning')
+            return
+        }
+        refresh()
+        cb.toast(
+            dest.pack === browsedPack ? 'Copied' : `Copied to ${packLabel(dest.pack)}`,
+            'success'
+        )
+    }
+
+    const newFolder = async (parentId?: string): Promise<void> => {
+        const name = cb.promptName('New folder name', 'New folder')
+        if (!name) return
+        await controller.createFolder(browsedPack, name, parentId)
+        refresh()
+    }
+
+    const copyString = (encoded: string): void => {
         if (!encoded) {
             cb.toast('This entry is empty — nothing to copy.', 'info')
             return
@@ -166,14 +370,50 @@ export function initLibraryPanel(
         cb.copyText(encoded)
     }
 
-    // Build a single blueprint row (name + Open/Copy/Delete).
+    // --- rendering ----------------------------------------------------------
+
+    // The ⋯ menu items for a node (organize ops, pack-agnostic).
+    const menuFor = (node: LibraryNode): MenuItem[] => {
+        const items: MenuItem[] = []
+        if (node.kind === 'blueprint')
+            items.push({ label: 'Copy string', run: () => copyString(node.encoded) })
+        if (node.kind === 'folder')
+            items.push({ label: 'New subfolder', run: () => newFolder(node.id) })
+        items.push(
+            { label: 'Rename', run: () => renameNode(node) },
+            { label: 'Duplicate', run: () => duplicateNode(node.id) },
+            { label: 'Move to…', run: () => moveNode(node.id) },
+            { label: 'Copy to…', run: () => copyNode(node.id) },
+            { label: 'Delete', run: () => deleteNode(node) }
+        )
+        return items
+    }
+
+    const iconBtn = (
+        glyph: string,
+        title: string,
+        onClick: (e: MouseEvent) => void
+    ): HTMLButtonElement => {
+        const b = document.createElement('button')
+        b.type = 'button'
+        b.title = title
+        // aria-label so the accessible name is the title, not the glyph (e.g. "⋯"
+        // would otherwise name the button "⋯"); keeps it findable/announced.
+        b.setAttribute('aria-label', title)
+        b.textContent = glyph
+        b.addEventListener('click', onClick)
+        return b
+    }
+
+    // A blueprint row: name (+ version badge) and its actions.
     const blueprintRow = (
         node: Extract<LibraryNode, { kind: 'blueprint' }>,
-        opts: { isScratchpad?: boolean } = {}
+        opts: { isScratchpad?: boolean; depth?: number } = {}
     ): HTMLElement => {
         const row = document.createElement('div')
         row.className = 'library-row'
-        if (node.id === controller.getActiveId()) row.classList.add('active')
+        row.style.paddingLeft = `${8 + (opts.depth ?? 0) * 16}px`
+        if (onActivePack() && node.id === controller.getActiveId()) row.classList.add('active')
 
         const name = document.createElement('span')
         name.className = 'library-row-name'
@@ -186,78 +426,102 @@ export function initLibraryPanel(
             badge.title = `${node.snapshots.length} saved version(s)`
             name.appendChild(badge)
         }
-        name.addEventListener('click', () => openLeaf(node.id))
+        name.addEventListener('click', () => openEntry(node.id))
 
         const buttons = document.createElement('span')
         buttons.className = 'library-row-buttons'
-        const mk = (label: string, fn: () => void): void => {
-            const b = document.createElement('button')
-            b.type = 'button'
-            b.textContent = label
-            b.addEventListener('click', fn)
-            buttons.appendChild(b)
+        buttons.appendChild(iconBtn('Open', 'Open', () => openEntry(node.id)))
+        if (opts.isScratchpad) {
+            // The scratchpad can't be renamed/moved/deleted; offer Copy only.
+            buttons.appendChild(iconBtn('Copy', 'Copy string', () => copyString(node.encoded)))
+        } else {
+            buttons.appendChild(
+                iconBtn('⋯', 'More', e => showMenu(e.currentTarget as HTMLElement, menuFor(node)))
+            )
         }
-        mk('Open', () => openLeaf(node.id))
-        mk('Copy', () => copyLeaf(node.encoded))
-        if (!opts.isScratchpad) mk('Delete', () => removeNode(node.id, node.name))
 
         row.append(name, buttons)
         return row
     }
 
-    // Recursively render a folder and its children with indentation.
+    // A folder row, then its children indented below it.
     const renderNode = (node: LibraryNode, into: HTMLElement, depth: number): void => {
         if (node.kind === 'blueprint') {
-            const row = blueprintRow(node)
-            row.style.paddingLeft = `${8 + depth * 16}px`
-            into.appendChild(row)
+            into.appendChild(blueprintRow(node, { depth }))
             return
         }
-        const folder = document.createElement('div')
-        folder.className = 'library-folder'
-        folder.style.paddingLeft = `${8 + depth * 16}px`
-        folder.textContent = `📁 ${node.name}`
-        into.appendChild(folder)
+        const row = document.createElement('div')
+        row.className = 'library-row library-folder'
+        row.style.paddingLeft = `${8 + depth * 16}px`
+        const name = document.createElement('span')
+        name.className = 'library-row-name'
+        name.textContent = `📁 ${node.name}`
+        const buttons = document.createElement('span')
+        buttons.className = 'library-row-buttons'
+        buttons.appendChild(
+            iconBtn('⋯', 'More', e => showMenu(e.currentTarget as HTMLElement, menuFor(node)))
+        )
+        row.append(name, buttons)
+        into.appendChild(row)
         for (const child of node.children) renderNode(child, into, depth + 1)
     }
 
-    const section = (label: string): HTMLElement => {
+    const section = (label: string): void => {
         const h = document.createElement('div')
         h.className = 'library-section'
         h.textContent = label
         body.appendChild(h)
-        return h
     }
 
     function refresh(): void {
-        body.replaceChildren()
-        const tree = controller.getTree()
+        closeMenu()
 
-        // The scratchpad is always live — you can't save a version into it, only
-        // "Save as…" a named copy. Reflect that on the Save button.
-        const onScratchpad = controller.isScratchpad(controller.getActiveId())
-        saveBtn.disabled = onScratchpad
+        // Pack drop-down options (manifest ∪ packs in the library).
+        const packs = cb.packList()
+        packSelect.replaceChildren()
+        for (const p of packs) {
+            const opt = document.createElement('option')
+            opt.value = p.id
+            opt.textContent = p.id === controller.getActivePack() ? `${p.label} (active)` : p.label
+            packSelect.appendChild(opt)
+        }
+        if (!packs.some(p => p.id === browsedPack)) browsedPack = controller.getActivePack()
+        packSelect.value = browsedPack
+
+        // Working-context actions act on the live canvas (the active pack); they're
+        // disabled while browsing another pack. "New folder" works on any pack.
+        const active = onActivePack()
+        const onScratchpad = active && controller.isScratchpad(controller.getActiveId())
+        newProjectBtn.disabled = !active
+        saveAsBtn.disabled = !active
+        saveBtn.disabled = !active || onScratchpad
         saveBtn.title = onScratchpad
             ? 'The scratchpad is always live — use “Save as…” to keep a named copy.'
-            : ''
+            : !active
+              ? 'Switch to this pack to edit here.'
+              : ''
+
+        const tree = controller.getTreeFor(browsedPack)
+        body.replaceChildren()
 
         // Scratchpad — always present, pinned at the top.
-        section('Working')
+        section(active ? 'Working' : `Working (in ${packLabel(browsedPack)})`)
         body.appendChild(blueprintRow(tree.scratchpad, { isScratchpad: true }))
 
-        // Recents (excluding the scratchpad, which is always visible above).
-        const recents = controller.getRecents().filter(r => r.id !== tree.scratchpad.id)
-        if (recents.length) {
-            section('Recent')
-            for (const r of recents) body.appendChild(blueprintRow(r))
+        // Recents (active pack only — recents are tracked per active session).
+        if (active) {
+            const recents = controller.getRecents().filter(r => r.id !== tree.scratchpad.id)
+            if (recents.length) {
+                section('Recent')
+                for (const r of recents) body.appendChild(blueprintRow(r, {}))
+            }
         }
 
-        // The saved tree.
         section('All blueprints')
         if (tree.children.length === 0) {
             const empty = document.createElement('div')
             empty.className = 'library-empty'
-            empty.textContent = 'No saved blueprints yet — use “Save as…” to add one.'
+            empty.textContent = 'No saved blueprints yet — use “Save as…” or “New folder”.'
             body.appendChild(empty)
         } else {
             for (const child of tree.children) renderNode(child, body, 0)

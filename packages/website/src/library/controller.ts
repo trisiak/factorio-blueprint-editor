@@ -16,15 +16,20 @@ import { LibraryStore } from './store'
 import {
     LibraryState,
     PackTree,
+    LibraryNode,
     BlueprintEntry,
     createLibrary,
     ensurePack,
     ensureFolder,
     makeBlueprint,
+    makeFolder,
     addNode,
     findNode,
     removeNode,
     renameNode,
+    moveNode,
+    duplicateNode,
+    cloneNode,
     updateEntryContent,
     checkpointEntry,
     restoreSnapshot,
@@ -186,21 +191,120 @@ export class LibraryController {
         return leaf
     }
 
-    public async rename(id: string, name: string): Promise<void> {
-        renameNode(this.tree(), id, name, this.now)
+    // --- multi-pack browsing + organization (Phase 2) -----------------------
+    //
+    // Organize ops take an explicit `pack` so the panel can browse and edit any
+    // pack's tree, not just the active one. (The working-context ops above always
+    // act on the active pack, since they involve the live canvas.)
+
+    /** The active (rendered) data pack — the one the canvas belongs to. */
+    public getActivePack(): string {
+        return this.pack
+    }
+
+    /** Packs that exist in the library document (may differ from the manifest). */
+    public getPacks(): string[] {
+        return Object.keys(this.state.packs)
+    }
+
+    /** A pack's subtree, created on demand (in memory) so any pack can be browsed. */
+    public getTreeFor(pack: string): PackTree {
+        return ensurePack(this.state, pack, this.now)
+    }
+
+    public async createFolder(pack: string, name: string, parentId?: string): Promise<boolean> {
+        const ok = addNode(this.getTreeFor(pack), makeFolder(name, this.now, this.id), parentId)
+        await this.persist()
+        return ok
+    }
+
+    public async rename(pack: string, id: string, name: string): Promise<void> {
+        renameNode(this.getTreeFor(pack), id, name, this.now)
         await this.persist()
     }
 
+    /** Reparent a node within its pack (into a folder, or to the root). */
+    public async move(pack: string, id: string, newParentId?: string): Promise<boolean> {
+        const ok = moveNode(this.getTreeFor(pack), id, newParentId)
+        await this.persist()
+        return ok
+    }
+
+    /** Duplicate a node in place (no version history travels). */
+    public async duplicate(pack: string, id: string): Promise<LibraryNode | null> {
+        const clone = duplicateNode(this.getTreeFor(pack), id, this.now, this.id)
+        await this.persist()
+        return clone
+    }
+
     /** Remove a leaf/folder (never the scratchpad); reassigns active if needed. */
-    public async remove(id: string): Promise<boolean> {
-        const tree = this.tree()
+    public async remove(pack: string, id: string): Promise<boolean> {
+        const tree = this.getTreeFor(pack)
         if (id === tree.scratchpad.id) return false
         const removed = removeNode(tree, id)
-        if (tree.activeId === id || !findNode(tree, tree.activeId)) {
+        if (pack === this.pack && (tree.activeId === id || !findNode(tree, tree.activeId))) {
             tree.activeId = tree.scratchpad.id
         }
         await this.persist()
         return removed
+    }
+
+    /**
+     * Copy a node into another pack (optimistic — no compatibility check; any
+     * prototypes the target pack lacks are stripped when the entry is opened
+     * there). Version history does not travel. Returns the clone, or null.
+     */
+    public async copyToPack(
+        fromPack: string,
+        id: string,
+        toPack: string,
+        parentId?: string
+    ): Promise<LibraryNode | null> {
+        const node = findNode(this.getTreeFor(fromPack), id)
+        if (!node) return null
+        const clone = cloneNode(node, this.now, this.id)
+        if (!addNode(this.getTreeFor(toPack), clone, parentId)) return null
+        await this.persist()
+        return clone
+    }
+
+    /**
+     * Move a node to another pack: copy it there (history dropped, as for any
+     * cross-pack copy) and remove the original. Reassigns the active leaf if the
+     * moved node was the active one in the (active) source pack.
+     */
+    public async moveToPack(
+        fromPack: string,
+        id: string,
+        toPack: string,
+        parentId?: string
+    ): Promise<boolean> {
+        const from = this.getTreeFor(fromPack)
+        if (id === from.scratchpad.id) return false
+        const node = findNode(from, id)
+        if (!node) return false
+        if (!addNode(this.getTreeFor(toPack), cloneNode(node, this.now, this.id), parentId)) {
+            return false
+        }
+        removeNode(from, id)
+        if (fromPack === this.pack && (from.activeId === id || !findNode(from, from.activeId))) {
+            from.activeId = from.scratchpad.id
+        }
+        await this.persist()
+        return true
+    }
+
+    /**
+     * Mark `id` as the active leaf of `pack` so that, after the app switches to
+     * that pack (a `setDataPack` reload), it reopens this entry. The persisted
+     * activeId is the cross-pack-open handoff. Returns false if the id is unknown.
+     */
+    public async setActiveForPack(pack: string, id: string): Promise<boolean> {
+        const tree = this.getTreeFor(pack)
+        if (!findNode(tree, id)) return false
+        tree.activeId = id
+        await this.persist()
+        return true
     }
 
     public async restore(id: string, snapshotIndex: number): Promise<boolean> {

@@ -139,9 +139,14 @@ A single `LibraryState` document, in `packages/website/src/library/`:
   `InMemoryLibraryStore` (tests / SSR fallback) + `createLibraryStore()` picker.
 - `controller.ts` — `LibraryController`: owns session state (active pack + active
   leaf), deals only in encoded strings (no editor import → unit-tested). The
-  autosave/Save/Save As/open/import/newScratch/seedScratchpad API `index.ts` calls.
+  active-pack working-context API (autosave/Save/Save As/open/import/newScratch),
+  plus pack-scoped organize ops (createFolder/rename/move/duplicate/remove) and
+  cross-pack `copyToPack`/`moveToPack` + `setActiveForPack` (the cross-pack-open
+  handoff). `cloneNode`/`duplicateNode` in `model.ts` drop version history.
 - `libraryPanel.ts` — the DOM browser overlay (no framework, matches the site
-  chrome). Verified by running the app + `e2e/library.spec.ts`.
+  chrome): a pack drop-down (browse any pack), per-row "⋯" menus
+  (rename/duplicate/move/copy/delete), and a destination picker spanning packs.
+  Verified by running the app + `e2e/library.spec.ts`.
 - Wiring in `index.ts`: the active leaf replaces the legacy single-slot autosave
   (migrated into the scratchpad once), the active-project indicator, and the
   `#library-button` / `#active-project` chrome.
@@ -155,8 +160,11 @@ A single `LibraryState` document, in `packages/website/src/library/`:
       Save As; DOM panel to browse + Open a leaf; active-project indicator;
       `?source=` URL → implied "Imported" leaf + recents; "new project" with the
       unsaved-changes prompt; per-leaf "Copy string"; legacy-autosave migration.
-- [ ] **Phase 2 — Organization.** Create / rename / delete / duplicate folders;
-      move a blueprint or folder under another (the "push down" reorg).
+- [x] **Phase 2 — Organization + multi-pack.** Folders (create / rename / delete /
+      duplicate); move/reparent within a pack; a pack drop-down to browse any
+      pack's tree (Open from a non-active pack switches via `setDataPack`);
+      cross-pack copy/move (optimistic, version history dropped). "⋯" row menus +
+      destination picker.
 - [ ] **Phase 3 — Versioning UI.** View / restore / prune the last N snapshots
       per leaf (the model already keeps them; `restoreSnapshot` exists).
 - [ ] **Phase 4 — Export / import hierarchy.** Export any node → native string
@@ -165,17 +173,22 @@ A single `LibraryState` document, in `packages/website/src/library/`:
 - [ ] **Phase 5 — External backend.** OAuth-locked remote store (e.g. Firebase)
       behind the `LibraryStore` interface; sync/merge story.
 
-## Deferred (carried over from Phase 1)
+## Deferred
 
-- **Multi-pack browsing** — the panel shows only the active pack's subtree, so
-  the **pack-switch-on-open** isn't needed yet; it lands when you can browse
-  another pack's tree (Phase 2/4).
+- **Cross-pack compatibility check** — copy/move are **optimistic**: no upfront
+  validation. Prototypes the target pack lacks are stripped when the entry is
+  opened there (the existing `stripUnknownEntities` path). A validated mode
+  (fetch the target's prototype names, warn before dropping anything) is a future
+  enhancement.
 - **Live unsaved-dot** — the indicator's "modified" dot refreshes on autosave
   (tab hide), not on every edit; live tracking needs an editor change event.
-- **Richer dialogs** — Save As uses `window.prompt`; confirms use a sticky toast
-  (dismiss = cancel). A proper DOM modal can replace these.
+- **Richer dialogs** — Save As / Rename / New folder use `window.prompt`;
+  confirms use a sticky toast (dismiss = cancel). A proper DOM modal can replace
+  these.
 - **Imported books** — a `?source=` book is stored as a single leaf for now, not
   decomposed into a folder (that's the Phase 4 hierarchical import).
+- **Folder UX polish** — folders are always expanded (no collapse) and move uses
+  a destination picker rather than drag-and-drop.
 
 ## Not this (for now)
 
