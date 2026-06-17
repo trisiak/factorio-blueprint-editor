@@ -193,10 +193,18 @@ export function initLibraryPanel(
         }
         document.body.appendChild(menu)
         const r = anchor.getBoundingClientRect()
-        // Right-align the menu under the ⋯ button, clamped to the viewport.
+        // Right-align the menu under the ⋯ button, clamped into the viewport.
         const width = 180
-        menu.style.top = `${Math.round(r.bottom + 2)}px`
-        menu.style.left = `${Math.round(Math.min(r.right - width, window.innerWidth - width - 8))}px`
+        const margin = 8
+        menu.style.left = `${Math.round(Math.min(r.right - width, window.innerWidth - width - margin))}px`
+        // Vertical placement: drop below the button, but if it would run off the
+        // bottom (rows near the screen edge), flip above it; then clamp so the top
+        // never goes off-screen — so every item stays reachable.
+        const h = menu.offsetHeight
+        let top = r.bottom + 2
+        if (top + h > window.innerHeight - margin) top = r.top - h - 2
+        top = Math.max(margin, Math.min(top, window.innerHeight - h - margin))
+        menu.style.top = `${Math.round(top)}px`
         openMenuEl = menu
     }
     // A pointerdown outside the open menu dismisses it.

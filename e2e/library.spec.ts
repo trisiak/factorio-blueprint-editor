@@ -231,4 +231,35 @@ test.describe('blueprint library — organization & multi-pack (Phase 2)', () =>
         // Browsing a non-active pack disables the active-pack save actions.
         await expect(panel(page).getByRole('button', { name: /save as/i })).toBeDisabled()
     })
+
+    test('the ⋯ menu stays on-screen for a bottom-of-list row', async ({ page }) => {
+        page.on('dialog', d => d.accept('P0'))
+        // A short viewport so a handful of entries push the last row to the bottom.
+        await page.setViewportSize({ width: 1000, height: 420 })
+        await page.goto(`/?test&source=${encodeURIComponent(CHEST)}`)
+        await waitForReady(page)
+        await expect.poll(() => entityCount(page)).toBe(1)
+
+        await openPanel(page)
+        await panel(page)
+            .getByRole('button', { name: /save as/i })
+            .click()
+        await expect(indicator(page)).toHaveText('P0')
+        // Duplicate enough times to overflow the list.
+        for (let i = 0; i < 8; i++) await rowAction(page, 'P0', /duplicate/i)
+
+        // Open the ⋯ menu on the very last row (near the screen bottom).
+        const last = panel(page).locator('.library-row').last()
+        await last.scrollIntoViewIfNeeded()
+        await last.getByRole('button', { name: 'More' }).click()
+
+        const menu = page.locator('.library-menu')
+        await expect(menu).toBeVisible()
+        const box = (await menu.boundingBox())!
+        const vh = page.viewportSize()!.height
+        // The whole menu — including its last item — sits within the viewport.
+        expect(box.y).toBeGreaterThanOrEqual(-1)
+        expect(box.y + box.height).toBeLessThanOrEqual(vh + 1)
+        await expect(menu.getByRole('button', { name: 'Delete' })).toBeVisible()
+    })
 })
