@@ -643,6 +643,35 @@ body.mobile
         &:hover
             background: rgba(255, 255, 255, 0.08)
 
+// A modal confirm rendered inside the panel (reuses the .library-picker overlay).
+.library-dialog
+    padding: 16px
+    .library-dialog-text
+        color: #eee
+        font-size: 14px
+        line-height: 1.4
+    .library-dialog-actions
+        display: flex
+        justify-content: flex-end
+        gap: 8px
+        margin-top: 16px
+        button
+            padding: 8px 14px
+            color: #ddd
+            font-size: 13px
+            background: #3a3a3a
+            border: 1px solid #6a6a6a
+            border-radius: 4px
+            cursor: pointer
+            &:hover
+                background: #4a4a4a
+        .library-dialog-confirm
+            color: white
+            background: #b03030
+            border-color: #c84a4a
+            &:hover
+                filter: brightness(1.1)
+
 
 /* TOASTS */
 .toasts

@@ -29,8 +29,6 @@ export interface LibraryPanelCallbacks {
     promptName(message: string, defaultName: string): string | null
     /** Copy text to the clipboard (with its own success/failure toast). */
     copyText(text: string): void
-    /** Confirm a destructive action; resolves true only if the user confirms. */
-    confirm(text: string, confirmLabel: string): Promise<boolean>
     /** Notify that the active project changed (so the indicator can refresh). */
     onActiveChange(): void
     /** Available packs (manifest ∪ what's in the library), for the drop-down. */
@@ -116,7 +114,7 @@ export function initLibraryPanel(
         // so the only work at risk is live scratchpad content — warn just for that.
         const onScratchpad = controller.isScratchpad(controller.getActiveId())
         if (onScratchpad && current) {
-            const go = await cb.confirm(
+            const go = await confirmModal(
                 'Discard your current scratchpad work and start fresh?',
                 'Discard & start new'
             )
@@ -271,6 +269,42 @@ export function initLibraryPanel(
             panel.appendChild(overlay)
         })
 
+    // A modal confirm rendered *inside the panel* (above its content), so it's
+    // always reachable — unlike a toast, which sits behind the open panel and can
+    // be hidden off-screen. Resolves true only if the user confirms.
+    const confirmModal = (message: string, confirmLabel: string): Promise<boolean> =>
+        new Promise(resolve => {
+            const overlay = document.createElement('div')
+            overlay.className = 'library-picker'
+            const box = document.createElement('div')
+            box.className = 'library-picker-box library-dialog'
+            const text = document.createElement('div')
+            text.className = 'library-dialog-text'
+            text.textContent = message
+            const row = document.createElement('div')
+            row.className = 'library-dialog-actions'
+            const done = (v: boolean): void => {
+                overlay.remove()
+                resolve(v)
+            }
+            const cancel = document.createElement('button')
+            cancel.type = 'button'
+            cancel.textContent = 'Cancel'
+            cancel.addEventListener('click', () => done(false))
+            const ok = document.createElement('button')
+            ok.type = 'button'
+            ok.className = 'library-dialog-confirm'
+            ok.textContent = confirmLabel
+            ok.addEventListener('click', () => done(true))
+            row.append(cancel, ok)
+            box.append(text, row)
+            overlay.appendChild(box)
+            overlay.addEventListener('click', e => {
+                if (e.target === overlay) done(false)
+            })
+            panel.appendChild(overlay)
+        })
+
     // --- node operations ----------------------------------------------------
 
     // Open a leaf as the working context. From a non-active pack this reloads the
@@ -285,7 +319,7 @@ export function initLibraryPanel(
             close()
             return
         }
-        const go = await cb.confirm(
+        const go = await confirmModal(
             `Open this in ${packLabel(browsedPack)}? The editor will reload to switch packs.`,
             'Switch & open'
         )
@@ -318,7 +352,7 @@ export function initLibraryPanel(
 
     const deleteNode = async (node: LibraryNode): Promise<void> => {
         const extra = node.kind === 'folder' ? ' and everything in it' : ''
-        const ok = await cb.confirm(
+        const ok = await confirmModal(
             `Delete "${node.name}"${extra}? This can't be undone.`,
             'Delete'
         )

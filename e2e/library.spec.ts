@@ -230,6 +230,18 @@ test.describe('blueprint library — organization & multi-pack (Phase 2)', () =>
         await expect(panel(page).locator('.library-row', { hasText: 'Mall' })).toHaveCount(1)
         // Browsing a non-active pack disables the active-pack save actions.
         await expect(panel(page).getByRole('button', { name: /save as/i })).toBeDisabled()
+
+        // Opening from a non-active pack asks to switch via a modal *inside the
+        // panel* (not a toast, which would sit behind it). Cancel keeps us put.
+        await panel(page)
+            .locator('.library-row', { hasText: 'Mall' })
+            .getByRole('button', { name: 'Open', exact: true })
+            .click()
+        const dialog = panel(page).locator('.library-dialog')
+        await expect(dialog.getByRole('button', { name: /switch & open/i })).toBeVisible()
+        await dialog.getByRole('button', { name: 'Cancel' }).click()
+        await expect(panel(page).locator('.library-dialog')).toHaveCount(0)
+        await expect(panel(page)).toHaveClass(/active/)
     })
 
     test('the ⋯ menu stays on-screen for a bottom-of-list row', async ({ page }) => {

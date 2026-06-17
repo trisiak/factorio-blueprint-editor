@@ -182,9 +182,10 @@ A single `LibraryState` document, in `packages/website/src/library/`:
   enhancement.
 - **Live unsaved-dot** — the indicator's "modified" dot refreshes on autosave
   (tab hide), not on every edit; live tracking needs an editor change event.
-- **Richer dialogs** — Save As / Rename / New folder use `window.prompt`;
-  confirms use a sticky toast (dismiss = cancel). A proper DOM modal can replace
-  these.
+- **Richer dialogs** — confirms (delete / discard / pack-switch) use an in-panel
+  modal (so they're never hidden behind the open panel like a toast would be);
+  Save As / Rename / New folder still use `window.prompt` (a text-input modal can
+  replace those later).
 - **Imported books** — a `?source=` book is stored as a single leaf for now, not
   decomposed into a folder (that's the Phase 4 hierarchical import).
 - **Folder UX polish** — folders are always expanded (no collapse) and move uses

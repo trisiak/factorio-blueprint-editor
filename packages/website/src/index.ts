@@ -366,17 +366,6 @@ const libraryCallbacks: LibraryPanelCallbacks = {
             )
             .catch(error => createErrorMessage('Blueprint string could not be copied.', error))
     },
-    // Confirm via a sticky toast: the action button resolves `true`; dismissing
-    // the toast simply leaves the action un-taken (treated as "cancel").
-    confirm: (text, confirmLabel) =>
-        new Promise<boolean>(resolve => {
-            createToast({
-                text,
-                type: 'warning',
-                timeout: Infinity,
-                action: { text: confirmLabel, callback: () => resolve(true) },
-            })
-        }),
     onActiveChange: () => {
         updateActiveIndicator()
         activeProjectEl?.classList.remove('modified')
