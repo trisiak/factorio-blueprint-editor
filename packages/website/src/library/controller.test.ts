@@ -2,6 +2,12 @@ import { describe, it, expect } from 'vitest'
 import { LibraryController, IMPORTED_FOLDER } from './controller'
 import { InMemoryLibraryStore } from './store'
 import { Now, IdGen } from './model'
+import { encodeRaw } from './interchange'
+
+// A real encoded blueprint string (interchange decodes/re-encodes these, unlike
+// the opaque placeholders the rest of the controller tests use).
+const realBp = (): string =>
+    encodeRaw({ blueprint: { item: 'blueprint', version: 100, entities: [{ name: 'x' }] } })
 
 // Deterministic id/clock, shared by a controller and any reload of it.
 function fixtures(): { now: Now; id: IdGen } {
@@ -223,6 +229,36 @@ describe('versioning (Phase 3)', () => {
         const folder = ctl.getTree().children.find(c => c.name === 'F')!
         expect(ctl.getEntry(p, folder.id)).toBeNull()
         expect(ctl.getEntry(p, 'missing')).toBeNull()
+    })
+})
+
+describe('interchange (Phase 4)', () => {
+    it('exports a folder as a book and imports it back into a pack', async () => {
+        const { ctl } = newController()
+        await ctl.init()
+        const p = ctl.getActivePack()
+        await ctl.createFolder(p, 'Logistics')
+        const folder = ctl.getTree().children.find(c => c.name === 'Logistics')!
+        await ctl.saveAs('Mall', realBp()) // a root leaf
+        await ctl.move(p, ctl.getActiveId(), folder.id) // into the folder
+
+        const exported = ctl.exportNode(p, folder.id)
+        expect(typeof exported).toBe('string')
+
+        // Importing it grafts a folder subtree at the pack root.
+        const node = await ctl.importInto(p, exported as string)
+        expect(node.kind).toBe('folder')
+        expect(ctl.getTree().children.some(c => c.id === node.id)).toBe(true)
+    })
+
+    it('exportPack / exportLibrary produce strings; importInto rejects junk', async () => {
+        const { ctl } = newController()
+        await ctl.init()
+        const p = ctl.getActivePack()
+        await ctl.saveAs('a', realBp())
+        expect(typeof ctl.exportPack(p)).toBe('string')
+        expect(typeof ctl.exportLibrary()).toBe('string')
+        await expect(ctl.importInto(p, 'not-a-blueprint')).rejects.toThrow()
     })
 })
 

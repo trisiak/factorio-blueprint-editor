@@ -78,14 +78,14 @@ problem only resurfaces at the **native interchange boundary**:
 - **Export:** encode the pack positionally. When exporting a whole pack or the
   whole library, name the top-level book(s) after the pack id (`label` == pack
   id) so the pack survives as far as a native string can carry it.
-- **Import:** infer the pack from the top-level book label; if an imported book
-  has no recognizable pack label, **ask the user which pack it targets** and
-  graft the subtree under that pack node.
+- **Import:** the top-level book label _is_ the pack hint; `importString` returns
+  it as `packHint` for routing.
 
-> Open question (settle at the export/import slice): exact pack-label mechanism —
-> top-level `label` == pack id (recommended, fully native) vs a reserved marker
-> in `description` vs accepting that arbitrary imports always prompt. Lean:
-> label convention, fall back to asking on import.
+> Resolved (Phase 4): the pack-label mechanism is the **top-level `label` == pack
+> id** convention (`exportPack`/`exportLibrary` apply it; `importString` surfaces
+> it as `packHint`). The UI doesn't yet route by it — Import… grafts into the
+> browsed pack — so honouring `packHint` (and prompting when it's unrecognised) is
+> the remaining follow-up.
 
 ## Architecture / seams (reuse, don't reinvent)
 
@@ -137,6 +137,11 @@ A single `LibraryState` document, in `packages/website/src/library/`:
   `ensureFolder` for the "Imported" area.
 - `store.ts` — `LibraryStore` interface + `IndexedDBLibraryStore` (real backing) +
   `InMemoryLibraryStore` (tests / SSR fallback) + `createLibraryStore()` picker.
+- `interchange.ts` — pure, editor-free native-string export/import (Phase 4). Uses
+  the same `0`+base64(deflate(JSON)) codec via pako directly, so folders ↔ nested
+  blueprint-books and it's unit-testable. `exportNode`/`exportPack`/`exportLibrary`
+  (pack/library books labelled by pack id) and `importString` (decompose a book
+  into a folder subtree).
 - `controller.ts` — `LibraryController`: owns session state (active pack + active
   leaf), deals only in encoded strings (no editor import → unit-tested). The
   active-pack working-context API (autosave/Save/Save As/open/import/newScratch),
@@ -146,9 +151,10 @@ A single `LibraryState` document, in `packages/website/src/library/`:
   `cloneNode`/`duplicateNode` in `model.ts` drop version history.
 - `libraryPanel.ts` — the DOM browser overlay (no framework, matches the site
   chrome): a pack drop-down (browse any pack), per-row "⋯" menus
-  (rename/duplicate/move/copy/delete/versions), a destination picker spanning
-  packs, an in-panel modal confirm, and a version-history viewer (restore /
-  delete a saved version). Verified by running the app + `e2e/library.spec.ts`.
+  (rename/duplicate/move/copy/delete/versions/export), a destination picker
+  spanning packs, an in-panel modal confirm, a version-history viewer (restore /
+  delete a saved version), and Import… / Export pack / Export all actions.
+  Verified by running the app + `e2e/library.spec.ts`.
 - Wiring in `index.ts`: the active leaf replaces the legacy single-slot autosave
   (migrated into the scratchpad once), the active-project indicator, and the
   `#library-button` / `#active-project` chrome.
@@ -172,9 +178,12 @@ A single `LibraryState` document, in `packages/website/src/library/`:
       Restore (overwrites live content; reloads the canvas + confirms when it's
       the active leaf with unsaved edits) and Delete-a-version. Model already
       prunes to N.
-- [ ] **Phase 4 — Export / import hierarchy.** Export any node → native string
-      (subtree extraction; leaf → bare bp string); modpack-label convention;
-      hierarchical import (decompose imported books); whole-library export.
+- [x] **Phase 4 — Export / import hierarchy.** Export any node → native string
+      (leaf → its bp string; folder → nested book; pack/library → book labelled by
+      pack id — the modpack-label convention). Import a pasted string, decomposing
+      a book into a folder subtree. ⋯ "Export as book" + Import… / Export pack /
+      Export all. (Import is paste-only and grafts into the browsed pack; URL
+      import + pack-routing-by-label are deferred.)
 - [ ] **Phase 5 — External backend.** OAuth-locked remote store (e.g. Firebase)
       behind the `LibraryStore` interface; sync/merge story.
 
@@ -189,10 +198,14 @@ A single `LibraryState` document, in `packages/website/src/library/`:
   (tab hide), not on every edit; live tracking needs an editor change event.
 - **Richer dialogs** — confirms (delete / discard / pack-switch) use an in-panel
   modal (so they're never hidden behind the open panel like a toast would be);
-  Save As / Rename / New folder still use `window.prompt` (a text-input modal can
-  replace those later).
-- **Imported books** — a `?source=` book is stored as a single leaf for now, not
-  decomposed into a folder (that's the Phase 4 hierarchical import).
+  Save As / Rename / New folder / Import all use `window.prompt` (a text-input /
+  textarea modal can replace those later — pasting a long string into a prompt is
+  workable but clunky).
+- **Import routing** — the panel's Import… is paste-only (`0`-strings, no URL
+  fetch) and grafts into the _browsed_ pack at root; routing by the top-level
+  book label to a matching pack (the `packHint`) is wired in the model but not yet
+  used by the UI. The boot-time `?source=` book is still stored as a single
+  "Imported" leaf (not decomposed) — only the panel's Import… decomposes.
 - **Folder UX polish** — folders are always expanded (no collapse) and move uses
   a destination picker rather than drag-and-drop.
 

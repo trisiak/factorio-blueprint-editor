@@ -158,6 +158,36 @@ export function initLibraryPanel(
         cb.toast(`Saved "${name}"`, 'success')
     })
 
+    // Interchange: copy a native string out, or paste one in (decomposed). These
+    // act on the *browsed* pack (pure data ops — no live canvas involved).
+    const exportToClipboard = (str: string | null, what: string): void => {
+        if (!str) {
+            cb.toast(`Nothing to export — ${what} is empty.`, 'info')
+            return
+        }
+        cb.copyText(str)
+    }
+
+    actionButton('Import…', async () => {
+        const str = cb.promptName('Paste a blueprint or book string', '')
+        if (!str) return
+        if (!str.trim().startsWith('0')) {
+            cb.toast('Paste a blueprint string (it should start with “0”).', 'warning')
+            return
+        }
+        try {
+            await controller.importInto(browsedPack, str.trim())
+            refresh()
+            cb.toast('Imported', 'success')
+        } catch {
+            cb.toast('Couldn’t read that blueprint string.', 'error')
+        }
+    })
+    actionButton('Export pack', () =>
+        exportToClipboard(controller.exportPack(browsedPack), 'this pack')
+    )
+    actionButton('Export all', () => exportToClipboard(controller.exportLibrary(), 'the library'))
+
     // --- scrollable body ----------------------------------------------------
     const body = document.createElement('div')
     body.className = 'library-body'
@@ -527,8 +557,14 @@ export function initLibraryPanel(
             items.push({ label: 'Copy string', run: () => copyString(node.encoded) })
             items.push({ label: 'Versions…', run: () => openVersions(node) })
         }
-        if (node.kind === 'folder')
+        if (node.kind === 'folder') {
             items.push({ label: 'New subfolder', run: () => newFolder(node.id) })
+            items.push({
+                label: 'Export as book',
+                run: () =>
+                    exportToClipboard(controller.exportNode(browsedPack, node.id), 'this folder'),
+            })
+        }
         items.push(
             { label: 'Rename', run: () => renameNode(node) },
             { label: 'Duplicate', run: () => duplicateNode(node.id) },

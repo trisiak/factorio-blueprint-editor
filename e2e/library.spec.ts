@@ -323,4 +323,27 @@ test.describe('blueprint library — organization & multi-pack (Phase 2)', () =>
         await page.locator('.library-dialog').getByRole('button', { name: 'Delete' }).click()
         await expect(panel(page).locator('.library-version')).toHaveCount(1)
     })
+
+    test('exports a folder as a native book and imports the string back', async ({ page }) => {
+        await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+        await page.goto(`/?test&source=${encodeURIComponent(CHEST)}`)
+        await waitForReady(page)
+        await expect.poll(() => entityCount(page)).toBe(1)
+
+        await openPanel(page)
+        // The ?source import left an "Imported" folder holding the blueprint.
+        await expect(panel(page).locator('.library-folder', { hasText: 'Imported' })).toHaveCount(1)
+
+        // Export it as a book → the native string lands on the clipboard.
+        await rowAction(page, 'Imported', /export as book/i)
+        const exported = await page.evaluate(() => navigator.clipboard.readText())
+        expect(exported.startsWith('0')).toBe(true)
+
+        // Import that string back → it decomposes into a second "Imported" folder.
+        page.on('dialog', d => d.accept(exported))
+        await panel(page)
+            .getByRole('button', { name: /^Import/i })
+            .click()
+        await expect(panel(page).locator('.library-folder', { hasText: 'Imported' })).toHaveCount(2)
+    })
 })

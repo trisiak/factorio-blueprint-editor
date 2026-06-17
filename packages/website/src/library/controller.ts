@@ -13,6 +13,7 @@
 // checkpoint. "Modified" means there are edits since the last checkpoint.
 
 import { LibraryStore } from './store'
+import * as interchange from './interchange'
 import {
     LibraryState,
     PackTree,
@@ -325,6 +326,36 @@ export class LibraryController {
     public getEntry(pack: string, id: string): BlueprintEntry | null {
         const node = findNode(this.getTreeFor(pack), id)
         return node && node.kind === 'blueprint' ? node : null
+    }
+
+    // --- native-string interchange (Phase 4) --------------------------------
+
+    /** Export a node to a native string (leaf → bp string; folder → nested book). */
+    public exportNode(pack: string, id: string): string | null {
+        const node = findNode(this.getTreeFor(pack), id)
+        return node ? interchange.exportNode(node) : null
+    }
+
+    /** Export a whole pack as a book labelled with the pack id. */
+    public exportPack(pack: string): string | null {
+        return interchange.exportPack(this.getTreeFor(pack))
+    }
+
+    /** Export the whole library as a book of per-pack books. */
+    public exportLibrary(): string | null {
+        return interchange.exportLibrary(this.state)
+    }
+
+    /**
+     * Import a pasted blueprint/book string into a pack, decomposing a book into a
+     * folder subtree. Grafts under `parentId` (or the pack root). Returns the
+     * grafted top-level node. Throws (caller toasts) on a malformed string.
+     */
+    public async importInto(pack: string, str: string, parentId?: string): Promise<LibraryNode> {
+        const { node } = interchange.importString(str, 'Imported blueprint', this.now, this.id)
+        addNode(this.getTreeFor(pack), node, parentId)
+        await this.persist()
+        return node
     }
 
     /** Recently-opened entries, resolved to leaves (stale ids dropped). */
