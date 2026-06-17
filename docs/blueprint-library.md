@@ -133,20 +133,22 @@ A single `LibraryState` document, in `packages/website/src/library/`:
 - `model.ts` — pure types + deterministic tree ops (id/now injectable),
   unit-tested. Content ops split the two write paths: `updateEntryContent`
   (autosave, no checkpoint) vs. `checkpointEntry` (explicit Save) /
-  `restoreSnapshot` / `hasUncheckpointedChanges`; plus `ensureFolder` for the
-  "Imported" area.
+  `restoreSnapshot` / `deleteSnapshot` / `hasUncheckpointedChanges`; plus
+  `ensureFolder` for the "Imported" area.
 - `store.ts` — `LibraryStore` interface + `IndexedDBLibraryStore` (real backing) +
   `InMemoryLibraryStore` (tests / SSR fallback) + `createLibraryStore()` picker.
 - `controller.ts` — `LibraryController`: owns session state (active pack + active
   leaf), deals only in encoded strings (no editor import → unit-tested). The
   active-pack working-context API (autosave/Save/Save As/open/import/newScratch),
-  plus pack-scoped organize ops (createFolder/rename/move/duplicate/remove) and
+  plus pack-scoped organize ops (createFolder/rename/move/duplicate/remove),
   cross-pack `copyToPack`/`moveToPack` + `setActiveForPack` (the cross-pack-open
-  handoff). `cloneNode`/`duplicateNode` in `model.ts` drop version history.
+  handoff), and version ops (`restore`/`deleteSnapshot`/`getEntry`).
+  `cloneNode`/`duplicateNode` in `model.ts` drop version history.
 - `libraryPanel.ts` — the DOM browser overlay (no framework, matches the site
   chrome): a pack drop-down (browse any pack), per-row "⋯" menus
-  (rename/duplicate/move/copy/delete), and a destination picker spanning packs.
-  Verified by running the app + `e2e/library.spec.ts`.
+  (rename/duplicate/move/copy/delete/versions), a destination picker spanning
+  packs, an in-panel modal confirm, and a version-history viewer (restore /
+  delete a saved version). Verified by running the app + `e2e/library.spec.ts`.
 - Wiring in `index.ts`: the active leaf replaces the legacy single-slot autosave
   (migrated into the scratchpad once), the active-project indicator, and the
   `#library-button` / `#active-project` chrome.
@@ -165,8 +167,11 @@ A single `LibraryState` document, in `packages/website/src/library/`:
       pack's tree (Open from a non-active pack switches via `setDataPack`);
       cross-pack copy/move (optimistic, version history dropped). "⋯" row menus +
       destination picker.
-- [ ] **Phase 3 — Versioning UI.** View / restore / prune the last N snapshots
-      per leaf (the model already keeps them; `restoreSnapshot` exists).
+- [x] **Phase 3 — Versioning UI.** A per-leaf version-history viewer (⋯ →
+      "Versions…"): lists saved versions newest-first with relative timestamps,
+      Restore (overwrites live content; reloads the canvas + confirms when it's
+      the active leaf with unsaved edits) and Delete-a-version. Model already
+      prunes to N.
 - [ ] **Phase 4 — Export / import hierarchy.** Export any node → native string
       (subtree extraction; leaf → bare bp string); modpack-label convention;
       hierarchical import (decompose imported books); whole-library export.

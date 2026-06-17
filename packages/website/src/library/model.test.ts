@@ -14,6 +14,7 @@ import {
     checkpointEntry,
     hasUncheckpointedChanges,
     restoreSnapshot,
+    deleteSnapshot,
     pushRecent,
     LIBRARY_VERSION,
     Now,
@@ -243,6 +244,21 @@ describe('content: autosave vs explicit checkpoint', () => {
         // time-linear, duplicates allowed.
         expect(checkpointEntry(tree, bp.id, now)).toBe(true)
         expect(bp.snapshots.map(s => s.encoded)).toEqual(['0v1', '0v2', '0v1'])
+    })
+
+    it('deleteSnapshot removes one version by index', () => {
+        const { now, id } = fixtures()
+        const tree = ensurePack(createLibrary(), 'p', now)
+        const bp = makeBlueprint('a', '0v1', now, id)
+        addNode(tree, bp)
+        checkpointEntry(tree, bp.id, now) // ['0v1']
+        updateEntryContent(tree, bp.id, '0v2', now)
+        checkpointEntry(tree, bp.id, now) // ['0v2','0v1']
+
+        expect(deleteSnapshot(tree, bp.id, 0)).toBe(true) // drop newest (0v2)
+        expect(bp.snapshots.map(s => s.encoded)).toEqual(['0v1'])
+        expect(deleteSnapshot(tree, bp.id, 5)).toBe(false) // out of range
+        expect(deleteSnapshot(tree, 'missing', 0)).toBe(false)
     })
 
     it('rejects content ops against folders or missing ids', () => {

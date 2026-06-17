@@ -412,13 +412,121 @@ export function initLibraryPanel(
         cb.copyText(encoded)
     }
 
+    // Compact relative time for version timestamps ("5m ago", "3h ago", …).
+    const relTime = (ms: number): string => {
+        const s = Math.max(0, Math.round((Date.now() - ms) / 1000))
+        if (s < 60) return 'just now'
+        const m = Math.round(s / 60)
+        if (m < 60) return `${m}m ago`
+        const h = Math.round(m / 60)
+        if (h < 24) return `${h}h ago`
+        const d = Math.round(h / 24)
+        if (d < 30) return `${d}d ago`
+        return new Date(ms).toLocaleDateString()
+    }
+
+    // Version history viewer: list a leaf's saved versions (newest first), each
+    // with Restore + Delete. Restore overwrites the live content (explicit-only,
+    // time-linear); if it's the active leaf it also reloads the canvas, confirming
+    // first when there are uncommitted edits to overwrite.
+    const openVersions = (node: Extract<LibraryNode, { kind: 'blueprint' }>): void => {
+        const pack = browsedPack
+        const overlay = document.createElement('div')
+        overlay.className = 'library-picker'
+        const box = document.createElement('div')
+        box.className = 'library-picker-box'
+        const heading = document.createElement('div')
+        heading.className = 'library-picker-title'
+        heading.textContent = `Versions of "${node.name}"`
+        const list = document.createElement('div')
+        list.className = 'library-version-list'
+        const closeBtn = document.createElement('button')
+        closeBtn.type = 'button'
+        closeBtn.className = 'library-picker-cancel'
+        closeBtn.textContent = 'Close'
+        closeBtn.addEventListener('click', () => overlay.remove())
+        box.append(heading, list, closeBtn)
+        overlay.appendChild(box)
+        overlay.addEventListener('click', e => {
+            if (e.target === overlay) overlay.remove()
+        })
+        panel.appendChild(overlay)
+
+        const restoreVersion = async (index: number): Promise<void> => {
+            const isActiveLeaf = onActivePack() && node.id === controller.getActiveId()
+            if (isActiveLeaf) {
+                const current = await cb.currentEncoded().catch(() => '')
+                if (
+                    controller.isModified(current) &&
+                    !(await confirmModal(
+                        'Restore this version? Unsaved changes to the current version will be lost.',
+                        'Restore'
+                    ))
+                ) {
+                    return
+                }
+            }
+            await controller.restore(pack, node.id, index)
+            if (isActiveLeaf) {
+                await cb.loadEncoded(controller.getEntry(pack, node.id)?.encoded ?? '')
+                cb.onActiveChange()
+            }
+            renderVersions()
+            refresh()
+            cb.toast('Version restored', 'success')
+        }
+
+        const deleteVersion = async (index: number): Promise<void> => {
+            if (!(await confirmModal('Delete this saved version?', 'Delete'))) return
+            await controller.deleteSnapshot(pack, node.id, index)
+            renderVersions()
+            refresh()
+        }
+
+        function renderVersions(): void {
+            const entry = controller.getEntry(pack, node.id)
+            const snaps = entry?.snapshots ?? []
+            list.replaceChildren()
+            if (snaps.length === 0) {
+                const empty = document.createElement('div')
+                empty.className = 'library-empty'
+                empty.textContent = 'No saved versions yet — use “Save version”.'
+                list.appendChild(empty)
+                return
+            }
+            snaps.forEach((snap, i) => {
+                const row = document.createElement('div')
+                row.className = 'library-version'
+                const label = document.createElement('span')
+                label.className = 'library-version-label'
+                label.textContent = relTime(snap.savedAt) + (i === 0 ? ' · latest' : '')
+                const buttons = document.createElement('span')
+                buttons.className = 'library-row-buttons'
+                const restore = document.createElement('button')
+                restore.type = 'button'
+                restore.textContent = 'Restore'
+                restore.addEventListener('click', () => restoreVersion(i))
+                const del = document.createElement('button')
+                del.type = 'button'
+                del.textContent = 'Delete'
+                del.addEventListener('click', () => deleteVersion(i))
+                buttons.append(restore, del)
+                row.append(label, buttons)
+                list.appendChild(row)
+            })
+        }
+        renderVersions()
+    }
+
     // --- rendering ----------------------------------------------------------
 
     // The ⋯ menu items for a node (organize ops, pack-agnostic).
     const menuFor = (node: LibraryNode): MenuItem[] => {
         const items: MenuItem[] = []
-        if (node.kind === 'blueprint')
+        if (node.kind === 'blueprint') {
             items.push({ label: 'Copy string', run: () => copyString(node.encoded) })
+            items.push({ label: 'Versions…', run: () => openVersions(node) })
+        }
         if (node.kind === 'folder')
             items.push({ label: 'New subfolder', run: () => newFolder(node.id) })
         items.push(

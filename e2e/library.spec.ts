@@ -274,4 +274,53 @@ test.describe('blueprint library — organization & multi-pack (Phase 2)', () =>
         expect(box.y + box.height).toBeLessThanOrEqual(vh + 1)
         await expect(menu.getByRole('button', { name: 'Delete' })).toBeVisible()
     })
+
+    test('restores an older saved version onto the canvas', async ({ page }) => {
+        page.on('dialog', d => d.accept('Proj'))
+        await page.addInitScript(() => {
+            window.localStorage.setItem(
+                'quickbarItemNames',
+                JSON.stringify(['assembling-machine-2'])
+            )
+        })
+        // Start from a 1-entity blueprint and save it as version 1.
+        await page.goto(`/?test&source=${encodeURIComponent(CHEST)}`)
+        await waitForReady(page)
+        await expect.poll(() => entityCount(page)).toBe(1)
+        await openPanel(page)
+        await panel(page)
+            .getByRole('button', { name: /save as/i })
+            .click()
+        await expect(indicator(page)).toHaveText('Proj')
+
+        // Close the panel to reach the canvas, add a 2nd entity, reopen and save
+        // that as version 2 (now 2 entities).
+        await panel(page).locator('.library-close').click()
+        await expect(panel(page)).not.toHaveClass(/active/)
+        const at = { x: 360, y: 380 }
+        await page.locator('#editor').focus()
+        await page.mouse.move(at.x, at.y)
+        await page.keyboard.press('1')
+        await page.mouse.click(at.x, at.y)
+        await expect.poll(() => entityCount(page)).toBe(2)
+        await openPanel(page)
+        await panel(page)
+            .getByRole('button', { name: /save version/i })
+            .click()
+        await expect(
+            panel(page).locator('.library-row', { hasText: 'Proj' }).first()
+        ).toContainText('v2')
+
+        // Open Versions… and restore the older version (the last row) → back to 1 entity.
+        await rowAction(page, 'Proj', /versions/i)
+        const versions = panel(page).locator('.library-version')
+        await expect(versions).toHaveCount(2)
+        await versions.last().getByRole('button', { name: 'Restore' }).click()
+        await expect.poll(() => entityCount(page)).toBe(1)
+
+        // Delete the latest version from the still-open viewer → one version left.
+        await versions.first().getByRole('button', { name: 'Delete' }).click()
+        await page.locator('.library-dialog').getByRole('button', { name: 'Delete' }).click()
+        await expect(panel(page).locator('.library-version')).toHaveCount(1)
+    })
 })

@@ -196,6 +196,36 @@ describe('organization (Phase 2)', () => {
     })
 })
 
+describe('versioning (Phase 3)', () => {
+    it('restore overwrites live content with a chosen version; delete removes one', async () => {
+        const { ctl } = newController()
+        await ctl.init()
+        const p = ctl.getActivePack()
+        const leaf = await ctl.saveAs('proj', '0v1') // versions: ['0v1']
+        await ctl.save('0v2') // versions: ['0v2','0v1']
+        expect(ctl.getEntry(p, leaf.id)?.snapshots.map(s => s.encoded)).toEqual(['0v2', '0v1'])
+
+        // Restore the older version into live content (no implicit checkpoint).
+        expect(await ctl.restore(p, leaf.id, 1)).toBe(true)
+        expect(ctl.getEntry(p, leaf.id)?.encoded).toBe('0v1')
+        expect(ctl.getEntry(p, leaf.id)?.snapshots.map(s => s.encoded)).toEqual(['0v2', '0v1'])
+
+        // Delete the newest version.
+        expect(await ctl.deleteSnapshot(p, leaf.id, 0)).toBe(true)
+        expect(ctl.getEntry(p, leaf.id)?.snapshots.map(s => s.encoded)).toEqual(['0v1'])
+    })
+
+    it('getEntry returns null for folders / unknown ids', async () => {
+        const { ctl } = newController()
+        await ctl.init()
+        const p = ctl.getActivePack()
+        await ctl.createFolder(p, 'F')
+        const folder = ctl.getTree().children.find(c => c.name === 'F')!
+        expect(ctl.getEntry(p, folder.id)).toBeNull()
+        expect(ctl.getEntry(p, 'missing')).toBeNull()
+    })
+})
+
 describe('cross-pack copy / move (Phase 2)', () => {
     it('copies a leaf into another pack (optimistic, no history) and leaves the original', async () => {
         const { ctl } = newController()

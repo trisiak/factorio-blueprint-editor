@@ -376,3 +376,12 @@ export function restoreSnapshot(
 export function pushRecent(tree: PackTree, id: string, limit = DEFAULT_RECENTS_LIMIT): void {
     tree.recents = [id, ...tree.recents.filter(r => r !== id)].slice(0, limit)
 }
+
+/** Delete a single saved version (by index) from a leaf. Returns true if removed. */
+export function deleteSnapshot(tree: PackTree, id: string, snapshotIndex: number): boolean {
+    const node = findNode(tree, id)
+    if (!node || node.kind !== 'blueprint') return false
+    if (snapshotIndex < 0 || snapshotIndex >= node.snapshots.length) return false
+    node.snapshots.splice(snapshotIndex, 1)
+    return true
+}

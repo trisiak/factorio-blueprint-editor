@@ -33,6 +33,7 @@ import {
     updateEntryContent,
     checkpointEntry,
     restoreSnapshot,
+    deleteSnapshot,
     pushRecent,
     Now,
     IdGen,
@@ -307,10 +308,23 @@ export class LibraryController {
         return true
     }
 
-    public async restore(id: string, snapshotIndex: number): Promise<boolean> {
-        const ok = restoreSnapshot(this.tree(), id, snapshotIndex, this.now)
+    public async restore(pack: string, id: string, snapshotIndex: number): Promise<boolean> {
+        const ok = restoreSnapshot(this.getTreeFor(pack), id, snapshotIndex, this.now)
         await this.persist()
         return ok
+    }
+
+    /** Delete one saved version of a leaf. */
+    public async deleteSnapshot(pack: string, id: string, snapshotIndex: number): Promise<boolean> {
+        const ok = deleteSnapshot(this.getTreeFor(pack), id, snapshotIndex)
+        await this.persist()
+        return ok
+    }
+
+    /** A leaf by id within a pack (for reading its versions), or null. */
+    public getEntry(pack: string, id: string): BlueprintEntry | null {
+        const node = findNode(this.getTreeFor(pack), id)
+        return node && node.kind === 'blueprint' ? node : null
     }
 
     /** Recently-opened entries, resolved to leaves (stale ids dropped). */
