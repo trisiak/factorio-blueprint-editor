@@ -346,4 +346,29 @@ test.describe('blueprint library — organization & multi-pack (Phase 2)', () =>
             .click()
         await expect(panel(page).locator('.library-folder', { hasText: 'Imported' })).toHaveCount(2)
     })
+
+    test('collapses and expands a folder', async ({ page }) => {
+        await page.goto(`/?test&source=${encodeURIComponent(CHEST)}`)
+        await waitForReady(page)
+        await expect.poll(() => entityCount(page)).toBe(1)
+
+        await openPanel(page)
+        const folderName = panel(page)
+            .locator('.library-folder', { hasText: 'Imported' })
+            .locator('.library-row-name')
+        // Folders start open (📂); their children are shown.
+        await expect(folderName).toContainText('📂')
+        const rows = panel(page).locator('.library-row')
+        const open = await rows.count()
+
+        // Click the folder → collapses (📁) and hides its child row(s).
+        await folderName.click()
+        await expect(folderName).toContainText('📁')
+        expect(await rows.count()).toBeLessThan(open)
+
+        // Click again → expands back to the original rows.
+        await folderName.click()
+        await expect(folderName).toContainText('📂')
+        expect(await rows.count()).toBe(open)
+    })
 })

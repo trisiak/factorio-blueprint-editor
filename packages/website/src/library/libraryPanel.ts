@@ -50,6 +50,8 @@ export function initLibraryPanel(
 ): LibraryPanel {
     // Which pack's tree is being browsed (defaults to the active/rendered one).
     let browsedPack = controller.getActivePack()
+    // Folder ids the user has collapsed (UI-only, per session — not persisted).
+    const collapsed = new Set<string>()
     const onActivePack = (): boolean => browsedPack === controller.getActivePack()
     const packLabel = (id: string): string => cb.packList().find(p => p.id === id)?.label ?? id
 
@@ -431,6 +433,7 @@ export function initLibraryPanel(
         const name = cb.promptName('New folder name', 'New folder')
         if (!name) return
         await controller.createFolder(browsedPack, name, parentId)
+        if (parentId) collapsed.delete(parentId) // reveal the new subfolder
         refresh()
     }
 
@@ -639,9 +642,16 @@ export function initLibraryPanel(
         const row = document.createElement('div')
         row.className = 'library-row library-folder'
         row.style.paddingLeft = `${8 + depth * 16}px`
+        const isCollapsed = collapsed.has(node.id)
         const name = document.createElement('span')
         name.className = 'library-row-name'
-        name.textContent = `📁 ${node.name}`
+        // 📂 open / 📁 closed; click the name to toggle (the ⋯ stays a menu).
+        name.textContent = `${isCollapsed ? '📁' : '📂'} ${node.name}`
+        name.addEventListener('click', () => {
+            if (collapsed.has(node.id)) collapsed.delete(node.id)
+            else collapsed.add(node.id)
+            refresh()
+        })
         const buttons = document.createElement('span')
         buttons.className = 'library-row-buttons'
         buttons.appendChild(
@@ -649,7 +659,7 @@ export function initLibraryPanel(
         )
         row.append(name, buttons)
         into.appendChild(row)
-        for (const child of node.children) renderNode(child, into, depth + 1)
+        if (!isCollapsed) for (const child of node.children) renderNode(child, into, depth + 1)
     }
 
     const section = (label: string): void => {
