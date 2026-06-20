@@ -221,6 +221,24 @@ describe('versioning (Phase 3)', () => {
         expect(ctl.getEntry(p, leaf.id)?.snapshots.map(s => s.encoded)).toEqual(['0v1'])
     })
 
+    it('setDescription sets a folder book description (and clears on empty)', async () => {
+        const { ctl } = newController()
+        await ctl.init()
+        const p = ctl.getActivePack()
+        await ctl.createFolder(p, 'Book')
+        const folder = ctl.getTree().children.find(c => c.name === 'Book')!
+
+        await ctl.setDescription(p, folder.id, 'hello')
+        expect(ctl.getTree().children.find(c => c.id === folder.id)).toMatchObject({
+            description: 'hello',
+        })
+        await ctl.setDescription(p, folder.id, '')
+        expect(
+            (ctl.getTree().children.find(c => c.id === folder.id) as { description?: string })
+                .description
+        ).toBeUndefined()
+    })
+
     it('getEntry returns null for folders / unknown ids', async () => {
         const { ctl } = newController()
         await ctl.init()

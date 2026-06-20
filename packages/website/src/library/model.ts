@@ -44,7 +44,12 @@ export interface BlueprintEntry {
     snapshots: Snapshot[]
 }
 
-/** A folder — an interior node that nests other nodes. */
+/**
+ * A folder — an interior node that nests other nodes. A folder *is* a Factorio
+ * blueprint-book: beyond its `name` (the book label) it carries the book's
+ * metadata so it round-trips losslessly through export/import. The canonical
+ * blueprint data lives in the leaves; this is just the book wrapper.
+ */
 export interface FolderEntry {
     id: string
     kind: 'folder'
@@ -52,6 +57,12 @@ export interface FolderEntry {
     createdAt: number
     updatedAt: number
     children: LibraryNode[]
+    /** Book description (free text shown in Factorio). */
+    description?: string
+    /** Book icons — opaque `IIcon[]` JSON, carried through interchange untouched. */
+    icons?: unknown[]
+    /** Which child is the book's active blueprint (round-trips `active_index`). */
+    activeIndex?: number
 }
 
 export type LibraryNode = FolderEntry | BlueprintEntry
@@ -276,6 +287,9 @@ export function cloneNode(node: LibraryNode, now: Now = Date.now, id: IdGen = ge
         createdAt: t,
         updatedAt: t,
         children: node.children.map(c => cloneNode(c, now, id)),
+        description: node.description,
+        icons: node.icons,
+        activeIndex: node.activeIndex,
     }
 }
 

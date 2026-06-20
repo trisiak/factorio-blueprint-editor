@@ -445,6 +445,16 @@ export function initLibraryPanel(
         cb.copyText(encoded)
     }
 
+    // A folder is a Factorio book — edit its book description.
+    const editDescription = async (
+        folder: Extract<LibraryNode, { kind: 'folder' }>
+    ): Promise<void> => {
+        const desc = cb.promptName('Folder / book description', folder.description ?? '')
+        if (desc === null) return
+        await controller.setDescription(browsedPack, folder.id, desc)
+        refresh()
+    }
+
     // Compact relative time for version timestamps ("5m ago", "3h ago", …).
     const relTime = (ms: number): string => {
         const s = Math.max(0, Math.round((Date.now() - ms) / 1000))
@@ -562,6 +572,7 @@ export function initLibraryPanel(
         }
         if (node.kind === 'folder') {
             items.push({ label: 'New subfolder', run: () => newFolder(node.id) })
+            items.push({ label: 'Edit description…', run: () => editDescription(node) })
             items.push({
                 label: 'Export as book',
                 run: () =>
@@ -647,6 +658,11 @@ export function initLibraryPanel(
         name.className = 'library-row-name'
         // 📂 open / 📁 closed; click the name to toggle (the ⋯ stays a menu).
         name.textContent = `${isCollapsed ? '📁' : '📂'} ${node.name}`
+        // The folder's book description shows on hover (a "ⓘ" hints it's set).
+        if (node.description) {
+            row.title = node.description
+            name.textContent += ' ⓘ'
+        }
         name.addEventListener('click', () => {
             if (collapsed.has(node.id)) collapsed.delete(node.id)
             else collapsed.add(node.id)

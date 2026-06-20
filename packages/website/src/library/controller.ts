@@ -225,6 +225,16 @@ export class LibraryController {
         await this.persist()
     }
 
+    /** Set a folder's book description (a folder is a Factorio book). */
+    public async setDescription(pack: string, id: string, description: string): Promise<void> {
+        const node = findNode(this.getTreeFor(pack), id)
+        if (node && node.kind === 'folder') {
+            node.description = description || undefined
+            node.updatedAt = this.now()
+            await this.persist()
+        }
+    }
+
     /** Reparent a node within its pack (into a folder, or to the root). */
     public async move(pack: string, id: string, newParentId?: string): Promise<boolean> {
         const ok = moveNode(this.getTreeFor(pack), id, newParentId)

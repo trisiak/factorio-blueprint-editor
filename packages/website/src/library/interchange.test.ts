@@ -86,6 +86,34 @@ describe('import (decompose)', () => {
         expect(node.name).toBe('Solo')
     })
 
+    it('round-trips folder book metadata (label / description / icons / active_index)', () => {
+        const { now, id } = fixtures()
+        const tree = ensurePack(createLibrary(), 'p', now)
+        const folder = makeFolder('My book', now, id)
+        folder.description = 'a description'
+        folder.icons = [{ signal: { type: 'item', name: 'iron-plate' }, index: 1 }]
+        folder.activeIndex = 1
+        addNode(tree, folder)
+        addNode(tree, makeBlueprint('A', bp(), now, id), folder.id)
+        addNode(tree, makeBlueprint('B', bp(), now, id), folder.id)
+
+        // Export carries the metadata onto the book...
+        const book = decodeRaw(exportNode(folder)!).blueprint_book!
+        expect(book.label).toBe('My book')
+        expect(book.description).toBe('a description')
+        expect(book.icons).toEqual([{ signal: { type: 'item', name: 'iron-plate' }, index: 1 }])
+        expect(book.active_index).toBe(1)
+
+        // ...and import copies it back onto the folder.
+        const { node } = importString(exportNode(folder)!, 'Imported', now, id)
+        expect(node.kind).toBe('folder')
+        if (node.kind === 'folder') {
+            expect(node.description).toBe('a description')
+            expect(node.icons).toEqual([{ signal: { type: 'item', name: 'iron-plate' }, index: 1 }])
+            expect(node.activeIndex).toBe(1)
+        }
+    })
+
     it('throws on a non-blueprint string', () => {
         const junk = encodeRaw({} as never)
         const { now, id } = fixtures()

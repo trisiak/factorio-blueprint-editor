@@ -371,4 +371,27 @@ test.describe('blueprint library — organization & multi-pack (Phase 2)', () =>
         await expect(folderName).toContainText('📂')
         expect(await rows.count()).toBe(open)
     })
+
+    test('edits a folder/book description and persists it across reload', async ({ page }) => {
+        page.on('dialog', d => d.accept('My book desc'))
+        await page.goto(`/?test&source=${encodeURIComponent(CHEST)}`)
+        await waitForReady(page)
+        await expect.poll(() => entityCount(page)).toBe(1)
+
+        await openPanel(page)
+        await rowAction(page, 'Imported', /edit description/i)
+
+        // The folder is a book now — its description shows on hover (title) + a ⓘ hint.
+        const folder = panel(page).locator('.library-folder', { hasText: 'Imported' })
+        await expect(folder).toHaveAttribute('title', 'My book desc')
+        await expect(folder.locator('.library-row-name')).toContainText('ⓘ')
+
+        // It's stored in the rich document → survives a reload.
+        await page.goto('/?test')
+        await waitForReady(page)
+        await openPanel(page)
+        await expect(
+            panel(page).locator('.library-folder', { hasText: 'Imported' })
+        ).toHaveAttribute('title', 'My book desc')
+    })
 })

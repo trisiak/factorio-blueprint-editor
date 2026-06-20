@@ -16,6 +16,7 @@ import pako from 'pako'
 import { Buffer } from 'buffer'
 import {
     LibraryNode,
+    FolderEntry,
     PackTree,
     LibraryState,
     makeBlueprint,
@@ -38,8 +39,18 @@ interface RawBook {
     active_index: number
     version?: number
     label?: string
+    description?: string
+    icons?: unknown[]
     blueprints?: RawEntry[]
     [k: string]: unknown
+}
+
+/** Book-level metadata a folder carries (a folder *is* a Factorio book). */
+interface BookMeta {
+    label?: string
+    description?: string
+    icons?: unknown[]
+    activeIndex?: number
 }
 interface RawEntry {
     index: number
@@ -79,7 +90,7 @@ function firstVersion(entries: RawEntry[]): number | undefined {
 // authoritative one for organization).
 function entryFor(node: LibraryNode, index: number): RawEntry | null {
     if (node.kind === 'folder') {
-        const book = bookFromChildren(node.children, node.name)
+        const book = bookFromFolder(node)
         return book ? { index, blueprint_book: book } : null
     }
     if (!node.encoded) return null
@@ -90,8 +101,9 @@ function entryFor(node: LibraryNode, index: number): RawEntry | null {
     return null
 }
 
-// Assemble a blueprint-book from children, or null if it has no blueprints.
-function bookFromChildren(children: LibraryNode[], label?: string): RawBook | null {
+// Assemble a blueprint-book from children + book metadata, or null if it has no
+// blueprints (a book needs ≥1). description/icons are only emitted when present.
+function bookFromChildren(children: LibraryNode[], meta: BookMeta): RawBook | null {
     const entries: RawEntry[] = []
     for (const child of children) {
         const e = entryFor(child, entries.length)
@@ -100,11 +112,30 @@ function bookFromChildren(children: LibraryNode[], label?: string): RawBook | nu
     if (entries.length === 0) return null
     return {
         item: 'blueprint-book',
-        active_index: 0,
+        active_index: meta.activeIndex ?? 0,
         version: firstVersion(entries) ?? FALLBACK_VERSION,
-        label,
+        label: meta.label,
+        ...(meta.description !== undefined ? { description: meta.description } : {}),
+        ...(meta.icons !== undefined ? { icons: meta.icons } : {}),
         blueprints: entries,
     }
+}
+
+// A folder *is* a book: assemble it carrying its book metadata.
+function bookFromFolder(folder: FolderEntry): RawBook | null {
+    return bookFromChildren(folder.children, {
+        label: folder.name,
+        description: folder.description,
+        icons: folder.icons,
+        activeIndex: folder.activeIndex,
+    })
+}
+
+// Copy a book's metadata onto a folder on import (so it round-trips losslessly).
+function applyBookMeta(folder: FolderEntry, book: RawBook): void {
+    if (book.description !== undefined) folder.description = book.description
+    if (book.icons !== undefined) folder.icons = book.icons
+    if (book.active_index !== undefined) folder.activeIndex = book.active_index
 }
 
 /**
@@ -114,7 +145,7 @@ function bookFromChildren(children: LibraryNode[], label?: string): RawBook | nu
  */
 export function exportNode(node: LibraryNode): string | null {
     if (node.kind === 'blueprint') return node.encoded || null
-    const book = bookFromChildren(node.children, node.name)
+    const book = bookFromFolder(node)
     return book ? encodeRaw({ blueprint_book: book }) : null
 }
 
@@ -123,7 +154,7 @@ export function exportNode(node: LibraryNode): string | null {
  * convention, so a re-import can recognise where it came from).
  */
 export function exportPack(tree: PackTree): string | null {
-    const book = bookFromChildren(tree.children, tree.pack)
+    const book = bookFromChildren(tree.children, { label: tree.pack })
     return book ? encodeRaw({ blueprint_book: book }) : null
 }
 
@@ -131,7 +162,7 @@ export function exportPack(tree: PackTree): string | null {
 export function exportLibrary(state: LibraryState): string | null {
     const entries: RawEntry[] = []
     for (const pack of Object.keys(state.packs)) {
-        const book = bookFromChildren(state.packs[pack].children, pack)
+        const book = bookFromChildren(state.packs[pack].children, { label: pack })
         if (book) entries.push({ index: entries.length, blueprint_book: book })
     }
     if (entries.length === 0) return null
@@ -178,6 +209,7 @@ function entriesToNodes(
                 now,
                 id
             )
+            applyBookMeta(folder, e.blueprint_book)
             nodes.push(folder)
         }
         // upgrade/deconstruction planners are skipped — the library holds blueprints.
@@ -201,6 +233,7 @@ export function importString(
         const book = data.blueprint_book
         const folder = makeFolder(book.label || 'Imported book', now, id)
         folder.children = entriesToNodes(book.blueprints ?? [], defaultName, now, id)
+        applyBookMeta(folder, book)
         return { node: folder, packHint: book.label }
     }
     if (data.blueprint) {

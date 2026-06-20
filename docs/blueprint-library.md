@@ -128,6 +128,8 @@ A single `LibraryState` document, in `packages/website/src/library/`:
 - `PackTree`: `{ pack, scratchpad: BlueprintEntry, children: LibraryNode[], recents: string[], activeId? }`.
 - `LibraryNode = FolderEntry | BlueprintEntry` (folders nest via `children`).
 - `BlueprintEntry`: `{ id, kind:'blueprint', name, encoded, createdAt, updatedAt, snapshots: Snapshot[] }`.
+- `FolderEntry`: `{ id, kind:'folder', name, children, createdAt, updatedAt, description?, icons?, activeIndex? }`
+  — a folder _is_ a Factorio book, so it carries the book's metadata (Phase 5a).
 - `Snapshot`: `{ encoded, savedAt }` (newest first, capped at N).
 
 - `model.ts` — pure types + deterministic tree ops (id/now injectable),
@@ -184,7 +186,18 @@ A single `LibraryState` document, in `packages/website/src/library/`:
       a book into a folder subtree. ⋯ "Export as book" + Import… / Export pack /
       Export all. (Import is paste-only and grafts into the browsed pack; URL
       import + pack-routing-by-label are deferred.)
-- [ ] **Phase 5 — External backend.** OAuth-locked remote store (e.g. Firebase)
+- [ ] **Phase 5 — Folders are books.** A folder carries the book's metadata, so a
+      folder _is_ a Factorio book (no separate "book node" kind).
+    - [x] **5a — book metadata.** `FolderEntry` carries `description` / `icons` /
+          `activeIndex`; `interchange` preserves them on export **and** decompose
+          (fixes the export-as-book fidelity gap); clone/duplicate copy them; folder
+          ⋯ "Edit description…"; the description shows on hover (a ⓘ hint).
+    - [ ] **5b — open a folder as a book** on the canvas (view/navigate via the
+          editor's flattened index slider). Data stays in the leaves; no
+          canvas-book → tree write-back (edit by opening a leaf).
+    - [ ] **5c — render icons** in the panel (atlas/sprite extraction). Storing /
+          round-tripping icons is free (5a); drawing them is the separate hard bit.
+- [ ] **Phase 6 — External backend.** OAuth-locked remote store (e.g. Firebase)
       behind the `LibraryStore` interface; sync/merge story.
 
 ## Deferred
