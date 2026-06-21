@@ -1,4 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
+import pako from 'pako'
+import { Buffer } from 'buffer'
 
 // Basic end-to-end coverage for the in-app blueprint library (issue #50 /
 // docs/blueprint-library.md). The library chrome is plain DOM, so these drive it
@@ -9,6 +11,17 @@ import { test, expect, type Page } from '@playwright/test'
 
 const CHEST =
     '0eJxtjs0OgjAQhN9lztUgoRD6KsYYfjbapGwJLSohfXcX9ODBy2x2M9/MrmjdTONkOcKssJEGmJ+bwoOmYD3D6DKvi7rWRZ5VVVEquKYlJ+5xc4R4iCTS3UUFs53nAHOWTO7pBXNSCPbGjdt6uBlIyKf3PfGXSemiQBxttPQh92W58jy0NO0J/ziF0QeBth9XSFN21ArLPiUzpTfn9ku6'
+const BELT =
+    '0eJxtjt0KwjAMhd8l11Xm2A/rq4hIp0EKXVraTByl7246vfDCm4QczndOMsxuxRAtMegMlnEB/aMpeGJM1hPofminbpr6rm3GsRsUODOjE3eojsQHRhkiVcrePCXQZ4mkO75AnxQk+yDjag2ZBQXkaCgFH79UKRcFSGzZ4ofdj+1K6zJj3DP+kwqCT4LVNzNIW3PsFWz7ltRS3uZDTSw='
+
+// Raw blueprint-string codec (same `0`+base64(deflate(JSON)) wire format the app
+// uses) — lets the tests build a known book fixture and decode an export to
+// compare *content* (byte-for-byte equality won't hold: re-encode restamps
+// version / renumbers indices / normalises labels). `dec` returns `any` (JSON).
+const dec = (s: string) =>
+    JSON.parse(pako.inflate(Buffer.from(s.slice(1), 'base64'), { to: 'string' }))
+const enc = (o: unknown): string =>
+    `0${Buffer.from(pako.deflate(JSON.stringify(o))).toString('base64')}`
 
 type TestHookWindow = { __FBE_TEST__: { getState(): { blueprint: { entityCount: number } } } }
 const entityCount = (page: Page): Promise<number> =>
@@ -393,5 +406,54 @@ test.describe('blueprint library — organization & multi-pack (Phase 2)', () =>
         await expect(
             panel(page).locator('.library-folder', { hasText: 'Imported' })
         ).toHaveAttribute('title', 'My book desc')
+    })
+
+    test('importing a known book then exporting it preserves content + metadata', async ({
+        page,
+    }) => {
+        await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+        // A known-good vanilla book: two real blueprints (chest, belt) wrapped in a
+        // book with a label / description / icons.
+        const chest = dec(CHEST).blueprint
+        const belt = dec(BELT).blueprint
+        const icons = [{ signal: { type: 'item', name: 'wooden-chest' }, index: 1 }]
+        const BOOK = enc({
+            blueprint_book: {
+                item: 'blueprint-book',
+                active_index: 0,
+                version: chest.version,
+                label: 'My Book',
+                description: 'hello world',
+                icons,
+                blueprints: [
+                    { index: 0, blueprint: chest },
+                    { index: 1, blueprint: belt },
+                ],
+            },
+        })
+
+        await page.goto('/?test')
+        await waitForReady(page)
+        await openPanel(page)
+
+        // Import (decomposes into a folder named after the book)…
+        page.on('dialog', d => d.accept(BOOK))
+        await panel(page)
+            .getByRole('button', { name: /^Import/i })
+            .click()
+        await expect(panel(page).locator('.library-folder', { hasText: 'My Book' })).toBeVisible()
+
+        // …then export it back and decode (content survives; bytes won't match).
+        await rowAction(page, 'My Book', /export as book/i)
+        const out = dec(await page.evaluate(() => navigator.clipboard.readText())).blueprint_book
+
+        // Book-level metadata is intact (Phase 5a)…
+        expect(out.label).toBe('My Book')
+        expect(out.description).toBe('hello world')
+        expect(out.icons).toEqual(icons)
+        // …and each blueprint's content (entities) round-trips, in order.
+        expect(
+            out.blueprints.map((e: { blueprint: { entities: unknown } }) => e.blueprint.entities)
+        ).toEqual([chest.entities, belt.entities])
     })
 })
