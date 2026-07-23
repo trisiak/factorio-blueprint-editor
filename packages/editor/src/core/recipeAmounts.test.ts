@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'fs'
 import { IngredientPrototype, ProductPrototype } from 'factorio:prototype'
+import FD, { loadData } from './factorioData'
 import {
     abbreviateAmount,
     formatProductAmount,
@@ -113,5 +115,37 @@ describe('getIngredientAmount', () => {
         } as unknown as IngredientPrototype)
         expect(Number.isNaN(value)).toBe(false)
         expect(value).toBe(0)
+    })
+})
+
+// Regression against the shipped Space Exploration pack: `se-cryonite-powder`
+// (crafted in the Pulveriser) is the exact recipe from the bug report — its
+// `sand` by-product carries amount_min/amount_max/probability and no plain
+// `amount`, which produced a "NaNk" crafting rate.
+describe('se-cryonite-powder (shipped SE data — the cryonite crushing bug)', () => {
+    loadData(readFileSync('packages/exporter/data/output/space-exploration/data.json', 'utf8'))
+    const recipe = FD.recipes['se-cryonite-powder']
+    const sand = recipe.results.find(r => r.name === 'sand')
+
+    it('exists with a probabilistic sand by-product that has no plain amount', () => {
+        expect(recipe).toBeDefined()
+        expect(sand).toBeDefined()
+        expect(sand.amount).toBeUndefined()
+        expect(sand.probability).toBe(0.25)
+    })
+
+    it('never yields NaN for any product amount (rate maths)', () => {
+        for (const r of recipe.results) {
+            expect(Number.isNaN(getProductAmount(r))).toBe(false)
+        }
+        // 25% chance of one sand -> expected 0.25.
+        expect(getProductAmount(sand)).toBeCloseTo(0.25)
+    })
+
+    it('renders the sand by-product with its probability, not a bare number', () => {
+        expect(formatProductAmount(sand)).toBe('1 25%')
+        // The main product is deterministic, so it stays a plain amount.
+        const powder = recipe.results.find(r => r.name === 'se-cryonite-powder')
+        expect(formatProductAmount(powder)).toBe('1')
     })
 })
