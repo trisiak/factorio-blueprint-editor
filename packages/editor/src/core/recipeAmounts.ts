@@ -69,14 +69,15 @@ export const abbreviateAmount = (amount: number): string => {
 }
 
 /**
- * A faithful display string for a product's authored yield:
+ * A faithful display string for a product's authored *amount*:
  *   - `amount_min`–`amount_max` when the product spans a range,
- *   - otherwise the plain amount,
- * suffixed with the probability (e.g. ` 25%`) whenever it is below 100%.
+ *   - otherwise the plain amount.
  *
- * This is what belongs in the *base* recipe view — it tells the truth about a
- * probabilistic output instead of flattening it to a single number. Use
- * `getProductAmount` when you need a value to compute a rate with.
+ * The probability is deliberately *not* folded in here — it is rendered as a
+ * separate badge (see `formatProductProbability`) so a wide `1 25%` label can't
+ * collide with the neighbouring icon's amount. This is what belongs in the
+ * *base* recipe view; use `getProductAmount` when you need a value to compute a
+ * rate with.
  */
 export const formatProductAmount = (product: ProductPrototype): string => {
     const p = product as ProductAmountFields
@@ -86,13 +87,20 @@ export const formatProductAmount = (product: ProductPrototype): string => {
         p.amount_max !== undefined &&
         p.amount_min !== p.amount_max
 
-    const base = hasRange
+    return hasRange
         ? `${abbreviateAmount(p.amount_min)}–${abbreviateAmount(p.amount_max)}`
         : abbreviateAmount(p.amount ?? p.amount_min ?? p.amount_max ?? 0)
+}
 
-    const probability = p.probability ?? 1
-    if (probability >= 1) return base
+/**
+ * The probability badge for a random-yield product (e.g. `"25%"`), or
+ * `undefined` when the product is guaranteed (probability of 100% / absent).
+ * Rendered separately from the amount so the two never run together.
+ */
+export const formatProductProbability = (product: ProductPrototype): string | undefined => {
+    const probability = (product as ProductAmountFields).probability ?? 1
+    if (probability >= 1) return undefined
     // Round the percentage to at most two decimals (0.25 -> 25, 0.05 -> 5).
     const pct = Math.round(probability * 100 * 100) / 100
-    return `${base} ${pct}%`
+    return `${pct}%`
 }

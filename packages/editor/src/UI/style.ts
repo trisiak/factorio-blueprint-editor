@@ -119,6 +119,16 @@ const styles = {
             fontSize: 13,
             stroke: { color: 0x000000, width: 2 },
         }),
+        // Probability badge (e.g. "25%") for random-yield products. Shown at the
+        // top of the icon — separate from the amount at the bottom, matching the
+        // game — and tinted so it reads as a modifier rather than a count.
+        probability: new TextStyle({
+            fill: colors.text.title,
+            fontFamily,
+            fontWeight: '500',
+            fontSize: 11,
+            stroke: { color: 0x000000, width: 2 },
+        }),
     },
     debug: {
         text: new TextStyle({

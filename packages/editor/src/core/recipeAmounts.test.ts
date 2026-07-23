@@ -5,6 +5,7 @@ import FD, { loadData } from './factorioData'
 import {
     abbreviateAmount,
     formatProductAmount,
+    formatProductProbability,
     getIngredientAmount,
     getProductAmount,
 } from './recipeAmounts'
@@ -73,31 +74,40 @@ describe('abbreviateAmount', () => {
 })
 
 describe('formatProductAmount', () => {
-    it('shows a plain amount with no annotation', () => {
+    it('shows a plain amount, without folding in the probability', () => {
         expect(formatProductAmount(product({ amount: 20 }))).toBe('20')
-    })
-
-    it('annotates a probabilistic by-product with its percentage (the cryonite case)', () => {
-        // se-cryonite-powder sand by-product: no `amount`, 25% chance of 1.
+        // The probability is rendered as a separate badge, not appended here, so
+        // a wide "1 25%" label can't collide with the neighbouring icon.
         expect(
             formatProductAmount(product({ amount_min: 1, amount_max: 1, probability: 0.25 }))
-        ).toBe('1 25%')
-    })
-
-    it('annotates a plain amount that has a probability', () => {
-        expect(formatProductAmount(product({ amount: 1, probability: 0.2 }))).toBe('1 20%')
-        expect(formatProductAmount(product({ amount: 1, probability: 0.05 }))).toBe('1 5%')
+        ).toBe('1')
+        expect(formatProductAmount(product({ amount: 1, probability: 0.2 }))).toBe('1')
     })
 
     it('shows a min–max range', () => {
         expect(formatProductAmount(product({ amount_min: 1, amount_max: 5 }))).toBe('1–5')
         expect(
             formatProductAmount(product({ amount_min: 0, amount_max: 5, probability: 0.5 }))
-        ).toBe('0–5 50%')
+        ).toBe('0–5')
     })
 
     it('never renders NaN for an empty product', () => {
         expect(formatProductAmount(product({}))).toBe('0')
+    })
+})
+
+describe('formatProductProbability', () => {
+    it('returns undefined for a guaranteed product', () => {
+        expect(formatProductProbability(product({ amount: 20 }))).toBeUndefined()
+        expect(formatProductProbability(product({ amount: 1, probability: 1 }))).toBeUndefined()
+    })
+
+    it('formats a sub-100% probability as a percentage (the cryonite case)', () => {
+        expect(
+            formatProductProbability(product({ amount_min: 1, amount_max: 1, probability: 0.25 }))
+        ).toBe('25%')
+        expect(formatProductProbability(product({ amount: 1, probability: 0.2 }))).toBe('20%')
+        expect(formatProductProbability(product({ amount: 1, probability: 0.05 }))).toBe('5%')
     })
 })
 
@@ -142,10 +152,12 @@ describe('se-cryonite-powder (shipped SE data — the cryonite crushing bug)', (
         expect(getProductAmount(sand)).toBeCloseTo(0.25)
     })
 
-    it('renders the sand by-product with its probability, not a bare number', () => {
-        expect(formatProductAmount(sand)).toBe('1 25%')
-        // The main product is deterministic, so it stays a plain amount.
+    it('renders the sand by-product amount and probability as separate labels', () => {
+        expect(formatProductAmount(sand)).toBe('1')
+        expect(formatProductProbability(sand)).toBe('25%')
+        // The main product is deterministic: plain amount, no probability badge.
         const powder = recipe.results.find(r => r.name === 'se-cryonite-powder')
         expect(formatProductAmount(powder)).toBe('1')
+        expect(formatProductProbability(powder)).toBeUndefined()
     })
 })
