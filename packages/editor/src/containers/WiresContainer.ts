@@ -1,14 +1,13 @@
-import { Container, Graphics, RenderTexture, Sprite } from 'pixi.js'
+import { Container, DestroyOptions, Graphics } from 'pixi.js'
 import { Blueprint } from '../core/Blueprint'
 import { IConnection, IConnectionPoint } from '../core/WireConnections'
 import U from '../core/generators/util'
 import { IPoint, WireColor } from '../types'
 import { EntityContainer } from './EntityContainer'
-import G from '../common/globals'
 
 export class WiresContainer extends Container {
     private readonly bp: Blueprint
-    private connectionToSprite = new Map<string, Sprite>()
+    private connectionToWire = new Map<string, Graphics>()
 
     public constructor(bp: Blueprint) {
         super()
@@ -20,7 +19,7 @@ export class WiresContainer extends Container {
         p2: IPoint,
         color: WireColor,
         connectionsReach = true
-    ): Sprite {
+    ): Graphics {
         const wire = new Graphics()
 
         const minX = Math.min(p1.x, p2.x)
@@ -68,31 +67,32 @@ export class WiresContainer extends Container {
             alpha: connectionsReach ? 1 : 0.3,
         })
 
-        const bounds = wire.bounds
-
-        const renderTexture = RenderTexture.create({
-            width: bounds.width,
-            height: bounds.height,
-            autoGenerateMipmaps: true,
-            antialias: true,
-            resolution: window.devicePixelRatio * 2,
-        })
-
-        G.app.renderer.render({ container: wire, target: renderTexture })
-        renderTexture.source.updateMipmaps()
-
-        wire.destroy()
-
-        const s = new Sprite(renderTexture)
-
-        s.position.set(minX + dX / 2, minY + dY / 2)
-        s.pivot.set(dX / 2, dY / 2)
+        // Each wire is its own vector Graphics, drawn straight into the scene
+        // rather than baked into a per-wire RenderTexture first. The texture route
+        // was a recurring source of GPU fragility: a short circuit (red/green) wire
+        // between adjacent entities is a thin ~1.5px stroke, and on high-DPR /
+        // WebGPU that tiny texture lost the stroke to its mip chain (#37) — and,
+        // decisively, every wire held a supersampled (devicePixelRatio×2),
+        // mipmapped, multisampled render target for as long as it was on screen,
+        // which put wire-dense blueprints at GB-scale VRAM and made every
+        // blueprint swap leak the lot (#79: Firefox/macOS died with a white page
+        // once GPU memory ran out). Vector Graphics sidesteps the whole class: no
+        // textures, no mips, no resolution to clamp, nothing to leak — it
+        // rasterizes crisply at any zoom, and the wire-paint preview no longer
+        // allocates a texture per pointer move.
+        //
+        // The curve is drawn in a local frame from (0,0)→(dX,dY); positioning the
+        // Graphics at the segment midpoint with a matching pivot — and mirroring on
+        // X for the "other diagonal" — places it in world space and preserves the
+        // original bow direction, exactly as the baked sprite did.
+        wire.position.set(minX + dX / 2, minY + dY / 2)
+        wire.pivot.set(dX / 2, dY / 2)
 
         if (!((p1.x < p2.x && p1.y < p2.y) || (p2.x < p1.x && p2.y < p1.y))) {
-            s.scale.x = -1
+            wire.scale.x = -1
         }
 
-        return s
+        return wire
     }
 
     public connect(hash: string, connection: IConnection): void {
@@ -106,17 +106,33 @@ export class WiresContainer extends Container {
     }
 
     public add(hash: string, connection: IConnection): void {
-        const sprite = this.getWireSprite(connection)
-        this.addChild(sprite)
-        this.connectionToSprite.set(hash, sprite)
+        const wire = this.getWire(connection)
+        this.addChild(wire)
+        this.connectionToWire.set(hash, wire)
     }
 
     public remove(hash: string): void {
-        const sprite = this.connectionToSprite.get(hash)
-        if (sprite) {
-            sprite.destroy({ texture: true, textureSource: true })
-            this.connectionToSprite.delete(hash)
+        const wire = this.connectionToWire.get(hash)
+        if (wire) {
+            wire.destroy()
+            this.connectionToWire.delete(hash)
         }
+    }
+
+    /**
+     * A parent's `destroy({children: true})` reaches the wires with an options
+     * object, and `Graphics.destroy(options)` only frees its owned
+     * GraphicsContext when called bare (or with `context: true`) — so the
+     * blueprint-swap teardown (`Editor.loadBlueprint` destroying the old
+     * BlueprintContainer) would orphan every wire's geometry (#79). Destroy the
+     * wires explicitly first; a bare `destroy()` frees the owned context.
+     */
+    public destroy(options?: DestroyOptions): void {
+        for (const wire of this.connectionToWire.values()) {
+            wire.destroy()
+        }
+        this.connectionToWire.clear()
+        super.destroy(options)
     }
 
     public update(entityNumber: number): void {
@@ -155,7 +171,7 @@ export class WiresContainer extends Container {
         }
     }
 
-    private getWireSprite(connection: IConnection): Sprite {
+    private getWire(connection: IConnection): Graphics {
         const getWirePos = (cp: IConnectionPoint, color: string): IPoint => {
             if (cp.entityNumber) {
                 const entity = this.bp.entities.get(cp.entityNumber)
