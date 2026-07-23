@@ -7,7 +7,14 @@ import 'pixi.js/text'
 import 'pixi.js/graphics'
 import 'pixi.js/basis'
 
-import { Application, TextureSource, setBasisTranscoderPath, Assets } from 'pixi.js'
+import {
+    Application,
+    RendererType,
+    TextureSource,
+    WebGPURenderer,
+    setBasisTranscoderPath,
+    Assets,
+} from 'pixi.js'
 import EventEmitter from 'eventemitter3'
 import basisTranscoderJS from './basis/transcoder.1.16.4.js?url'
 import basisTranscoderWASM from './basis/transcoder.1.16.4.wasm?url'
@@ -49,7 +56,11 @@ export class Editor {
         canvas.style.top = `${top}px`
     }
 
-    public async init(canvas: HTMLCanvasElement, logger?: Logger): Promise<void> {
+    public async init(
+        canvas: HTMLCanvasElement,
+        logger?: Logger,
+        options?: { rendererPreference?: 'webgpu' | 'webgl' }
+    ): Promise<void> {
         setBasisTranscoderPath({ jsUrl: basisTranscoderJS, wasmUrl: basisTranscoderWASM })
 
         TextureSource.defaultOptions.scaleMode = 'linear'
@@ -67,7 +78,7 @@ export class Editor {
                 .then(modules => loadData(modules)),
             app.init({
                 canvas,
-                preference: 'webgpu',
+                preference: options?.rendererPreference ?? 'webgpu',
                 resolution: window.devicePixelRatio,
                 autoDensity: true,
                 skipExtensionImports: true,
@@ -79,6 +90,7 @@ export class Editor {
         ])
 
         G.app = app
+        this.watchGpuCrash(canvas)
 
         this.applyCanvasSize()
         window.addEventListener('resize', this.applyCanvasSize, false)
@@ -93,6 +105,50 @@ export class Editor {
         G.UI = new UIContainer()
         G.app.stage.addChild(G.UI)
         G.UI.showDebuggingLayer = G.debug
+    }
+
+    /**
+     * Surface GPU context/device loss instead of dying silently. When the
+     * browser drops the GPU context (VRAM exhaustion, driver reset, GPU-process
+     * crash) the canvas freezes or goes white while the DOM keeps working —
+     * historically with no signal at all (#79's "unresponsive, then white-only
+     * page" on Firefox/macOS). Neither Pixi nor this app can rebuild the scene's
+     * GPU state, so the honest move is a pinned toast with a Reload action, plus
+     * a console record naming the backend and reason for future bug reports.
+     */
+    private watchGpuCrash(canvas: HTMLCanvasElement): void {
+        const announce = (detail: string): void => {
+            console.error(`[FBE] GPU context lost: ${detail}`)
+            G.logger({
+                text:
+                    'Rendering crashed — the browser lost the GPU context ' +
+                    `(${detail}).<br>The editor cannot recover without a reload. ` +
+                    'If this keeps happening, try forcing a renderer with ' +
+                    '<code>?renderer=webgl</code> or <code>?renderer=webgpu</code>.',
+                type: 'error',
+                timeout: Infinity,
+                action: { text: 'Reload', callback: () => window.location.reload() },
+            })
+        }
+
+        if (G.app.renderer.type === RendererType.WEBGPU) {
+            const device = (G.app.renderer as WebGPURenderer).gpu?.device
+            // `lost` resolves (never rejects) when the device dies; reason is
+            // 'destroyed' for deliberate teardown — only announce real losses.
+            device?.lost?.then(info => {
+                if (info.reason !== 'destroyed') {
+                    announce(`WebGPU device lost: ${info.message || info.reason}`)
+                }
+            })
+        } else {
+            canvas.addEventListener('webglcontextlost', e => {
+                // Don't preventDefault: we have no contextrestored path, so let
+                // the browser's default (no restore) stand and tell the user.
+                announce(
+                    `WebGL context lost (${(e as WebGLContextEvent).statusMessage || 'no status'})`
+                )
+            })
+        }
     }
 
     /** Re-emit the active container's mode + the blueprint's entity changes on the stable emitters. */

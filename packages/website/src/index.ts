@@ -163,10 +163,24 @@ const params = new URLSearchParams(window.location.search)
 const bpSource: string | undefined = params.get('source') ?? undefined
 const bpIndex = params.get('index') ? Number(params.get('index')) : 0
 
+// Which GPU backend to ask Pixi for. `?renderer=webgl|webgpu` wins (the escape
+// hatch for debugging either stack); otherwise prefer WebGPU except on Firefox,
+// which we keep on its long-proven WebGL stack — its WebGPU implementation is
+// young, and on macOS it dropped the GPU device under memory pressure with no
+// recovery, leaving a white page (#79). Revisit as Firefox's WebGPU matures.
+// Either way Pixi falls back to WebGL where WebGPU isn't available.
+const rendererParam = params.get('renderer')
+const rendererPreference: 'webgpu' | 'webgl' =
+    rendererParam === 'webgl' || rendererParam === 'webgpu'
+        ? rendererParam
+        : navigator.userAgent.includes('Firefox')
+          ? 'webgl'
+          : 'webgpu'
+
 let changeBookForIndexSelector: (bpOrBook: Book | Blueprint) => void
 
 editor
-    .init(CANVAS, createToast)
+    .init(CANVAS, createToast, { rendererPreference })
     .then(async () => {
         if (localStorage.getItem('quickbarItemNames')) {
             const quickbarItems = JSON.parse(localStorage.getItem('quickbarItemNames'))

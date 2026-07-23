@@ -89,6 +89,12 @@ export function setDataPack(id: string): void {
 export interface ILogMessage {
     text: string
     type: 'success' | 'info' | 'warning' | 'error'
+    /** How long to show the message (ms); `Infinity` pins it. Consumers that
+     *  can't honor it (the console fallback below) just ignore it. */
+    timeout?: number
+    /** Optional call-to-action (e.g. "Reload" on a GPU-crash notice) — matches
+     *  the website toast's action button; ignored by the console fallback. */
+    action?: { text: string; callback: () => void }
 }
 
 export type Logger = (msg: ILogMessage) => void
