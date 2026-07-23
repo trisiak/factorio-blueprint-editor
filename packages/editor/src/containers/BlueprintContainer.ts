@@ -1291,7 +1291,12 @@ export class BlueprintContainer extends Container {
         const old = this.grid
         this.grid = this.generateGrid()
         this.addChildAt(this.grid, index)
+        // The sprite's destroy leaves its RenderTexture alive (nothing else
+        // references it, but the renderer's managed-texture hash pins it in GPU
+        // memory forever — #79), so free it explicitly.
+        const oldTexture = old.texture
         old.destroy()
+        oldTexture.destroy(true)
     }
 
     public get limitWireReach(): boolean {
@@ -1416,7 +1421,18 @@ export class BlueprintContainer extends Container {
     }
 
     public destroy(): void {
+        // `destroy({children: true})` never destroys textures, and the grid /
+        // chunk-grid RenderTextures are per-container — every blueprint swap
+        // (`Editor.loadBlueprint`) orphaned them in the renderer's
+        // managed-texture hash, leaking GPU memory for the page's lifetime
+        // (#79). Capture them before the children teardown clears the sprites'
+        // references, then free them explicitly. Entity/overlay sprites keep
+        // their textures — those come from the shared atlas.
+        const gridTexture = this.grid.texture
+        const chunkGridTexture = this.chunkGrid.texture
         super.destroy({ children: true })
+        gridTexture.destroy(true)
+        chunkGridTexture.destroy(true)
     }
 
     public addEntitySprites(entitySprites: EntitySprite[], sort = true): void {
