@@ -10,6 +10,7 @@ import G from '../common/globals'
 import util from '../common/util'
 import { ISignal } from '../types'
 import { beaconEffectMultiplier } from '../core/beaconEffects'
+import { getIngredientAmount, getProductAmount } from '../core/recipeAmounts'
 import { Entity } from '../core/Entity'
 import { createCircuitNetworkBadges } from './circuitNetworkBadges'
 import F from './controls/functions'
@@ -226,18 +227,31 @@ export class EntityInfoPanel extends Panel {
                     })
                 )
                 const energy_required = recipe.energy_required || 0.5
+                // A product/ingredient can express a random yield via
+                // amount_min/amount_max and/or probability with no plain `amount`
+                // (e.g. SE's cryonite crushing sand by-product); resolve each to
+                // its Expected Value up front so the rate never comes out NaN.
+                // We collapse to a bare { type, name, amount } here — dropping the
+                // randomness fields — so the already-scaled amount survives
+                // CreateRecipe re-resolving it (which would otherwise re-apply the
+                // probability a second time).
                 F.CreateRecipe(
                     this.m_RecipeIOContainer,
                     0,
                     20,
                     recipe.ingredients.map(i => ({
-                        ...i,
-                        amount: roundToTwo((i.amount * newCraftingSpeed) / energy_required),
+                        type: i.type,
+                        name: i.name,
+                        amount: roundToTwo(
+                            (getIngredientAmount(i) * newCraftingSpeed) / energy_required
+                        ),
                     })),
                     recipe.results.map(r => ({
-                        ...r,
+                        type: r.type,
+                        name: r.name,
                         amount: roundToTwo(
-                            ((r.amount * newCraftingSpeed) / energy_required) * (1 + productivity)
+                            ((getProductAmount(r) * newCraftingSpeed) / energy_required) *
+                                (1 + productivity)
                         ),
                     })),
                     1
