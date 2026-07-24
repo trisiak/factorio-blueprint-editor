@@ -3,14 +3,33 @@
         "id": "vanilla-2.0",
         "label": "Vanilla 2.0",
         "factorioVersion": "2.0",
-        "mods": ["base"],
-        "default": true
+        "mods": [
+            "base"
+        ],
+        "default": true,
+        "artifacts": [
+            "editor",
+            "browser"
+        ],
+        "browserSchemaVersion": 1,
+        "generated": "2026-07-24T17:42:22Z"
     },
     {
         "id": "space-age",
         "label": "Space Age (2.0)",
         "factorioVersion": "2.0",
-        "mods": ["base", "elevated-rails", "quality", "space-age"]
+        "mods": [
+            "base",
+            "elevated-rails",
+            "quality",
+            "space-age"
+        ],
+        "artifacts": [
+            "editor",
+            "browser"
+        ],
+        "browserSchemaVersion": 1,
+        "generated": "2026-07-24T17:45:48Z"
     },
     {
         "id": "space-exploration",
@@ -87,6 +106,12 @@
             "space-exploration-official-modpack": "0.6.4",
             "space-exploration-postprocess": "0.7.5",
             "BottleneckLite": "1.3.4"
-        }
+        },
+        "artifacts": [
+            "editor",
+            "browser"
+        ],
+        "browserSchemaVersion": 1,
+        "generated": "2026-07-24T17:48:08Z"
     }
 ]
