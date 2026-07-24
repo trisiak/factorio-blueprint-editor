@@ -161,6 +161,17 @@ export interface FbeTestHook {
     wireColorPixelCounts: () => { red: number; green: number; copper: number }
     /** Number of circuit-network highlight boxes currently shown (#49 hover highlight). */
     networkHighlightCount: () => number
+    /**
+     * Number of texture sources the renderer currently holds GPU-side (its
+     * managed-texture hash — the same structure that pins orphaned textures in
+     * VRAM forever). Backs the #79 leak guard: blueprint swaps must return this
+     * to baseline, so a reintroduced per-container RenderTexture leak (wires,
+     * grid, chunk grid) shows up as monotonic growth across open/open cycles.
+     */
+    gpuTextureCount: () => number
+    /** One line per managed texture source (`uid:label:WxH`) — for diffing which
+     *  sources appeared across an operation when the count above grows. */
+    gpuTextureList: () => string[]
 }
 
 /** Approximate per-channel match against a target colour (tolerant of AA edges). */
@@ -257,6 +268,32 @@ export function installTestHook(win: Window = window): void {
             return { red, green, copper }
         },
         networkHighlightCount: () => G.BPC.overlayContainer.networkHighlightCount,
+        gpuTextureCount: () => {
+            // Both the WebGL and WebGPU texture systems register as `texture`
+            // and expose the same `managedTextures` getter.
+            // Destroyed sources are nulled in place (tombstones the GC compacts
+            // later) — only live entries count.
+            const tex = (G.app.renderer as unknown as { texture: { managedTextures: unknown[] } })
+                .texture
+            return tex.managedTextures.filter(t => t !== null && t !== undefined).length
+        },
+        gpuTextureList: () => {
+            const tex = (
+                G.app.renderer as unknown as {
+                    texture: {
+                        managedTextures: ({
+                            uid: number
+                            label?: string
+                            width: number
+                            height: number
+                        } | null)[]
+                    }
+                }
+            ).texture
+            return tex.managedTextures
+                .filter(t => t !== null && t !== undefined)
+                .map(t => `${t.uid}:${t.label ?? ''}:${t.width}x${t.height}`)
+        },
     }
     ;(win as unknown as Record<string, unknown>)[TEST_HOOK_KEY] = hook
 }

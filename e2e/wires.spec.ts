@@ -114,3 +114,89 @@ test('pasting a blueprint and placing it keeps its wires', async ({ page, contex
     expect(counts.red, JSON.stringify(counts)).toBeGreaterThan(0)
     expect(counts.green, JSON.stringify(counts)).toBeGreaterThan(0)
 })
+
+/**
+ * #79 leak guard: blueprint swaps must not grow the renderer's GPU texture
+ * pool. Every `Editor.loadBlueprint` (library open, book page-flip, import)
+ * used to orphan the outgoing container's RenderTextures — one per wire plus
+ * the grid pair — in the renderer's managed-texture hash, where nothing ever
+ * frees them; on Firefox/macOS that ended in GPU-memory exhaustion and a dead
+ * white page. This cycles the library between a wire-dense and a trivial
+ * project and asserts the managed-texture count settles instead of climbing.
+ * (Library DOM flows are desktop-only, like library.spec.ts.)
+ */
+test('blueprint swaps do not leak GPU textures', async ({ page }) => {
+    test.skip(
+        test.info().project.name !== 'desktop-chromium',
+        'library DOM flows run on the desktop project only'
+    )
+
+    await page.goto('/?test')
+    await waitForReady(page)
+
+    const panel = page.locator('#library-panel')
+    const textureCount = (): Promise<number> =>
+        page.evaluate(() => {
+            const w = window as unknown as { __FBE_TEST__?: { gpuTextureCount: () => number } }
+            if (!w.__FBE_TEST__) throw new Error('FBE test hook missing — load the page with ?test')
+            return w.__FBE_TEST__.gpuTextureCount()
+        })
+    const entityCount = (): Promise<number> =>
+        page.evaluate(() => (window as any).__FBE_TEST__.getState().blueprint.entityCount as number)
+
+    // Import both fixtures via the library's paste modal.
+    await page.locator('#library-button').click()
+    await expect(panel).toHaveClass(/active/)
+    for (const str of [DENSE_BLUEPRINT, SIMPLE_BLUEPRINT]) {
+        await panel.getByRole('button', { name: 'Import…', exact: true }).click()
+        await panel.locator('.library-textarea').fill(str)
+        await panel
+            .locator('.library-dialog')
+            .getByRole('button', { name: 'Import', exact: true })
+            .click()
+    }
+    // Imports land as leaves under an "Imported" folder row; pick the leaves by
+    // name (the dense fixture is labelled "…The AutoMall.", the unlabelled one
+    // gets the "Imported blueprint" default).
+    const denseRow = panel.locator('.library-row', { hasText: 'AutoMall' })
+    const simpleRow = panel.locator('.library-row', { hasText: 'Imported blueprint' })
+    await expect(denseRow).toHaveCount(1)
+    await expect(simpleRow).toHaveCount(1)
+
+    // `expect.poll` on the entity count is the "swap finished" signal — the two
+    // fixtures differ in size, so each open lands on a distinct value. Opening a
+    // project closes the panel, so re-open it before each click.
+    const open = async (row: typeof denseRow, expectedEntities: number): Promise<void> => {
+        if (!/active/.test((await panel.getAttribute('class')) ?? '')) {
+            await page.locator('#library-button').click()
+            await expect(panel).toHaveClass(/active/)
+        }
+        // After a project has been opened once it's also listed under Recents —
+        // both rows point at the same node, so any Open button will do.
+        await row.getByRole('button', { name: 'Open', exact: true }).first().click()
+        await expect.poll(entityCount).toBe(expectedEntities)
+        await page.waitForTimeout(300)
+    }
+
+    // Fixture entity counts (SIMPLE has 6, DENSE 58 — decoded from the strings).
+    const dense = 58
+    const simple = 6
+
+    // Warm both blueprints once so lazily-uploaded atlas pages are all resident
+    // before the baseline is taken.
+    await open(denseRow, dense)
+    await open(simpleRow, simple)
+    await open(denseRow, dense)
+    const baseline = await textureCount()
+
+    for (let i = 0; i < 3; i++) {
+        await open(simpleRow, simple)
+        await open(denseRow, dense)
+    }
+
+    // Same blueprint showing as at baseline ⇒ same texture set. The pre-fix
+    // code grew by 2 (grid + chunk grid) per swap — 12 over these 6 swaps —
+    // and by ~100 per swap when wires were per-wire RenderTextures.
+    const after = await textureCount()
+    expect(after, `baseline ${baseline}, after cycles ${after}`).toBeLessThanOrEqual(baseline + 6)
+})
