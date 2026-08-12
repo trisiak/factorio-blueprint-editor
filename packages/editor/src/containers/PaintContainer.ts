@@ -196,6 +196,21 @@ export abstract class PaintContainer extends Container<EntitySprite> {
     // override
     public abstract canFlipOrRotateByCopying(): boolean
 
+    /**
+     * Whether this cursor can be flipped at all (drives the rail's Flip gate).
+     * Default: same as the copy path (paste ghosts). A single-entity ghost
+     * overrides this to allow in-place flip of flippable entities.
+     */
+    public canFlip(): boolean {
+        return this.canFlipOrRotateByCopying()
+    }
+
+    /**
+     * Flip the cursor in place (single-entity ghost). Paste ghosts flip via the
+     * copy path (`flippedEntities`) instead, so the default is a no-op.
+     */
+    public flip(_vertical: boolean): void {}
+
     // override
     public abstract rotatedEntities(ccw?: boolean): Entity[]
 

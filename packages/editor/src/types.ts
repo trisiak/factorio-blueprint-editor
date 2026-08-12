@@ -225,6 +225,8 @@ export interface IEntity {
 
     /** direction, can be ommited if 0 */
     direction?: number // 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15
+    /** mirrored (Factorio 2.0) — chirality flip for asymmetric buildings (fluidboxes); omitted if false */
+    mirror?: boolean
     /** direction type, only present if entity is of type underground-belt */
     type?: DirectionType
     /** recipe name, only present if entity is of type assembling-machine or has fixed_recipe */
@@ -563,7 +565,7 @@ export interface IEntity {
     // - 68, 69 no changes
 
     // remaining keys of BlueprintEntity from 'factorio:runtime'
-    // mirror: unknown
+    // (mirror is now modeled above)
     // quality: unknown
     // tags: unknown
     // wires: unknown

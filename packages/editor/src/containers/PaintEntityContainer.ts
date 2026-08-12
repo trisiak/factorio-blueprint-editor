@@ -1,6 +1,11 @@
 import { Container } from 'pixi.js'
 import { DirectionType, IPoint } from '../types'
-import FD, { getEntitySize, getPossibleRotations } from '../core/factorioData'
+import FD, {
+    getEntitySize,
+    getPossibleRotations,
+    isCraftingMachine,
+    getFluidBoxes,
+} from '../core/factorioData'
 import { UndergroundBeltPrototype } from 'factorio:prototype'
 import { Entity } from '../core/Entity'
 import { EntitySprite } from './EntitySprite'
@@ -12,6 +17,8 @@ export class PaintEntityContainer extends PaintContainer {
     private visualizationArea: VisualizationArea
     private directionType: DirectionType
     private direction: number
+    /** Chirality flip (Factorio 2.0) for fluid buildings — see Entity.mirror. */
+    private mirror = false
     /** This is only a reference */
     private undergroundLine: Container
 
@@ -33,6 +40,11 @@ export class PaintEntityContainer extends PaintContainer {
     /** The held ghost's current facing (0/4/8/12 for cardinal). Exposed for tests. */
     public getDirection(): number {
         return this.direction
+    }
+
+    /** Whether the held ghost is mirror-flipped (chirality). Exposed for tests. */
+    public isMirrored(): boolean {
+        return this.mirror
     }
 
     private get size(): IPoint {
@@ -147,6 +159,43 @@ export class PaintEntityContainer extends PaintContainer {
         return false
     }
 
+    /** Throwaway Entity used to reuse the core flip math (direction + mirror). */
+    private asEntity(): Entity {
+        return new Entity(
+            {
+                entity_number: 1,
+                name: this.name,
+                position: { x: 0, y: 0 },
+                direction: this.direction,
+                mirror: this.mirror || undefined,
+            },
+            this.bpc.bp
+        )
+    }
+
+    /** A single held entity flips in place if it's directional or chiral. */
+    public override canFlip(): boolean {
+        const fd = FD.entities[this.name]
+        if (!fd) return false
+        // Non-flippable types (train stop, rail signals) throw on flip.
+        if (['train-stop', 'rail-chain-signal', 'rail-signal'].includes(fd.type)) return false
+        // Worth offering only when flip changes something: a direction or chirality.
+        return (
+            getPossibleRotations(fd).length > 0 ||
+            (isCraftingMachine(fd) && getFluidBoxes(fd, true).length > 0)
+        )
+    }
+
+    /** Flip in place by reusing the Entity flip math (may throw IllegalFlipError). */
+    public override flip(vertical: boolean): void {
+        if (!this.visible) return
+        const flipped = this.asEntity().getFlippedCopy(vertical)
+        this.direction = flipped.direction
+        this.mirror = flipped.mirror
+        this.redraw()
+        this.moveAtCursor()
+    }
+
     public override rotatedEntities(_ccw?: boolean): Entity[] {
         return undefined
     }
@@ -161,6 +210,7 @@ export class PaintEntityContainer extends PaintContainer {
             name: this.name,
             direction: this.directionType === 'input' ? this.direction : (this.direction + 8) % 16,
             directionType: this.directionType,
+            mirror: this.mirror,
         })
         this.addChild(...sprites)
     }
@@ -244,6 +294,7 @@ export class PaintEntityContainer extends PaintContainer {
                     name: this.name,
                     position,
                     direction,
+                    mirror: this.mirror || undefined,
                     type:
                         fd.type === 'underground-belt' || fd.type === 'loader'
                             ? this.directionType
