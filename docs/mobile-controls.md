@@ -368,6 +368,24 @@ pipelines at once made touch taps double-act via the browser's synthetic
       contract"). Ratchet: "modal layering" in `panels.spec.ts`. The fallback
       if this ever needs iteration is migrating dialogs to DOM wholesale, not
       more coexistence rules.
+    - ✅ **DOM dialogs — shell + main item selector (#98 Slices 0–1)**: the
+      "pull the plug" arc begins. `website/src/dialogs/` gains the modal
+      shell (`shell.ts`: backdrop, ✕, Escape, auto-close on mode switch) and
+      `dialogLayer.ts` (owns `body.fbe-dialog-open`, ORing the Pixi
+      `fbe:dialogs` count with open DOM dialogs, so the contract holds
+      through the migration). First tenant: the **main inventory** —
+      E / rail "Items" on mobile opens the DOM `inventorySelector.ts`
+      (group tabs, native scrolling, a real **search box** — the first
+      selector text input touch users get, retiring that #56 case for this
+      dialog — ★ Recents with the Recent/Quickbar/On-blueprint sections,
+      tap-to-preview → ✓ Confirm, Pin/Unpin). It renders from the new
+      render-free `core/itemCatalog.ts` (unit-tested; the same walk the Pixi
+      dialog does inline) and commits through `editor.spawnPaintItem`.
+      Desktop keeps the Pixi dialog; so do the editor-embedded pickers
+      (recipe/module/filter slots) until their editors migrate. Seam:
+      `UIContainer.openMainInventory` → `fbe:openinventory`. Ratchets in
+      `inventorySelector.spec.ts` (per-mode presentation, search→select→
+      paint, backdrop/E close, readouts yield + restore).
     - ⬜ **Phase 4 — e2e bounds-disjointness ratchets**
 - 🚧 **Touch placement: preview + confirm (Slice 1 done)** — desktop previews a
   placement by hovering (ghost shows orientation/validity before you click);

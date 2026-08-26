@@ -544,16 +544,179 @@ body.mobile
         color: #b5b5b5
         font-size: 12px
 
-// Layering contract (#89): while any Pixi dialog is open (entity editor,
-// inventory — the editor mirrors the count over `fbe:dialogs`, see index.ts),
-// the passive DOM readouts yield — the browser composites DOM above the
-// canvas, so this is the only way a canvas dialog can win the surface. The
-// `body` element in the selector out-ranks `#….visible`, and the readouts'
-// own state is untouched, so they restore themselves when the dialog closes.
+// Layering contract (#89): while any dialog is open — Pixi (the editor
+// mirrors the count over `fbe:dialogs`) or DOM (#98, registered with
+// dialogs/dialogLayer.ts, which owns this class and ORs both sources) — the
+// passive DOM readouts yield; for canvas dialogs that's the only way to win
+// the surface, since the browser composites DOM above the canvas. The `body`
+// element in the selector out-ranks `#….visible`, and the readouts' own state
+// is untouched, so they restore themselves when the dialog closes.
 body.fbe-dialog-open
     #entity-info-sheet,
     #rates-drawer
         display: none
+
+// DOM dialog shell (#98 Slice 0, dialogs/shell.ts) — the modal tier of the
+// layering contract, in the browser's own stacking order: above the readouts
+// (z15) and the contextual clusters (z21), below the library panel (z100) and
+// toasts. Visual language matches the library panel (the resident DOM modal).
+.fbe-dialog-backdrop
+    position: fixed
+    inset: 0
+    z-index: 90
+    background: rgba(0, 0, 0, 0.45)
+    display: flex
+    align-items: center
+    justify-content: center
+
+.fbe-dialog
+    display: flex
+    flex-direction: column
+    width: unquote('min(480px, 96vw)')
+    max-height: unquote('calc(100dvh - 24px)')
+    color: white
+    background-color: #303030
+    border: 1px solid #888
+    border-radius: 10px
+    overflow: hidden
+
+.fbe-dialog-header
+    display: flex
+    align-items: center
+    justify-content: space-between
+    padding: 6px 8px 6px 14px
+    border-bottom: 1px solid #555
+    flex: none
+    .fbe-dialog-title
+        color: #ffe6c0
+        font-size: 1.15em
+        font-weight: 500
+    .fbe-dialog-close
+        width: 36px
+        height: 36px
+        padding: 0
+        color: #ddd
+        font-size: 16px
+        background: transparent
+        border: 0
+        border-radius: 6px
+        cursor: pointer
+        &:hover
+        &:active
+            background: rgba(255, 255, 255, 0.1)
+
+.fbe-dialog-body
+    display: flex
+    flex-direction: column
+    flex: 1 // fill the panel, so a bottom bar pins to the bottom (thumb reach)
+    min-height: 0 // let the grid's own scroll engage instead of overflowing
+
+// The DOM item selector (#98 Slice 1, dialogs/inventorySelector.ts).
+.inventory-selector
+    height: unquote('min(640px, calc(100dvh - 24px))')
+    .is-search
+        margin: 8px 10px 0
+        padding: 8px 10px
+        color: #eee
+        font-size: 14px
+        background: #262626
+        border: 1px solid #666
+        border-radius: 6px
+        outline: none
+        &:focus
+            border-color: #ff9f1c
+    .is-tabs
+        display: flex
+        gap: 4px
+        padding: 8px 10px
+        overflow-x: auto
+        flex: none
+    .is-tab
+        flex: none
+        padding: 6px 10px
+        color: #ddd
+        font-size: 13px
+        background: #3d3d3d
+        border: 1px solid #555
+        border-radius: 6px
+        cursor: pointer
+        &.active
+            color: #111
+            background: #ffe6c0
+            border-color: #ffe6c0
+    .is-grid
+        flex: 1
+        min-height: 0
+        overflow-y: auto
+        padding: 4px 10px 8px
+    .is-row
+        display: flex
+        flex-wrap: wrap
+        gap: 4px
+        margin-bottom: 6px
+    .is-cell
+        width: 44px
+        height: 44px
+        display: flex
+        align-items: center
+        justify-content: center
+        padding: 0
+        color: #ccc
+        font-size: 9px
+        overflow: hidden
+        background: #3d3d3d
+        border: 1px solid #555
+        border-radius: 6px
+        cursor: pointer
+        &.active
+            background: #5a4a2a
+            border-color: #ff9f1c
+    .is-section
+        margin: 6px 0 4px
+        font-size: 12px
+        font-weight: bold
+        &.is-recent
+            color: #ffffff
+        &.is-quickbar
+            color: #8fd0ff
+        &.is-onbp
+            color: #ffcf8f
+    .is-empty
+        margin: 12px 4px
+        color: #b5b5b5
+        font-size: 13px
+    .is-footer
+        display: flex
+        align-items: center
+        gap: 8px
+        padding: 8px 10px
+        border-top: 1px solid #555
+        flex: none
+        min-height: 52px
+        &:empty
+            display: none
+        .is-footer-icon
+            flex: none
+        .is-footer-name
+            flex: 1
+            min-width: 0
+            overflow: hidden
+            text-overflow: ellipsis
+            white-space: nowrap
+            font-size: 14px
+        .is-pin,
+        .is-confirm
+            flex: none
+            padding: 8px 14px
+            color: #fff
+            font-size: 13px
+            border: 0
+            border-radius: 6px
+            cursor: pointer
+        .is-pin
+            background: #2a5a7a
+        .is-confirm
+            background: #2f7d32
 
 // Library panel — DOM overlay (like #info-panel) listing the active pack's tree.
 #library-panel

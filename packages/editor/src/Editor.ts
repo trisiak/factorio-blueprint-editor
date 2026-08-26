@@ -183,6 +183,24 @@ export class Editor {
         }
     }
 
+    /**
+     * Put `itemName` on the cursor unconditionally — the item selector's commit
+     * (#98): re-picking the held item keeps painting it, unlike the rail wire
+     * buttons' toggle semantics above.
+     */
+    public spawnPaintItem(itemName: string): void {
+        G.BPC.spawnPaintContainer(itemName)
+    }
+
+    /**
+     * Names of the entities currently on the blueprint (with repeats collapsed
+     * by the callers that want that) — backs the DOM selector's Recents tab
+     * "On blueprint" section, same source as the Pixi dialog's.
+     */
+    public get blueprintItemNames(): string[] {
+        return G.bp.entities.valuesArray().map(e => e.name)
+    }
+
     // --- Touch marquee (#21) — thin delegators for the website's Select button
     // and the Copy/Cut/Delete bar (the gesture itself lives in BlueprintContainer).
     /**
@@ -553,12 +571,10 @@ export class Editor {
                         if (Dialog.anyOpen()) {
                             Dialog.closeLast()
                         } else {
-                            G.UI.createInventory(
-                                'Inventory',
-                                undefined,
-                                G.BPC.spawnPaintContainer.bind(G.BPC),
-                                'items'
-                            )
+                            // Per-mode presentation (#98): Pixi dialog on
+                            // desktop, the website's DOM selector on mobile
+                            // (which toggles itself closed on a repeat press).
+                            G.UI.openMainInventory()
                         }
                         return true
                     },

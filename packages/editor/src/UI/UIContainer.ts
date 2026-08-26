@@ -1,5 +1,6 @@
 import { Container } from 'pixi.js'
 import { Entity } from '../core/Entity'
+import G from '../common/globals'
 import { inputMode } from '../common/input'
 import { DebugContainer } from './DebugContainer'
 import { QuickbarPanel } from './QuickbarPanel'
@@ -135,6 +136,30 @@ export class UIContainer extends Container {
         const inv = new InventoryDialog(title, itemsFilter, selectedCallBack, recentsKey, clear)
         this.dialogsContainer.addChild(inv)
         return inv
+    }
+
+    /**
+     * Open the *main* item selector — the E-key / rail "Items" surface, whose
+     * pick lands on the cursor as a paint ghost. One entry, one presentation
+     * per input mode (#98): desktop keeps the Pixi InventoryDialog; mobile
+     * hands off to the website's DOM selector over `fbe:openinventory` (the
+     * same bridge pattern as `fbe:entityinfo`), passing an optional item to
+     * open pre-previewed (the storyboard/test path). The editor-embedded
+     * pickers (recipe/module/filter slots) still call createInventory directly
+     * — they migrate with their editors, not before.
+     */
+    public openMainInventory(preview?: string): void {
+        if (inputMode.mode === 'mobile') {
+            window.dispatchEvent(new CustomEvent('fbe:openinventory', { detail: { preview } }))
+            return
+        }
+        const inv = this.createInventory(
+            'Inventory',
+            undefined,
+            G.BPC.spawnPaintContainer.bind(G.BPC),
+            'items'
+        )
+        if (preview) inv.beginPreview(preview)
     }
 
     public createSignalPicker(

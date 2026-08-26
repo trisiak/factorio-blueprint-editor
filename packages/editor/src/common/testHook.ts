@@ -385,13 +385,16 @@ export function installTestHook(win: Window = window): void {
             Dialog.closeAll()
             return G.UI.createEditor(e) !== undefined
         },
+        // Routed through the real per-mode entry (#98) so the probe drives the
+        // presentation the user would get: Pixi dialog on desktop, the DOM
+        // selector (via `fbe:openinventory`) on mobile.
         openInventory: () => {
             Dialog.closeAll()
-            G.UI.createInventory('Inventory', undefined, undefined, 'items')
+            G.UI.openMainInventory()
         },
         previewInventoryItem: name => {
             Dialog.closeAll()
-            G.UI.createInventory('Inventory', undefined, undefined, 'items').beginPreview(name)
+            G.UI.openMainInventory(name)
         },
         inventoryScrollToLastItem: () => {
             Dialog.closeAll()
@@ -402,7 +405,12 @@ export function installTestHook(win: Window = window): void {
                 'items'
             ).scrollToLastItem()
         },
-        closeDialogs: () => Dialog.closeAll(),
+        closeDialogs: () => {
+            Dialog.closeAll()
+            // DOM dialogs (#98) live website-side; the bridge event closes
+            // them the same way `fbe:dialogs` announces the Pixi ones.
+            window.dispatchEvent(new CustomEvent('fbe:closedialogs'))
+        },
         centerView: () => G.BPC.centerViewport(),
         spawnPasteGhost: () => {
             const entities = G.bp.entities.valuesArray()
