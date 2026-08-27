@@ -29,6 +29,7 @@ import { initEntityInfoSheet } from './entityInfoSheet'
 import { initRatesDrawer } from './ratesDrawer'
 import { initDialogLayer } from './dialogs/dialogLayer'
 import { initInventorySelector } from './dialogs/inventorySelector'
+import { initEntityEditor } from './dialogs/entityEditor'
 import { loadSavedBlueprint, clearSavedBlueprint } from './blueprintStorage'
 import { LibraryController } from './library/controller'
 import { createLibraryStore } from './library/store'
@@ -210,6 +211,9 @@ editor
         // The DOM item selector (#98 Slice 1) — the mobile presentation of the
         // main inventory; the editor opens it over `fbe:openinventory`.
         initInventorySelector(editor)
+        // The DOM entity editor (#98 Slice 2) — the mobile presentation of the
+        // migrated editor kinds (machines so far), over `fbe:openentityeditor`.
+        initEntityEditor(editor)
 
         // Opt-in e2e probe for on-canvas state that the DOM can't expose.
         if (new URLSearchParams(window.location.search).has('test')) {

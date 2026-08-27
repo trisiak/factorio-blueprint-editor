@@ -1,5 +1,5 @@
 import { inputMode } from '@fbe/editor'
-import { registerDomDialog } from './dialogLayer'
+import { registerDomDialog, isTopDomDialog } from './dialogLayer'
 
 // The DOM dialog shell (#98 Slice 0) — the base every DOM dialog opens
 // through, so modal behavior is defined once: a fixed backdrop (tap = close),
@@ -67,7 +67,9 @@ export function openDialogShell(opts: {
         if (inputMode.mode !== 'mobile') close()
     }
     const onKeydown = (e: KeyboardEvent): void => {
-        if (e.key === 'Escape') {
+        // Only the topmost dialog acts, or one Escape would close a whole
+        // stack (a picker over an entity editor) at once.
+        if (e.key === 'Escape' && isTopDomDialog(shell)) {
             e.stopPropagation()
             close()
         }
@@ -79,6 +81,35 @@ export function openDialogShell(opts: {
     window.addEventListener('keydown', onKeydown)
     backdrop.addEventListener('click', close)
     closeBtn.addEventListener('click', close)
+
+    // Swallow the opening tap's trailing click: a canvas tap that opens a DOM
+    // dialog (tap-to-edit an entity) mounts it *before* the browser dispatches
+    // the tap's `click`, which then lands inside the fresh panel — on whatever
+    // control sits at the tap point (observed: instantly opening a module
+    // picker). The Pixi dialogs never had this; a canvas doesn't re-target
+    // synthetic clicks. Deterministic tell, immune to load-dependent click
+    // latency: every legitimate click on the dialog is preceded by a
+    // pointerdown the dialog itself saw — the ghost's pointerdown happened on
+    // the canvas before this mounted. Capture-phase so panel controls never
+    // see the ghost.
+    let sawPointerDown = false
+    backdrop.addEventListener(
+        'pointerdown',
+        () => {
+            sawPointerDown = true
+        },
+        { capture: true }
+    )
+    backdrop.addEventListener(
+        'click',
+        e => {
+            if (!sawPointerDown) {
+                e.stopPropagation()
+                e.preventDefault()
+            }
+        },
+        { capture: true }
+    )
 
     return shell
 }

@@ -32,8 +32,8 @@ async function waitForAppReady(page: Page): Promise<void> {
 const pixiInventoryOpen = (page: Page): Promise<boolean> =>
     page.evaluate(() =>
         (
-            window as unknown as { __FBE_TEST__: { inventoryOpen: () => boolean } }
-        ).__FBE_TEST__.inventoryOpen()
+            window as unknown as { __FBE_TEST__: { pixiInventoryOpen: () => boolean } }
+        ).__FBE_TEST__.pixiInventoryOpen()
     )
 
 // One wooden chest, so the blueprint is non-empty and Recents' "On blueprint"
@@ -50,7 +50,7 @@ test.describe('DOM item selector (#98)', () => {
         await page.goto('/?test')
         await waitForAppReady(page)
 
-        const selector = page.locator('.fbe-dialog.inventory-selector')
+        const selector = page.locator('.fbe-dialog.item-picker')
         await expect(selector).toBeHidden()
 
         await page.locator('#action-toolbar button[title="Items"]').click()
@@ -89,7 +89,7 @@ test.describe('DOM item selector (#98)', () => {
             ).__FBE_TEST__.openInventory()
         )
         expect(await pixiInventoryOpen(page)).toBe(true)
-        await expect(page.locator('.fbe-dialog.inventory-selector')).toBeHidden()
+        await expect(page.locator('.fbe-dialog.item-picker')).toBeHidden()
     })
 
     test('mobile: search → preview → ✓ Confirm puts the pick on the cursor and records a recent', async ({
@@ -106,7 +106,7 @@ test.describe('DOM item selector (#98)', () => {
             .toBeGreaterThan(0)
 
         await page.locator('#action-toolbar button[title="Items"]').click()
-        const selector = page.locator('.fbe-dialog.inventory-selector')
+        const selector = page.locator('.fbe-dialog.item-picker')
         await expect(selector).toBeVisible()
 
         // The search box is the DOM selector's headline win (#56): typing
@@ -165,13 +165,13 @@ test.describe('DOM item selector (#98)', () => {
         await expect(sheet).toBeVisible()
 
         await page.locator('#action-toolbar button[title="Items"]').click()
-        await expect(page.locator('.fbe-dialog.inventory-selector')).toBeVisible()
+        await expect(page.locator('.fbe-dialog.item-picker')).toBeVisible()
         await expect(sheet).toBeHidden()
 
         // The header ✕ closes; the sheet restores itself (state never left
         // the editor).
         await page.locator('.fbe-dialog-close').click()
-        await expect(page.locator('.fbe-dialog.inventory-selector')).toBeHidden()
+        await expect(page.locator('.fbe-dialog.item-picker')).toBeHidden()
         await expect(sheet).toBeVisible()
     })
 })

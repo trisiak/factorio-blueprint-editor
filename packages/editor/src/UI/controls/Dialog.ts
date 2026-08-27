@@ -71,6 +71,26 @@ export abstract class Dialog extends Panel {
         return Dialog.s_openDialogs.length > 0
     }
 
+    /**
+     * Whether any *modal* is open — a Pixi dialog or one of the website's DOM
+     * dialogs (#98). The DOM side is read off the dialog layer's
+     * `fbe-dialog-open` body class (the layering contract's shared signal;
+     * it also covers Pixi, but the explicit check keeps this correct in a
+     * bare-editor embedding with no website dialog layer).
+     */
+    public static anyModalOpen(): boolean {
+        return Dialog.anyOpen() || document.body.classList.contains('fbe-dialog-open')
+    }
+
+    /**
+     * Close every open modal, DOM ones included — the `fbe:closedialogs`
+     * bridge is the DOM dialogs' close signal, mirrored by the dialog layer.
+     */
+    public static closeAllModals(): void {
+        Dialog.closeAll()
+        window.dispatchEvent(new CustomEvent('fbe:closedialogs'))
+    }
+
     /** Currently open dialogs, oldest first. Read-only; used by the `?test` probe. */
     public static get openDialogs(): readonly Dialog[] {
         return Dialog.s_openDialogs

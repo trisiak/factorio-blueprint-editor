@@ -42,3 +42,15 @@ export function closeDomDialogs(): void {
 export function anyDomDialogOpen(): boolean {
     return domDialogs.size > 0
 }
+
+/**
+ * Whether `dialog` is the most recently opened DOM dialog still open — the one
+ * that owns Escape. With stacked dialogs (a picker over an entity editor) each
+ * shell listens for Escape; only the top may act, or one keypress would close
+ * the whole stack. (Set iteration is insertion-ordered.)
+ */
+export function isTopDomDialog(dialog: { close: () => void }): boolean {
+    let last: { close: () => void } | undefined
+    for (const d of domDialogs) last = d
+    return last === dialog
+}

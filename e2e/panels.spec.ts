@@ -294,7 +294,10 @@ const ASSEMBLER_BP =
     '0eJyd0tuKgzAQgOF3mWuFrYdu66sspcQ42x2IE0nGUhHffUcLpdDj7o2QxHx/Ahmhdj12gVigGoEEW6iu5hJwpkanc84Mvpc0Gm5qf9KFI4ZInqEq19m22G7LvMhW+SpLgKznCNXXCJEObNwsy9ChKksgATbtPDIxYls74kPaGvtDjGkOkwLc4Amq1bRLAFlICM/eMhj23Lc1Bv3huZRA56Nung85goIfCQz61UJAS8uBuuAtxjhv7JlE6zeV7I+V8raCDq0Ez2RTS8H290P5v65TXodMczRssXmWKS6ZbxMlJY4YRBceXGT2G9LCeaW4I5YX8TGWL1j+GltfMAmGY+eDpPoE5RG5eU1+vk0W75Kbt8nyPrmbpl8tsiv1'
 
 test.describe('modal layering (#89)', () => {
-    test('Pixi dialogs eclipse the DOM readouts; both restore on close', async ({ page }) => {
+    test('dialogs eclipse the DOM readouts; both restore on close', async ({ page }) => {
+        // On mobile the machine's editor is the DOM one since #98 Slice 2 —
+        // the ratchet holds either way: the dialog layer gates the readouts on
+        // Pixi and DOM dialogs alike.
         // Mobile-only: desktop's readouts are Pixi siblings of the dialogs, so
         // UIContainer's child order already arbitrates — the DOM sheet/drawer
         // (and thus the cross-technology stacking problem) only exist on touch.

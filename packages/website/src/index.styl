@@ -611,8 +611,9 @@ body.fbe-dialog-open
     flex: 1 // fill the panel, so a bottom bar pins to the bottom (thumb reach)
     min-height: 0 // let the grid's own scroll engage instead of overflowing
 
-// The DOM item selector (#98 Slice 1, dialogs/inventorySelector.ts).
-.inventory-selector
+// The DOM item picker (#98, dialogs/itemPicker.ts) — the shared grid behind
+// the main-inventory selector and the editors' filtered recipe/module pickers.
+.item-picker
     height: unquote('min(640px, calc(100dvh - 24px))')
     .is-search
         margin: 8px 10px 0
@@ -695,6 +696,15 @@ body.fbe-dialog-open
         min-height: 52px
         &:empty
             display: none
+        // Preview area (icon + name + Pin + ✓), filled on tap; the persistent
+        // ✕ Clear/Cancel escape hatch sits to its left when the picker was
+        // opened from a slot.
+        .is-preview
+            display: flex
+            align-items: center
+            gap: 8px
+            flex: 1
+            min-width: 0
         .is-footer-icon
             flex: none
         .is-footer-name
@@ -705,7 +715,8 @@ body.fbe-dialog-open
             white-space: nowrap
             font-size: 14px
         .is-pin,
-        .is-confirm
+        .is-confirm,
+        .is-clear
             flex: none
             padding: 8px 14px
             color: #fff
@@ -717,6 +728,55 @@ body.fbe-dialog-open
             background: #2a5a7a
         .is-confirm
             background: #2f7d32
+        .is-clear
+            background: #6b3636
+
+// The DOM entity editor (#98 Slice 2, dialogs/entityEditor.ts) — the mobile
+// presentation of the migrated editor kinds (machines so far). Same slot cell
+// language as the picker grid; the hint line mirrors the Pixi editors' footer
+// band.
+.entity-editor
+    .ee-icon
+        flex: none
+        margin-right: 8px
+    .fbe-dialog-title
+        flex: 1
+        min-width: 0
+        overflow: hidden
+        text-overflow: ellipsis
+        white-space: nowrap
+    .ee-row
+        display: flex
+        align-items: center
+        gap: 10px
+        padding: 8px 14px
+    .ee-label
+        min-width: 72px
+        color: #ffe6c0
+        font-size: 14px
+    .ee-slots
+        display: flex
+        flex-wrap: wrap
+        gap: 4px
+    .ee-slot
+        width: 44px
+        height: 44px
+        display: flex
+        align-items: center
+        justify-content: center
+        padding: 0
+        color: #ccc
+        font-size: 9px
+        overflow: hidden
+        background: #3d3d3d
+        border: 1px solid #555
+        border-radius: 6px
+        cursor: pointer
+        touch-action: none // so a hold isn't hijacked by scroll before it clears
+    .ee-hint
+        padding: 4px 14px 10px
+        color: #b5b5b5
+        font-size: 12px
 
 // Library panel — DOM overlay (like #info-panel) listing the active pack's tree.
 #library-panel

@@ -48,6 +48,10 @@ export {
 } from './core/itemCatalog'
 export type { CatalogGroup } from './core/itemCatalog'
 export { getRecents, recordRecent } from './UI/recentItems'
+// The DOM entity editor (#98 Slice 2) receives the live Entity over the
+// `fbe:openentityeditor` event (same JS runtime — no serialization) and works
+// it through the same accessors/setters the Pixi editors use.
+export type { Entity } from './core/Entity'
 export default {
     registerAction,
     callAction,

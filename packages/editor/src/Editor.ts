@@ -193,12 +193,17 @@ export class Editor {
     }
 
     /**
-     * Names of the entities currently on the blueprint (with repeats collapsed
-     * by the callers that want that) — backs the DOM selector's Recents tab
-     * "On blueprint" section, same source as the Pixi dialog's.
+     * Names in use on the blueprint, per picker category (with repeats
+     * collapsed by the callers that want that) — backs the DOM pickers'
+     * Recents-tab "On blueprint" section, same source as the Pixi dialog's:
+     * entity names for the item picker, set recipes for the recipe picker,
+     * slotted modules for the module picker.
      */
-    public get blueprintItemNames(): string[] {
-        return G.bp.entities.valuesArray().map(e => e.name)
+    public blueprintUsedNames(kind: 'items' | 'recipes' | 'modules'): string[] {
+        const ents = G.bp.entities.valuesArray()
+        if (kind === 'recipes') return ents.map(e => e.recipe).filter((r): r is string => !!r)
+        if (kind === 'modules') return ents.flatMap(e => e.modules).filter((m): m is string => !!m)
+        return ents.map(e => e.name)
     }
 
     // --- Touch marquee (#21) — thin delegators for the website's Select button
