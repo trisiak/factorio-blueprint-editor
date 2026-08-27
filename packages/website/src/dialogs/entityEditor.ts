@@ -122,28 +122,33 @@ function openMachineEditor(editor: Editor, entity: Entity): void {
     }
 
     // --- Recipe -------------------------------------------------------------
-    const clearRecipe = (): void => {
-        entity.recipe = undefined
+    // hasRecipeSlot, not unconditional: the 'temp' kind covers furnaces and
+    // rocket silos too, whose recipe auto-selects from the input (the same
+    // rule the Pixi TempEditor applies).
+    if (entity.hasRecipeSlot) {
+        const clearRecipe = (): void => {
+            entity.recipe = undefined
+        }
+        const recipeSlot = slot(
+            'ee-recipe-slot',
+            () =>
+                openItemPicker(editor, {
+                    title: 'Select Recipe',
+                    itemsFilter: entity.acceptedRecipes,
+                    recentsKey: 'recipes',
+                    onPick: name => {
+                        entity.recipe = name
+                    },
+                    // "✕ Clear" once a recipe is set, "✕ Cancel" before then —
+                    // a first-time pick needs a way out too.
+                    clear: { onClear: clearRecipe, filled: entity.recipe !== undefined },
+                }),
+            clearRecipe
+        )
+        row('Recipe:').slots.appendChild(recipeSlot)
+        slotIcon(recipeSlot, entity.recipe)
+        onEntityChange('recipe', () => slotIcon(recipeSlot, entity.recipe))
     }
-    const recipeSlot = slot(
-        'ee-recipe-slot',
-        () =>
-            openItemPicker(editor, {
-                title: 'Select Recipe',
-                itemsFilter: entity.acceptedRecipes,
-                recentsKey: 'recipes',
-                onPick: name => {
-                    entity.recipe = name
-                },
-                // "✕ Clear" once a recipe is set, "✕ Cancel" before then — a
-                // first-time pick needs a way out too.
-                clear: { onClear: clearRecipe, filled: entity.recipe !== undefined },
-            }),
-        clearRecipe
-    )
-    row('Recipe:').slots.appendChild(recipeSlot)
-    slotIcon(recipeSlot, entity.recipe)
-    onEntityChange('recipe', () => slotIcon(recipeSlot, entity.recipe))
 
     // --- Modules ------------------------------------------------------------
     if (entity.moduleSlots !== 0) {

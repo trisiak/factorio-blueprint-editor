@@ -140,6 +140,45 @@ test.describe('DOM entity editor (#98 Slice 2)', () => {
         await expect(page.locator('.ee-recipe-slot span')).toBeVisible()
     })
 
+    test('mobile: generic crafting machines (kind "temp") get the DOM editor too; furnaces get no recipe slot', async ({
+        page,
+    }) => {
+        test.skip(!isMobileProject(), 'mobile-only')
+
+        // A chemical plant (recipe + 3 module slots) and an electric furnace
+        // (auto-selected recipe → no slot; 2 module slots) — the two faces of
+        // the 'temp' kind, which also covers every modded crafting machine the
+        // name switch doesn't know (the user-reported gap: SE's space
+        // assembler opened nothing on mobile).
+        const TEMP_BP =
+            '0eNp1z9EKwjAMBdB/uc9VnGxq+ysypNaogS4bbSeO0X+XbSAD8SncQE64I66+py6wJJgR7FqJMOcRkR9i/bRLQ0cw4EQNFMQ2U3JPathZv+m8lYSswHKjN0yRawWSxIlpkeYwXKRvrhRgin+GQtdGTtzK9PUNs9tWCsM8c1Y/0P4LkSeXArvNvQ9iHf1S5Zqq1VLGrLorvCjE+aA67HWpdVVqXRbHU84fgLJf/g=='
+        await page.goto(`/?test&source=${encodeURIComponent(TEMP_BP)}`)
+        await waitForAppReady(page)
+        await expect
+            .poll(async () => (await readTestState(page)).blueprint.entityCount, {
+                timeout: 30_000,
+            })
+            .toBe(2)
+
+        expect(await openEditor(page, 'chemical-plant')).toBe(true)
+        const editor = page.locator('.fbe-dialog.entity-editor')
+        await expect(editor).toBeVisible()
+        await expect(editor.locator('.ee-recipe-slot')).toBeVisible()
+        await expect(editor.locator('.ee-module-slot')).toHaveCount(3)
+        expect((await readTestState(page)).dialogOpen).toBe(false)
+
+        await page.evaluate(() =>
+            (
+                window as unknown as { __FBE_TEST__: { closeDialogs: () => void } }
+            ).__FBE_TEST__.closeDialogs()
+        )
+        expect(await openEditor(page, 'electric-furnace')).toBe(true)
+        await expect(editor).toBeVisible()
+        // Furnaces auto-pick their recipe from the input — modules only.
+        await expect(editor.locator('.ee-recipe-slot')).toHaveCount(0)
+        await expect(editor.locator('.ee-module-slot')).toHaveCount(2)
+    })
+
     test('mobile: a live switch to desktop closes the DOM editor', async ({ page }) => {
         test.skip(!isMobileProject(), 'mobile-only')
 

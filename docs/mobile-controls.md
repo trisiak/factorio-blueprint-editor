@@ -386,10 +386,17 @@ pipelines at once made touch taps double-act via the browser's synthetic
       `UIContainer.openMainInventory` → `fbe:openinventory`. Ratchets in
       `inventorySelector.spec.ts` (per-mode presentation, search→select→
       paint, backdrop/E close, readouts yield + restore).
-    - ✅ **DOM entity editor — machines (#98 Slice 2)**: the recipe+modules
-      form (the editor behind the recipe-changing bug) presents as the DOM
-      `dialogs/entityEditor.ts` on mobile, routed per kind from
-      `UIContainer.openEntityEditor` → `fbe:openentityeditor` (the event
+    - ✅ **DOM entity editor — crafting machines (#98 Slice 2)**: the
+      recipe+modules form (the editor behind the recipe-changing bug)
+      presents as the DOM `dialogs/entityEditor.ts` on mobile — both the
+      `machine` kind (assembling machines) and the generic `temp` kind
+      (furnaces, refineries, chem plants, and every modded/expansion machine
+      the name switch doesn't know — the first live-testing gap: SE's space
+      assembler opened nothing). The recipe row gates on the new shared
+      `Entity.hasRecipeSlot` (furnaces/rocket silos auto-pick — modules
+      only), now also used by editor routing and the Pixi TempEditor. Routed
+      per kind from `UIContainer.openEntityEditor` → `fbe:openentityeditor`
+      (the event
       carries the live `Entity`; the DOM editor reads its accessors, writes
       its History-wrapped setters, and follows its change events — undo/redo
       reflect live, destroy closes it). Slots keep the established touch

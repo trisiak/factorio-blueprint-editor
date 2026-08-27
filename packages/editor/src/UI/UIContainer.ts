@@ -114,9 +114,12 @@ export class UIContainer extends Container {
     /**
      * Entity kinds whose DOM editor has shipped (#98 Slice 2 →): on mobile
      * these route to the website's DOM editor instead of the Pixi one. Grows
-     * kind by kind as the migration slices land.
+     * kind by kind as the migration slices land. 'temp' is the generic
+     * crafting-machine form (furnaces, refineries, chem plants, and every
+     * modded/expansion machine the name switch doesn't know) — same
+     * recipe+modules shape as 'machine', gated by `Entity.hasRecipeSlot`.
      */
-    private static readonly DOM_EDITOR_KINDS: ReadonlySet<EditorKind> = new Set(['machine'])
+    private static readonly DOM_EDITOR_KINDS: ReadonlySet<EditorKind> = new Set(['machine', 'temp'])
 
     /** @returns The created editor, or undefined if the entity has none. */
     public createEditor(entity: Entity): Editor | undefined {
