@@ -130,6 +130,34 @@ with like, and it gets Firefox-shaped launch options — `firefoxUserPrefs` that
 force software WebGL on a GPU-less runner, the moral equivalent of Chromium's
 `--enable-unsafe-swiftshader`. The Chromium-only `args` are never handed to it.
 
+### Firefox needs a display: run it headed under Xvfb
+
+**Headless Firefox on Linux hands out no WebGL context at all.** The whole app is
+one WebGL canvas, so this is fatal — and it fails in a shape that doesn't say
+"WebGL": PixiJS's `isWebGLSupported()` probe returns false, `autoDetectRenderer`
+falls past `webgl` to its **Canvas** renderer, and the app then throws on every
+frame with
+
+```
+can't access property "push", this._renderer.filter is undefined
+```
+
+because the Canvas renderer registers `FilterPipe` but no `FilterSystem`. The
+specs that assert "no page errors" (the modpack ones) go red, and anything that
+waits on Pixi-rendered UI times out. Chromium sidesteps the whole problem with
+SwiftShader; Firefox's equivalent is a real X server, so CI runs this project
+**headed under `xvfb-run`** against Mesa/llvmpipe:
+
+```bash
+xvfb-run -a npx playwright test --project=desktop-firefox --headed
+```
+
+Do the same locally on a headless box. On a desktop with a display, plain
+`npx playwright test --project=desktop-firefox` is fine — a normal windowing
+session gives Firefox its GL. The `firefoxUserPrefs` in `playwright.config.ts`
+are still needed on top: they stop the GPU blocklist from vetoing a software
+context.
+
 ### The Firefox project is skipped when Firefox isn't installed
 
 A project whose browser is missing fails the **whole** run at launch, and some

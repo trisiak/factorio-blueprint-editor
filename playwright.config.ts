@@ -66,8 +66,18 @@ const chromiumLaunchOptions = {
  * the whole app is a single WebGL canvas, so a GPU-less runner still has to hand
  * out a (software) WebGL context or every spec fails as "nothing rendered".
  *
- * `headless` is deliberately *not* pinned here: Playwright already defaults to
- * headless, and pinning it would break `--headed` / `npm run test:e2e:ui`.
+ * These prefs are necessary but **not sufficient** on a headless Linux box, and
+ * the failure is worth knowing because it doesn't look like a WebGL failure:
+ * headless Firefox gives out no WebGL context at all, so Pixi's
+ * `isWebGLSupported()` probe fails, `autoDetectRenderer` falls past webgl to its
+ * **Canvas** renderer, and the app then throws on every frame with
+ * "this._renderer.filter is undefined" — the Canvas renderer registers
+ * `FilterPipe` but no `FilterSystem`. The cure is a real X server: CI runs this
+ * project headed under `xvfb-run` (see ci.yml), which is Firefox's SwiftShader.
+ *
+ * `headless` is deliberately *not* pinned here — Playwright already defaults to
+ * headless, and pinning it would break `--headed` / `npm run test:e2e:ui`, which
+ * is exactly the flag CI relies on.
  */
 const firefoxLaunchOptions = {
     firefoxUserPrefs: {

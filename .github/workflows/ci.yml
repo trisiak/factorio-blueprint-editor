@@ -145,9 +145,21 @@ jobs:
       # (it's a no-op on an image that already has them). Same live-data caveat as
       # the chromium job above: this needs outbound HTTPS to the data plane.
       - run: npx playwright install --with-deps firefox
+      # xvfb is in Playwright's dependency set, but install it explicitly so a
+      # change there can't silently turn the headed run below into a launch error.
+      - run: sudo apt-get install -y xvfb
+      # HEADED, UNDER XVFB — the one thing this job cannot do the Chromium way.
+      # The whole app is a single WebGL canvas, and *headless* Firefox on Linux
+      # hands out no WebGL context at all: Pixi's `isWebGLSupported()` probe fails,
+      # `autoDetectRenderer` falls through webgl to its Canvas renderer, and the
+      # app dies on every frame with "this._renderer.filter is undefined" (the
+      # Canvas renderer registers FilterPipe but no FilterSystem). Chromium dodges
+      # this with SwiftShader (--enable-unsafe-swiftshader); Firefox's equivalent
+      # is a real X server, so it runs headed against Xvfb's Mesa/llvmpipe. The
+      # prefs in playwright.config keep the GPU blocklist from vetoing that.
       - run: |
-          npm run test:e2e -- \
-            --project=desktop-firefox \
+          xvfb-run -a npm run test:e2e -- \
+            --project=desktop-firefox --headed \
             --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
