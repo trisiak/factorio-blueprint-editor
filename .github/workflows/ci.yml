@@ -70,17 +70,20 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     # Spread the suite across concurrent runners with Playwright's native
-    # sharding (test-count balanced across both projects). Each shard still runs
-    # single-worker (see playwright.config: GPU-less SwiftShader rendering can't
-    # take two canvas workers per runner) — sharding is the cross-runner
+    # sharding (test-count balanced across all three projects — desktop, mobile
+    # and the hybrid mouse+touch one, which the config scopes to its own spec).
+    # `npm run test:e2e` runs every project, so a new project needs no selection
+    # here; it just adds tests to the pool the shards divide. Each shard still
+    # runs single-worker (see playwright.config: GPU-less SwiftShader rendering
+    # can't take two canvas workers per runner) — sharding is the cross-runner
     # parallelism, `workers: 1` is the per-runner stability. fail-fast: false so
     # one red shard doesn't cancel the others. Bump shardTotal (and the index
     # list) together to add runners.
     strategy:
       fail-fast: false
       matrix:
-        shardIndex: [1, 2, 3]
-        shardTotal: [3]
+        shardIndex: [1, 2, 3, 4]
+        shardTotal: [4]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
