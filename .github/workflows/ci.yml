@@ -70,12 +70,18 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     # Spread the suite across concurrent runners with Playwright's native
-    # sharding (test-count balanced across both projects). Each shard still runs
-    # single-worker (see playwright.config: GPU-less SwiftShader rendering can't
-    # take two canvas workers per runner) — sharding is the cross-runner
-    # parallelism, `workers: 1` is the per-runner stability. fail-fast: false so
-    # one red shard doesn't cancel the others. Bump shardTotal (and the index
-    # list) together to add runners.
+    # sharding (test-count balanced across both chromium projects). Each shard
+    # still runs single-worker (see playwright.config: GPU-less SwiftShader
+    # rendering can't take two canvas workers per runner) — sharding is the
+    # cross-runner parallelism, `workers: 1` is the per-runner stability.
+    # fail-fast: false so one red shard doesn't cancel the others. Bump
+    # shardTotal (and the index list) together to add runners.
+    #
+    # Firefox is deliberately *not* in this job: the desktop-firefox project has
+    # its own job below so a slow/red Firefox can't drag the chromium shards, and
+    # so this job only ever installs the chromium browser. That's why the projects
+    # are selected explicitly — playwright.config includes desktop-firefox
+    # whenever CI is set, and a bare `test:e2e` here would try to launch it.
     strategy:
       fail-fast: false
       matrix:
@@ -98,4 +104,57 @@ jobs:
       # (Runners have direct egress; the proxy plumbing in playwright.config is
       # explicitly disabled when CI is set.)
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e -- --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+      - run: |
+          npm run test:e2e -- \
+            --project=desktop-chromium --project=mobile-chromium \
+            --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+      # The html reporter writes playwright-report/; traces (trace: on-first-retry)
+      # land in test-results/. Keep both on failure so a red shard is debuggable
+      # without a re-run. Names must be unique per job/shard.
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report-chromium-${{ matrix.shardIndex }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Firefox runs the desktop half of the matrix only (the touch specs need CDP,
+  # which is Chromium-only): 148 of the 296 selected tests, of which the touch
+  # ones self-skip. Its own job, not a fourth chromium shard, so a slow or red
+  # Firefox can't hold up the chromium ones — and sharded two ways so it doesn't
+  # become the critical path either (a chromium shard is ~99 tests). Its point is
+  # browser-specific input behaviour: context-menu rules, pointer quirks,
+  # `user-select`, focus handling — the class of bug behind #101/#102. See #103.
+  e2e-firefox:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: [1, 2]
+        shardTotal: [2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --legacy-peer-deps
+      # --with-deps pulls Firefox's system libraries via apt on the ubuntu runner
+      # (it's a no-op on an image that already has them). Same live-data caveat as
+      # the chromium job above: this needs outbound HTTPS to the data plane.
+      - run: npx playwright install --with-deps firefox
+      - run: |
+          npm run test:e2e -- \
+            --project=desktop-firefox \
+            --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report-firefox-${{ matrix.shardIndex }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
