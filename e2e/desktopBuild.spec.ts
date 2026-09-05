@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { isDesktopProject } from './projects'
 
 // Desktop merge-safety net. All the placement/mine coverage in
 // touchPlacement.spec.ts drives the *touch* path; PR #6 (Space Age) reworks the
@@ -27,10 +28,7 @@ async function waitForLoaded(page: Page): Promise<void> {
 
 test.describe('desktop build / mine', () => {
     test.beforeEach(() => {
-        test.skip(
-            test.info().project.name !== 'desktop-chromium',
-            'desktop mouse pipeline runs on the desktop project only'
-        )
+        test.skip(!isDesktopProject(), 'desktop mouse pipeline runs on the desktop projects only')
     })
 
     test('left-click places an entity and right-click mines it', async ({ page }) => {

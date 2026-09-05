@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { isDesktopProject } from './projects'
 
 /**
  * #49 — hovering/selecting a wired entity highlights the other entities on its
@@ -40,7 +41,7 @@ test('highlights a hovered entity circuit network', async ({ page }, info) => {
     // stuck on the entity). This spec drives it via Playwright `mouse.move`,
     // which doesn't exercise the mobile touch-select path, so it runs on desktop;
     // touch is verified manually.
-    test.skip(info.project.name !== 'desktop-chromium', 'driven via mouse hover')
+    test.skip(!isDesktopProject(info), 'driven via mouse hover')
     await page.goto(`/?test&source=${encodeURIComponent(BP)}`)
     await waitForAppReady(page)
     await page.waitForTimeout(400)

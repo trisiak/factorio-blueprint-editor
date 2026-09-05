@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import type { EditorTestState } from '@fbe/editor'
+import { isTouchProject } from './projects'
 
 /**
  * Blueprint-wide production rates panel (RateCalculator-style readout; see
@@ -17,8 +18,6 @@ import type { EditorTestState } from '@fbe/editor'
 // rateable machine, so the footer must say "1 machine counted".
 const BP =
     '0eNq1kl1qwzAQhK9S9lkqsfPTRlcpIcjyJl0qr4y0DjHGdy+yS9K0pVBIn8SI3ZnRhwaofIdtJBYwA5BgA+bTnQJvK/RgwHm0UScfJD0c6CxdRFBwwpgoMJj1ptyuttv1qnxals8LBeQCJzAvAyQ6svXZXvoWwcwpCtg2WdmUsKk88VE31r0Soy5hVEBc4xlMMe4UIAsJ4ew3iX7PXVNhBFP87qSgDYlkKjlANnxcK+inc1QQ0dFUCj06iYHJaUfRdZQfn5vOoVTn9Y+g1CLWugl153GqOo8NQLwnPiFLiP28dlUrBUmsewOzUOBCl4kX424c1X3di1v3Xfb/gqy8IKvQusDfIW1uIN0TQ/GvGIq/YFheMBxsEp1aTyIYf/gyE4vNxOJAPs9ce1IMrFtvBSHHjO/kmB6J'
-
-const isMobileProject = (): boolean => test.info().project.name === 'mobile-chromium'
 
 async function readTestState(page: Page): Promise<EditorTestState> {
     return (await page.evaluate(() => {
@@ -51,7 +50,7 @@ test.describe('rates panel', () => {
 
         // Toggle on: real keybind on desktop, the hook (= the rail's Rates
         // button's action) on touch.
-        if (isMobileProject()) {
+        if (isTouchProject()) {
             await page.evaluate(() =>
                 (window as unknown as { __FBE_TEST__: RatesHook }).__FBE_TEST__.toggleRatesPanel()
             )
@@ -79,7 +78,7 @@ test.describe('rates panel', () => {
         // drawer (tap its ✕ directly, and assert it rendered the same footer
         // the canvas rows carry); desktop shows the canvas panel (click its ✕
         // via the hook coordinates — which also pins the right-edge anchor).
-        if (isMobileProject()) {
+        if (isTouchProject()) {
             const drawer = page.locator('#rates-drawer')
             await expect(drawer).toBeVisible()
             await expect(drawer).toContainText('1 machine counted')

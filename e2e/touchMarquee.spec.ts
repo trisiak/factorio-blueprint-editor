@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { dragOneFinger } from './touchGestures'
+import { isChromiumProject, isTouchProject } from './projects'
 
 // Touch box-select / marquee (#21) + the SELECT-mode polish (#33-adjacent): one
 // button (Select) arms a box-select; releasing holds the selection and shows the
@@ -71,9 +72,11 @@ async function selectAll(page: Page): Promise<void> {
 }
 
 test.describe('touch marquee select', () => {
+    // Touch + Chromium, not just touch: the gestures are synthesized with raw CDP
+    // (`Input.dispatchTouchEvent`), which only Chromium exposes.
     test.beforeEach(() => {
         test.skip(
-            test.info().project.name !== 'mobile-chromium',
+            !isTouchProject() || !isChromiumProject(),
             'the marquee is a mobile-only touch gesture'
         )
     })
@@ -177,9 +180,11 @@ test.describe('touch marquee select', () => {
 })
 
 test.describe('touch edit bar', () => {
+    // Touch + Chromium, not just touch: the gestures are synthesized with raw CDP
+    // (`Input.dispatchTouchEvent`), which only Chromium exposes.
     test.beforeEach(() => {
         test.skip(
-            test.info().project.name !== 'mobile-chromium',
+            !isTouchProject() || !isChromiumProject(),
             'the edit bar is a mobile-only touch affordance'
         )
     })

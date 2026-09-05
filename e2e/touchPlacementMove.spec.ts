@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { dragOneFinger } from './touchGestures'
+import { isChromiumProject, isTouchProject } from './projects'
 
 // Placement of a *pasted blueprint* on touch (issue #30). A paste produces a
 // multi-entity ghost; before this, the only way to position it was to blind-tap
@@ -74,9 +75,11 @@ const CENTER = { x: 240, y: 480 }
 const AWAY = { x: 320, y: 600 }
 
 test.describe('touch placement of a pasted blueprint', () => {
+    // Touch + Chromium, not just touch: the gestures are synthesized with raw CDP
+    // (`Input.dispatchTouchEvent`), which only Chromium exposes.
     test.beforeEach(() => {
         test.skip(
-            test.info().project.name !== 'mobile-chromium',
+            !isTouchProject() || !isChromiumProject(),
             'touch placement runs on the mobile project only'
         )
     })

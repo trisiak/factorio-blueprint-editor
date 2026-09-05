@@ -1,4 +1,5 @@
 import { test, expect, type Page, type Locator } from '@playwright/test'
+import { isTouchProject } from './projects'
 
 /**
  * Train-stop editor text entry (#56).
@@ -17,8 +18,6 @@ import { test, expect, type Page, type Locator } from '@playwright/test'
  * `?test`'s `entityTrainStop`, so it has to have been committed, not merely
  * rendered in the DOM).
  */
-
-const isMobileProject = (): boolean => test.info().project.name === 'mobile-chromium'
 
 // The clearSlots fixture: storage/requester/provider chests + a train stop
 // (station "Test stop", no trains limit).
@@ -86,7 +85,7 @@ async function tapControl(page: Page, control: string): Promise<void> {
     )
     expect(pos, `control "${control}" should be locatable in the open editor`).not.toBeNull()
     const o = await canvasOrigin(page)
-    if (isMobileProject()) await page.touchscreen.tap(o.x + pos.x, o.y + pos.y)
+    if (isTouchProject()) await page.touchscreen.tap(o.x + pos.x, o.y + pos.y)
     else await page.mouse.click(o.x + pos.x, o.y + pos.y)
 }
 
@@ -96,7 +95,7 @@ async function tapInput(page: Page, input: Locator): Promise<void> {
     expect(box, 'the input should render on-screen').not.toBeNull()
     const x = box.x + box.width / 2
     const y = box.y + box.height / 2
-    if (isMobileProject()) await page.touchscreen.tap(x, y)
+    if (isTouchProject()) await page.touchscreen.tap(x, y)
     else await page.mouse.click(x, y)
 }
 
