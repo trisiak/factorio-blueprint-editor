@@ -18,7 +18,7 @@ import { IPoint } from '../types'
 import { Dialog } from '../UI/controls/Dialog'
 import { Viewport } from './Viewport'
 import { PinchPanRecognizer, PinchPanUpdate } from './PointerGestures'
-import { inputMode } from '../common/input'
+import { acceptsPointerType, inputMode, isMousePipeline } from '../common/input'
 import { EntitySprite } from './EntitySprite'
 import { WiresContainer } from './WiresContainer'
 import { UnderlayContainer } from './UnderlayContainer'
@@ -240,11 +240,14 @@ export class BlueprintContainer extends Container {
 
         const update = () => {
             if (this.viewport.update()) {
-                // Desktop re-anchors the grid cursor (and paint ghost) under the
-                // mouse as the view scrolls/zooms. On touch the ghost is pinned to
-                // its tapped tile and the camera pans/pinches around it, so don't
-                // re-derive the cursor from the stale last-touch point each frame.
-                if (inputMode.mode === 'desktop') {
+                // A mouse re-anchors the grid cursor (and paint ghost) under the
+                // pointer as the view scrolls/zooms. After a *touch* the ghost is
+                // pinned to its tapped tile and the camera pans/pinches around it,
+                // so don't re-derive the cursor from the stale last-touch point
+                // each frame. Keyed off `touchRecent` (the last pointer that
+                // acted), not a global mode — on a hybrid both are live and the
+                // right behaviour is whichever device the user just used (#101).
+                if (!inputMode.touchRecent) {
                     this.gridData.recalculate()
                 }
                 const t = this.viewport.getTransform()
@@ -257,20 +260,21 @@ export class BlueprintContainer extends Container {
             G.app.ticker.remove(update)
         })
 
-        // Hover is a desktop-only concept. On mobile these fire for the browser's
-        // synthetic ("compatibility") mouse events after a tap — and a synthetic
-        // `pointerout` would hide the paint ghost we just positioned, breaking the
-        // tap-to-preview flow. On touch, ghost visibility is driven explicitly by
-        // the tap / Place path instead (see handlePaintTap / confirmPlacement).
-        this.on('pointerover', () => {
-            if (inputMode.mode !== 'desktop') return
+        // Hover is a mouse/pen concept. Touch synthesizes over/out around a tap —
+        // and an `pointerout` would hide the paint ghost we just positioned,
+        // breaking the tap-to-preview flow. On touch, ghost visibility is driven
+        // explicitly by the tap / Place path instead (see handlePaintTap /
+        // confirmPlacement). Gated per *event*, so a mouse hover still works on a
+        // touch-capable machine (#101 Slice 1).
+        this.on('pointerover', (e: FederatedPointerEvent) => {
+            if (!this.acceptsPointer(e, 'mouse')) return
             if (this.mode === EditorMode.PAINT) {
                 this.paintContainer.show()
             }
             this.updateHoverContainer()
         })
-        this.on('pointerout', () => {
-            if (inputMode.mode !== 'desktop') return
+        this.on('pointerout', (e: FederatedPointerEvent) => {
+            if (!this.acceptsPointer(e, 'mouse')) return
             if (this.mode === EditorMode.PAINT) {
                 this.paintContainer.hide()
             }
@@ -476,32 +480,41 @@ export class BlueprintContainer extends Container {
             this.removeEventListener('wheel', onWheel)
         })
 
-        // Input is either desktop (mouse) or mobile (touch) — never both at once.
-        // `inputMode` is the single source of truth; each handler dispatches for
-        // exactly one scheme. In mobile we ignore `mouse` pointers, so the
-        // synthetic ("compatibility") mouse events the browser fires after a tap
-        // can't re-trigger an action and double-act. In desktop we ignore touch.
-        const applyInputMode = (): void => {
-            // Mobile locks the canvas's touch-action so the browser doesn't
-            // pan/zoom the page (and suppresses most synthetic mouse events).
+        // Every pointer event is routed by its **own** `pointerType` (#101 §1) —
+        // there is no global "which device am I" switch any more. `mouse`/`pen`
+        // drive the press/hover pipeline, `touch` drives the tap / one-finger-drag
+        // / pinch recogniser, and a hybrid (touchscreen laptop, Surface) gets both
+        // at once. The `preset` still filters when the user forces one kind.
+        //
+        // The double-firing that originally motivated the global switch is killed
+        // at the source instead: `touch-action: none` on the canvas, plus
+        // `preventDefault()` on a touch `pointerdown` — a cancelled pointerdown
+        // suppresses the browser's compatibility mouse events, so a tap can no
+        // longer arrive a second time as a synthetic mouse press.
+        const applyPointerConfig = (): void => {
+            // Always locked: the browser must never pan/zoom the page (or fire
+            // its scroll-driven gestures) over the canvas, on any device.
             const canvas = G.app.canvas as HTMLCanvasElement | undefined
             if (canvas?.style) {
-                canvas.style.touchAction = inputMode.mode === 'mobile' ? 'none' : ''
+                canvas.style.touchAction = 'none'
             }
-            // Drop anything in flight when the scheme changes under us.
+            // Drop anything in flight when the preset changes under us.
             G.actions.releaseAll()
             this.pointerGestures.clear()
             this.touchPan = null
         }
 
         const onPointerDown = (e: FederatedPointerEvent): void => {
-            if (inputMode.mode === 'desktop') {
-                if (e.pointerType === 'touch') return // touch ignored in desktop mode
+            if (!acceptsPointerType(inputMode.preset, e.pointerType)) return
+            if (isMousePipeline(e.pointerType)) {
                 G.actions.pressButton(e as unknown as PointerEvent)
                 return
             }
-            // mobile: touch/pen gestures only; ignore mouse (incl. ghost events)
-            if (e.pointerType === 'mouse') return
+            // Touch. Cancel the native event so the browser emits no compatibility
+            // mouse events for this tap — with per-pointer routing they would
+            // otherwise reach the press pipeline above and double-act.
+            const native = e.nativeEvent as PointerEvent | undefined
+            if (native?.cancelable) native.preventDefault()
             this.pointerGestures.down(e.pointerId, e.global.x, e.global.y)
             if (this.pointerGestures.pointerCount >= 2) {
                 // a multi-touch gesture began: cancel the pending tap and let
@@ -529,7 +542,7 @@ export class BlueprintContainer extends Container {
             }
         }
         const onPointerMove = (e: FederatedPointerEvent): void => {
-            if (inputMode.mode === 'desktop' || e.pointerType === 'mouse') return
+            if (!this.acceptsPointer(e, 'touch')) return
             const gesture = this.pointerGestures.move(e.pointerId, e.global.x, e.global.y)
             if (gesture) {
                 this.applyPinchPan(gesture)
@@ -577,7 +590,7 @@ export class BlueprintContainer extends Container {
             tp.lastY = e.global.y
         }
         const onPointerUp = (e: FederatedPointerEvent): void => {
-            if (inputMode.mode === 'desktop' || e.pointerType === 'mouse') return
+            if (!this.acceptsPointer(e, 'touch')) return
             this.pointerGestures.up(e.pointerId)
             const tp = this.touchPan
             if (!tp || e.pointerId !== tp.pointerId) return
@@ -653,18 +666,31 @@ export class BlueprintContainer extends Container {
         this.addEventListener('pointerup', onPointerUp)
         this.addEventListener('pointerupoutside', onPointerUp)
         this.addEventListener('pointercancel', onPointerUp)
-        inputMode.on('change', applyInputMode)
-        applyInputMode()
+        inputMode.on('preset', applyPointerConfig)
+        applyPointerConfig()
         this.on('destroyed', () => {
             this.removeEventListener('pointerdown', onPointerDown)
             this.off('globalpointermove', onPointerMove)
             this.removeEventListener('pointerup', onPointerUp)
             this.removeEventListener('pointerupoutside', onPointerUp)
             this.removeEventListener('pointercancel', onPointerUp)
-            inputMode.off('change', applyInputMode)
+            inputMode.off('preset', applyPointerConfig)
             this.pointerGestures.clear()
             G.actions.releaseAll()
         })
+    }
+
+    /**
+     * Per-pointer routing gate (#101 §1). Two questions, in order: does the
+     * user's `preset` let this pointer type act at all (`auto` says yes to
+     * everything; a forced preset reproduces exactly what the old binary mode
+     * filtered out), and does this pointer belong to the pipeline the calling
+     * handler implements — `mouse` for press/hover (mouse *and* pen), `touch`
+     * for the tap/drag/pinch recogniser.
+     */
+    private acceptsPointer(e: { pointerType: string }, pipeline: 'mouse' | 'touch'): boolean {
+        if (!acceptsPointerType(inputMode.preset, e.pointerType)) return false
+        return isMousePipeline(e.pointerType) === (pipeline === 'mouse')
     }
 
     /** Apply an incremental pinch/two-finger-pan gesture to the viewport. */

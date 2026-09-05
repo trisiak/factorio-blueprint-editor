@@ -142,11 +142,16 @@ export class PaintBlueprintContainer extends PaintContainer {
     /**
      * Keep the on-canvas center crosshair glued to the ghost's origin (= the
      * blueprint's center). Touch-only: it's the visible anchor for precise
-     * taps/drags; on desktop the ghost just follows the mouse, so a marker
-     * would only add noise.
+     * taps/drags; under a mouse the ghost just follows the cursor, so a marker
+     * would only add noise. Keyed off `touchRecent` (#101 Slice 1) so on a hybrid
+     * it appears when you touch the screen and goes away when you take the mouse.
      */
     private updateCenterMarker(): void {
-        if (!this.visible || inputMode.mode !== 'mobile') return
+        if (!this.visible || !inputMode.touchRecent) {
+            // Pick the mouse back up on a hybrid and the crosshair retires with it.
+            this.bpc.overlayContainer.hidePaintCenterMarker()
+            return
+        }
         this.bpc.overlayContainer.updatePaintCenterMarker(this.position)
     }
 

@@ -1,6 +1,6 @@
 import EventEmitter from 'eventemitter3'
 import { EditorMode, BlueprintContainer } from './BlueprintContainer'
-import { inputMode } from '../common/input'
+import { acceptsPointerType, inputMode, isMousePipeline } from '../common/input'
 
 export interface GridDataEvents {
     destroy: []
@@ -26,12 +26,15 @@ export class GridData extends EventEmitter<GridDataEvents> {
         super()
         this.bpc = bpc
 
-        const onMouseMove = (e: MouseEvent): void => {
-            // On touch the grid cursor is placed explicitly by taps (`moveTo`),
-            // not by pointer movement. If we tracked moves here too, dragging to
-            // pan (or the synthetic mouse events a tap emits) would drag the paint
-            // ghost along with the finger instead of leaving it pinned to its tile.
-            if (inputMode.mode === 'mobile') return
+        const onMouseMove = (e: PointerEvent): void => {
+            // Touch places the grid cursor explicitly, by tap (`moveTo`), not by
+            // pointer movement: tracking touch moves here would drag the paint
+            // ghost along with a finger that only meant to pan, instead of leaving
+            // it pinned to its tile. Decided per *event* (#101 Slice 1), so on a
+            // hybrid the mouse keeps steering the cursor even after a tap — and a
+            // forced preset still filters the pointer out entirely.
+            if (!acceptsPointerType(inputMode.preset, e.pointerType)) return
+            if (!isMousePipeline(e.pointerType)) return
             this.update(e.clientX, e.clientY)
         }
         window.addEventListener('pointermove', onMouseMove)
