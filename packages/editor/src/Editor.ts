@@ -20,6 +20,7 @@ import { PaintTileContainer } from './containers/PaintTileContainer'
 import { UIContainer } from './UI/UIContainer'
 import { Dialog } from './UI/controls/Dialog'
 import { ActionRegistry, MouseButton } from './actions'
+import { isFirefox } from './common/browser'
 
 export class Editor {
     // Stable mode emitter. The BlueprintContainer is swapped out on every
@@ -397,13 +398,22 @@ export class Editor {
                 },
             },
             // EDIT
+            //
+            // Firefox can't have the game's `Shift+RMB`: it always opens its own
+            // context menu on Shift+right-click and doesn't dispatch the event to
+            // the page, so the site-wide `contextmenu` preventDefault can't stop
+            // it (see `common/browser.ts` / #101). We therefore *default* it to
+            // `Ctrl+Shift+LMB` there. That's safe next to the other left-button
+            // actions: the registry matches most-modifiers-first, so this two-
+            // modifier action is tried before `copySelection` (`Ctrl+LMB`), and
+            // it only succeeds in EDIT mode — outside EDIT it reports failure and
+            // the press falls through to the copy-drag exactly as before.
+            // A user's own binding still wins: `importKeybinds` runs after this.
             copyEntitySettings: {
                 trigger: {
-                    button: MouseButton.Right,
+                    button: isFirefox() ? MouseButton.Left : MouseButton.Right,
                 },
-                modifiers: {
-                    shift: true,
-                },
+                modifiers: isFirefox() ? { control: true, shift: true } : { shift: true },
                 callbacks: {
                     onPress: () => G.BPC.copyEntitySettings(),
                 },

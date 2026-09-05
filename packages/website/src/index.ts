@@ -18,6 +18,7 @@ import EDITOR, {
     loadPackManifest,
     getCanonicalDataPack,
     canonicalPacks,
+    isFirefox,
 } from '@fbe/editor'
 import type { PackManifestEntry } from '@fbe/editor'
 import { initToasts } from './toasts'
@@ -154,6 +155,30 @@ if (isMobile.any && localStorage.getItem('fbe:touchToastSeen') !== 'true') {
             'Pinch to zoom and drag with two fingers to pan.',
         type: 'info',
         timeout: 8000,
+    })
+}
+// Firefox never lets the page see a Shift+right-click: it opens its own context
+// menu and doesn't dispatch the event at all, so the document-wide
+// `contextmenu` preventDefault above can't suppress it (Bugzilla 897379). The
+// editor therefore defaults "Copy entity settings" to Ctrl+Shift+Click there
+// (see `common/browser.ts` / #101) — say so once, and point at both escape
+// hatches (the about:config opt-out, or a custom keybind). Once only: like the
+// touch toast, re-showing it on every reload would just be noise.
+if (
+    !isMobile.any &&
+    isFirefox() &&
+    localStorage.getItem('fbe:firefoxShiftRmbHintSeen') !== 'true'
+) {
+    localStorage.setItem('fbe:firefoxShiftRmbHintSeen', 'true')
+    createToast({
+        text:
+            'Firefox opens its own menu on Shift+right-click, so <b>Copy entity settings</b> ' +
+            'is <b>Ctrl+Shift+Click</b> here.<br>' +
+            'To use Shift+Right-click instead, set ' +
+            '<b>dom.event.contextmenu.shift_suppresses_event</b> to <b>false</b> in about:config — ' +
+            'or rebind it under Settings → Keybinds.',
+        type: 'info',
+        timeout: 15000,
     })
 }
 

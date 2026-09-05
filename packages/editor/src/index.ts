@@ -12,6 +12,7 @@ import {
 import { Editor } from './Editor'
 import { inputMode, InputMode } from './common/input'
 import { installTestHook } from './common/testHook'
+import { isFirefox } from './common/browser'
 import type { EditorTestState, FbeTestHook } from './common/testHook'
 import FD from './core/factorioData'
 import {
@@ -27,6 +28,9 @@ import type { PackManifestEntry } from './core/packManifest'
 
 export * from './core/bpString'
 export { Editor, Book, Blueprint, GridPattern, EditorMode, FD, inputMode, installTestHook }
+// Browser sniffing for the couple of input quirks with no feature to detect —
+// the website uses it to explain Firefox's Shift+right-click limitation (#101).
+export { isFirefox }
 export { DATA_ROOT, DATA_PACK, DEFAULT_DATA_PACK, setDataPack }
 export { loadPackManifest, getCanonicalDataPack, canonicalPackId, canonicalPacks }
 export { graphicsOptions }
