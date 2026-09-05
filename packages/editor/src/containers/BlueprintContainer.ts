@@ -261,7 +261,7 @@ export class BlueprintContainer extends Container {
         })
 
         // Hover is a mouse/pen concept. Touch synthesizes over/out around a tap —
-        // and an `pointerout` would hide the paint ghost we just positioned,
+        // and a `pointerout` would hide the paint ghost we just positioned,
         // breaking the tap-to-preview flow. On touch, ghost visibility is driven
         // explicitly by the tap / Place path instead (see handlePaintTap /
         // confirmPlacement). Gated per *event*, so a mouse hover still works on a
