@@ -13,7 +13,7 @@ import EDITOR, {
     canonicalPacks,
     graphicsOptions,
 } from '@fbe/editor'
-import type { InputMode } from '@fbe/editor'
+import type { InputMode, InputPreset } from '@fbe/editor'
 import type { IToastsOptions } from './toasts'
 
 GUI.TEXT_CLOSED = 'Close Settings'
@@ -126,18 +126,23 @@ export function initSettingsPane(
             editor.gridColor = darkTheme ? COLOR_DARK : COLOR_LIGHT
         })
 
-    // Input scheme: desktop (mouse/keyboard) vs mobile (touch). `inputMode`
-    // owns detection + persistence; `.listen()` keeps the dropdown in sync if
-    // the mode is changed elsewhere.
-    const inputModeProxy = {
-        get mode(): InputMode {
-            return inputMode.mode
+    // Input preset (#101 Slice 1). Detection is no longer a desktop/mobile
+    // switch: the editor routes each pointer event by its own type and reads
+    // live environment signals (`coarse` / `keys` / `compact` / `touchRecent`),
+    // so the setting is an *override of the inputs* — `auto` lets the signals
+    // decide, `mouse`/`touch` force one pointer kind for odd hardware and
+    // debugging. `inputMode` owns persistence (`fbe:inputPreset`, migrated from
+    // the old `fbe:inputMode`); `.listen()` keeps the dropdown in sync if the
+    // preset is changed elsewhere (e.g. the `?test` hook).
+    const inputPresetProxy = {
+        get preset(): InputPreset {
+            return inputMode.preset
         },
-        set mode(m: InputMode) {
-            inputMode.mode = m
+        set preset(p: InputPreset) {
+            inputMode.preset = p
         },
     }
-    gui.add(inputModeProxy, 'mode', ['desktop', 'mobile']).name('Input Mode').listen()
+    gui.add(inputPresetProxy, 'preset', ['auto', 'mouse', 'touch']).name('Input').listen()
 
     // Data pack, two axes (docs/slim-graphics.md):
     //
@@ -303,10 +308,12 @@ export function initSettingsPane(
         .add({ resetDefaults: () => EDITOR.resetKeybinds() }, 'resetDefaults')
         .name('Reset Defaults')
 
-    // Mobile-friendliness: drive a `body.mobile` class off the input mode (CSS in
-    // index.styl widens the pane and enlarges touch targets), and hide the
+    // Mobile-friendliness: drive a `body.mobile` class off the derived input mode
+    // (CSS in index.styl widens the pane and enlarges touch targets), and hide the
     // Keybinds folder — it edits keyboard combos, which are meaningless without a
-    // keyboard and otherwise dominate the pane's height.
+    // keyboard and otherwise dominate the pane's height. (Both move onto the
+    // `coarse` / `keys` signals in a later slice of #101; for now the derived mode
+    // keeps today's behaviour exactly.)
     const syncMobileLayout = (mode: InputMode): void => {
         const mobile = mode === 'mobile'
         document.body.classList.toggle('mobile', mobile)

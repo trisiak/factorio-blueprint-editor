@@ -83,14 +83,18 @@ test.describe('settings pane (dat.gui)', () => {
         // dat.gui's built-in open/close bar (which overlapped the quickbar) is hidden
         await expect(page.locator('.dg.main .close-button')).toBeHidden()
 
-        const inputModeRow = page.locator('.dg li.cr', { hasText: 'Input Mode' })
-        const openAtStart = await inputModeRow.isVisible()
+        const inputPresetRow = page.locator('.dg li.cr', { hasText: 'Input' })
+        const openAtStart = await inputPresetRow.isVisible()
 
         await toggleSettingsPane(page)
-        await (openAtStart ? expect(inputModeRow).toBeHidden() : expect(inputModeRow).toBeVisible())
+        await (openAtStart
+            ? expect(inputPresetRow).toBeHidden()
+            : expect(inputPresetRow).toBeVisible())
 
         await toggleSettingsPane(page)
-        await (openAtStart ? expect(inputModeRow).toBeVisible() : expect(inputModeRow).toBeHidden())
+        await (openAtStart
+            ? expect(inputPresetRow).toBeVisible()
+            : expect(inputPresetRow).toBeHidden())
     })
 
     test('collapses fully when closed in mobile mode', async ({ page }) => {
@@ -103,15 +107,15 @@ test.describe('settings pane (dat.gui)', () => {
         await expect(page.locator('body')).toHaveClass(/mobile/)
 
         // Regression: taller touch rows must not out-rank dat.gui's closed-collapse,
-        // otherwise controllers (Input Mode, Debug, …) stay visible when closed.
+        // otherwise controllers (Input, Debug, …) stay visible when closed.
         // Assert on the row <li> (which collapses to height:0), not its inner
         // label — a clipped child still reports its own bounding box.
-        const inputModeRow = page.locator('.dg li.cr', { hasText: 'Input Mode' })
-        await expect(inputModeRow).not.toBeVisible()
+        const inputPresetRow = page.locator('.dg li.cr', { hasText: 'Input' })
+        await expect(inputPresetRow).not.toBeVisible()
 
         // opening the pane (the close button toggles it) reveals the controls
         await toggleSettingsPane(page)
-        await expect(inputModeRow).toBeVisible()
+        await expect(inputPresetRow).toBeVisible()
     })
 
     test('hides the keyboard-only Keybinds folder in mobile mode', async ({ page }) => {

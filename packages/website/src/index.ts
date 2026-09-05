@@ -18,6 +18,7 @@ import EDITOR, {
     loadPackManifest,
     getCanonicalDataPack,
     canonicalPacks,
+    inputMode,
 } from '@fbe/editor'
 import type { PackManifestEntry } from '@fbe/editor'
 import { initToasts } from './toasts'
@@ -126,6 +127,24 @@ console.log(
 )
 
 const createToast = initToasts()
+
+// Input signals as body classes (#101 Slice 1). Detection is no longer a
+// desktop/mobile switch: `coarse` (primary pointer), `keys` (a physical keyboard
+// is present), `compact` (narrow viewport) and `touch-recent` (the last pointer
+// event was a touch) are orthogonal and live, so most device gating can become
+// plain CSS instead of a JS branch. They sit *alongside* the legacy `body.mobile`
+// (still driven by the derived mode in settingsPane.ts) while the surfaces
+// migrate one slice at a time.
+const syncInputSignalClasses = (): void => {
+    const { coarse, keys, compact, touchRecent } = inputMode.signals
+    const cl = document.body.classList
+    cl.toggle('coarse', coarse)
+    cl.toggle('keys', keys)
+    cl.toggle('compact', compact)
+    cl.toggle('touch-recent', touchRecent)
+}
+syncInputSignalClasses()
+inputMode.on('signals', syncInputSignalClasses)
 
 // Touch support is a work in progress (pinch-to-zoom and two-finger pan are
 // wired up; tap-to-place and on-screen controls are still to come). The app
