@@ -403,11 +403,16 @@ test.describe('the clear-a-slot hint', () => {
         // Input mode switches without a reload and the settings pane is DOM, so
         // toggling it leaves canvas dialogs open — a hint computed once at
         // construction would keep naming the gesture of the mode you just left.
+        // The beacon, not the machine: machines present as the DOM editor on
+        // mobile (#98), which *closes* on a mode switch by design (presentation
+        // follows mode — covered in entityEditor.spec.ts); the live-updating
+        // hint is a property of the Pixi editors, which the beacon still is in
+        // both modes.
         await page.goto(`/?test&source=${encodeURIComponent(BP)}`)
         await waitForAppReady(page)
 
         // Open the editor once and leave it open across the switch.
-        await openSlot(page, 'assembling-machine-2', 'modules', 0)
+        await openSlot(page, 'beacon', 'modules', 0)
 
         const setMode = (mode: 'desktop' | 'mobile'): Promise<void> =>
             page.evaluate(

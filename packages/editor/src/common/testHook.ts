@@ -69,6 +69,13 @@ export interface EditorTestState {
      */
     dialogOpen: boolean
     /**
+     * Whether any modal is open in *either* technology — a Pixi dialog or a
+     * DOM one (#98). Presentation-agnostic specs (tap-to-edit, Edit-toggle)
+     * assert this; `dialogOpen` stays Pixi-only for the per-mode-presentation
+     * ratchets that need "the canvas dialog did NOT open".
+     */
+    modalOpen: boolean
+    /**
      * Touch box-select (#21): entities under the held marquee selection (0 unless
      * a selection is held, i.e. mode SELECT with the action controls showing).
      * `origin` is the selection's top-left tile — lets tests assert in-place
@@ -138,6 +145,7 @@ export function getEditorTestState(): EditorTestState {
                     : null,
         },
         dialogOpen: Dialog.anyOpen(),
+        modalOpen: Dialog.anyModalOpen(),
         marquee: {
             count: G.BPC.marqueeCount,
             tileCount: G.BPC.marqueeTileCount,
@@ -254,11 +262,17 @@ export interface FbeTestHook {
      */
     inventoryFirstItemPos: () => { x: number; y: number } | null
     /**
-     * Whether an item selector is open. Distinct from `getState().dialogOpen`,
-     * which stays true for the entity editor the selector was opened *from* —
-     * so "the picker closed" needs its own signal.
+     * Whether an item selector is open — the Pixi InventoryDialog *or* the DOM
+     * item picker (#98), whichever presents in the current mode. Distinct from
+     * `getState().dialogOpen`, which stays true for the entity editor the
+     * selector was opened *from* — so "the picker closed" needs its own signal.
      */
     inventoryOpen: () => boolean
+    /**
+     * Whether the *Pixi* InventoryDialog specifically is open — the probe for
+     * "the canvas dialog did NOT present" in per-mode presentation ratchets.
+     */
+    pixiInventoryOpen: () => boolean
     /**
      * Open `name`'s editor and report its clear-a-slot hint text (null when the
      * editor has no clearable slots — currently none: every routed editor holds
@@ -367,6 +381,29 @@ function findEntity(name: string): Entity | undefined {
  * Attach the state probe to `window`. Opt-in only — the website installs it
  * under `?test` — so it is absent in normal use.
  */
+/**
+ * The DOM presentations of the migrated dialogs (#98) are queryable directly,
+ * but the hook still reports them through the same coordinate/label shapes as
+ * the Pixi ones, so specs stay press-at-position across the migration. These
+ * class names are the website's dialog markup — test-only coupling, kept here
+ * because the hook *is* the cross-boundary probe.
+ */
+function domPicker(): Element | null {
+    const pickers = document.querySelectorAll('.fbe-dialog.item-picker')
+    return pickers.length ? pickers[pickers.length - 1] : null
+}
+
+function domCenter(el: Element | null): { x: number; y: number } | null {
+    if (!el) return null
+    const r = el.getBoundingClientRect()
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
+}
+
+/** Close Pixi dialogs and (over the bridge event) the DOM ones. */
+function closeEverything(): void {
+    Dialog.closeAllModals()
+}
+
 export function installTestHook(win: Window = window): void {
     const hook: FbeTestHook = {
         getState: getEditorTestState,
@@ -382,16 +419,21 @@ export function installTestHook(win: Window = window): void {
         openEntityEditor: name => {
             const e = findEntity(name)
             if (!e) return false
-            Dialog.closeAll()
-            return G.UI.createEditor(e) !== undefined
+            closeEverything()
+            // The real per-mode entry (#98): DOM editor on mobile for the
+            // migrated kinds, Pixi otherwise.
+            return G.UI.openEntityEditor(e)
         },
+        // Routed through the real per-mode entry (#98) so the probe drives the
+        // presentation the user would get: Pixi dialog on desktop, the DOM
+        // selector (via `fbe:openinventory`) on mobile.
         openInventory: () => {
-            Dialog.closeAll()
-            G.UI.createInventory('Inventory', undefined, undefined, 'items')
+            closeEverything()
+            G.UI.openMainInventory()
         },
         previewInventoryItem: name => {
-            Dialog.closeAll()
-            G.UI.createInventory('Inventory', undefined, undefined, 'items').beginPreview(name)
+            closeEverything()
+            G.UI.openMainInventory(name)
         },
         inventoryScrollToLastItem: () => {
             Dialog.closeAll()
@@ -402,7 +444,9 @@ export function installTestHook(win: Window = window): void {
                 'items'
             ).scrollToLastItem()
         },
-        closeDialogs: () => Dialog.closeAll(),
+        // Closes the Pixi dialogs and — over the `fbe:closedialogs` bridge —
+        // the website-side DOM ones (#98).
+        closeDialogs: () => closeEverything(),
         centerView: () => G.BPC.centerViewport(),
         spawnPasteGhost: () => {
             const entities = G.bp.entities.valuesArray()
@@ -485,9 +529,23 @@ export function installTestHook(win: Window = window): void {
         openEditorSlot: (name, kind, index) => {
             const e = findEntity(name)
             if (!e) return null
-            Dialog.closeAll()
-            const editor = G.UI.createEditor(e)
-            if (!editor) return null
+            closeEverything()
+            if (!G.UI.openEntityEditor(e)) return null
+            // DOM editor (#98, mobile migrated kinds): the slots are real
+            // buttons; report the same coordinate shape so specs stay
+            // press-at-position either way.
+            const dom = document.querySelector('.fbe-dialog.entity-editor')
+            if (dom) {
+                return domCenter(
+                    kind === 'recipe'
+                        ? dom.querySelector('.ee-recipe-slot')
+                        : dom.querySelector(
+                              `.ee-${kind === 'modules' ? 'module' : 'filter'}-slot[data-index="${index}"]`
+                          )
+                )
+            }
+            const editor = Dialog.openDialogs.findLast(d => d instanceof Editor)
+            if (!(editor instanceof Editor)) return null
             // The recipe control *is* a Slot (Recipe extends Slot), so it sits
             // directly on the editor rather than inside a group container.
             const target =
@@ -501,14 +559,20 @@ export function installTestHook(win: Window = window): void {
             return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
         },
         inventoryClearButtonPos: () => {
+            const dom = domPicker()
+            if (dom) return domCenter(dom.querySelector('.is-clear'))
             const inv = Dialog.openDialogs.findLast(d => d instanceof InventoryDialog)
             return inv ? inv.clearButtonPosition() : null
         },
         inventoryClearButtonLabel: () => {
+            const dom = domPicker()
+            if (dom) return dom.querySelector('.is-clear')?.textContent ?? null
             const inv = Dialog.openDialogs.findLast(d => d instanceof InventoryDialog)
             return inv ? inv.clearButtonLabel() : null
         },
         inventoryConfirmButtonPos: () => {
+            const dom = domPicker()
+            if (dom) return domCenter(dom.querySelector('.is-confirm'))
             const inv = Dialog.openDialogs.findLast(d => d instanceof InventoryDialog)
             return inv ? inv.confirmButtonPosition() : null
         },
@@ -516,19 +580,29 @@ export function installTestHook(win: Window = window): void {
             inputMode.mode = mode
         },
         openEditorClearHint: () => {
+            const dom = document.querySelector('.fbe-dialog.entity-editor .ee-hint')
+            if (dom) return dom.textContent
             const editor = Dialog.openDialogs.findLast(d => d instanceof Editor)
             return editor ? editor.clearHintText : null
         },
         inventoryFirstItemPos: () => {
+            const dom = domPicker()
+            if (dom) return domCenter(dom.querySelector('.is-cell'))
             const inv = Dialog.openDialogs.findLast(d => d instanceof InventoryDialog)
             return inv ? inv.firstItemPosition() : null
         },
-        inventoryOpen: () => Dialog.openDialogs.some(d => d instanceof InventoryDialog),
+        inventoryOpen: () =>
+            Dialog.openDialogs.some(d => d instanceof InventoryDialog) || domPicker() !== null,
+        pixiInventoryOpen: () => Dialog.openDialogs.some(d => d instanceof InventoryDialog),
         editorClearHint: name => {
             const e = findEntity(name)
             if (!e) return null
-            Dialog.closeAll()
-            return G.UI.createEditor(e)?.clearHintText ?? null
+            closeEverything()
+            if (!G.UI.openEntityEditor(e)) return null
+            const dom = document.querySelector('.fbe-dialog.entity-editor .ee-hint')
+            if (dom) return dom.textContent
+            const editor = Dialog.openDialogs.findLast(d => d instanceof Editor)
+            return editor instanceof Editor ? editor.clearHintText : null
         },
         infoPanelBounds: () => G.UI.entityInfoPanelBounds(),
         toggleRatesPanel: () => G.UI.toggleRatesPanel(),

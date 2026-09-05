@@ -132,11 +132,7 @@ export function editorKindFor(entity: Entity): EditorKind | undefined {
                 if (entity.type === 'lab') return 'temp'
             }
             if (isCraftingMachine(entity.entityData)) {
-                const hasRecipePicker =
-                    entity.acceptedRecipes.length > 0 &&
-                    entity.type !== 'furnace' &&
-                    entity.type !== 'rocket-silo'
-                if (hasRecipePicker || entity.moduleSlots > 0) {
+                if (entity.hasRecipeSlot || entity.moduleSlots > 0) {
                     return 'temp'
                 }
             }

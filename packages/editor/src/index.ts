@@ -38,6 +38,20 @@ export type { EntityInfoData, EntityInfoStack } from './UI/EntityInfoPanel'
 // drawer's numbers formatted exactly like the canvas panel's.
 export type { RatesData, RatesEntryData } from './UI/RatesPanel'
 export { formatRate } from './UI/RatesPanel'
+// The render-free item-catalog projection + recents store behind the website's
+// DOM item selector (#98 Slice 1; opened at runtime via `fbe:openinventory`).
+export {
+    buildItemCatalog,
+    isItemAllowed,
+    itemDisplayName,
+    itemMatchesQuery,
+} from './core/itemCatalog'
+export type { CatalogGroup } from './core/itemCatalog'
+export { getRecents, recordRecent } from './UI/recentItems'
+// The DOM entity editor (#98 Slice 2) receives the live Entity over the
+// `fbe:openentityeditor` event (same JS runtime — no serialization) and works
+// it through the same accessors/setters the Pixi editors use.
+export type { Entity } from './core/Entity'
 export default {
     registerAction,
     callAction,

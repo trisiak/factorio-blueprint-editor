@@ -27,6 +27,9 @@ import { initViewportRegions } from './viewportRegions'
 import { loadPackIcons } from './packIcons'
 import { initEntityInfoSheet } from './entityInfoSheet'
 import { initRatesDrawer } from './ratesDrawer'
+import { initDialogLayer } from './dialogs/dialogLayer'
+import { initInventorySelector } from './dialogs/inventorySelector'
+import { initEntityEditor } from './dialogs/entityEditor'
 import { loadSavedBlueprint, clearSavedBlueprint } from './blueprintStorage'
 import { LibraryController } from './library/controller'
 import { createLibraryStore } from './library/store'
@@ -200,14 +203,17 @@ editor
         initEntityInfoSheet()
         initRatesDrawer()
         // Layering contract: DOM always composites above the canvas, so a Pixi
-        // dialog (entity editor, inventory) can never paint over the readouts —
-        // instead they yield while any dialog is open. The editor mirrors its
-        // open-dialog count over `fbe:dialogs`; the body class hides the sheet
-        // and drawer via CSS, and their state restores itself on close (the
-        // selection and the rates toggle live in the editor, untouched).
-        window.addEventListener('fbe:dialogs', e => {
-            document.body.classList.toggle('fbe-dialog-open', (e as CustomEvent<number>).detail > 0)
-        })
+        // dialog can never paint over the readouts — instead they yield while
+        // any dialog (Pixi or DOM, #98) is open. The dialog layer owns the
+        // `fbe-dialog-open` body class both dialog kinds feed; readout state
+        // lives in the editor and restores itself on close.
+        initDialogLayer()
+        // The DOM item selector (#98 Slice 1) — the mobile presentation of the
+        // main inventory; the editor opens it over `fbe:openinventory`.
+        initInventorySelector(editor)
+        // The DOM entity editor (#98 Slice 2) — the mobile presentation of the
+        // migrated editor kinds (machines so far), over `fbe:openentityeditor`.
+        initEntityEditor(editor)
 
         // Opt-in e2e probe for on-canvas state that the DOM can't expose.
         if (new URLSearchParams(window.location.search).has('test')) {

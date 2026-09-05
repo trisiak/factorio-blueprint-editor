@@ -15,7 +15,7 @@ interface PaintState {
         direction: number | null
     }
     blueprint: { entityCount: number }
-    dialogOpen: boolean
+    modalOpen: boolean
 }
 
 function getState(page: Page): Promise<PaintState> {
@@ -164,22 +164,25 @@ test.describe('touch placement (deferred)', () => {
         await page.locator('#action-toolbar button[title="Cancel"]').tap()
         await expect.poll(async () => (await getState(page)).paint.active).toBe(false)
 
-        // First tap selects/inspects the entity — its info shows, but no overlay.
+        // First tap selects/inspects the entity — its info shows, but no overlay
+        // (`modalOpen` covers either technology: the machine's editor is the
+        // DOM one on mobile since #98 Slice 2).
         await page.locator('#editor').tap({ position: TILE_A })
-        expect((await getState(page)).dialogOpen).toBe(false)
+        expect((await getState(page)).modalOpen).toBe(false)
 
         // Second tap on the same entity opens the editor overlay (openEditor runs
         // synchronously within the tap, so read directly rather than polling).
         await page.locator('#editor').tap({ position: TILE_A })
-        expect((await getState(page)).dialogOpen).toBe(true)
+        expect((await getState(page)).modalOpen).toBe(true)
 
-        // Tapping the canvas outside the editor dismisses it (no stale overlay
-        // lingering when you tap away). The editor is centered, so tap below it —
-        // but not too low: the canvas is inset below the top chrome (#89 Phase 1),
-        // so the element's bottom rows now sit under the fixed bottom-center
-        // EDIT bar, which would intercept the tap.
-        await page.locator('#editor').tap({ position: { x: 206, y: 600 } })
-        expect((await getState(page)).dialogOpen).toBe(false)
+        // Tapping away dismisses it (no stale overlay lingering) — for the DOM
+        // editor the tap lands on its full-screen backdrop, which covers the
+        // canvas; aim for the band between the top chrome and the panel.
+        await page
+            .locator('.fbe-dialog-backdrop')
+            .last()
+            .tap({ position: { x: 206, y: 120 } })
+        await expect.poll(async () => (await getState(page)).modalOpen).toBe(false)
     })
 
     test('the Delete button removes the selected entity', async ({ page }) => {

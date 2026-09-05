@@ -183,6 +183,29 @@ export class Editor {
         }
     }
 
+    /**
+     * Put `itemName` on the cursor unconditionally — the item selector's commit
+     * (#98): re-picking the held item keeps painting it, unlike the rail wire
+     * buttons' toggle semantics above.
+     */
+    public spawnPaintItem(itemName: string): void {
+        G.BPC.spawnPaintContainer(itemName)
+    }
+
+    /**
+     * Names in use on the blueprint, per picker category (with repeats
+     * collapsed by the callers that want that) — backs the DOM pickers'
+     * Recents-tab "On blueprint" section, same source as the Pixi dialog's:
+     * entity names for the item picker, set recipes for the recipe picker,
+     * slotted modules for the module picker.
+     */
+    public blueprintUsedNames(kind: 'items' | 'recipes' | 'modules'): string[] {
+        const ents = G.bp.entities.valuesArray()
+        if (kind === 'recipes') return ents.map(e => e.recipe).filter((r): r is string => !!r)
+        if (kind === 'modules') return ents.flatMap(e => e.modules).filter((m): m is string => !!m)
+        return ents.map(e => e.name)
+    }
+
     // --- Touch marquee (#21) — thin delegators for the website's Select button
     // and the Copy/Cut/Delete bar (the gesture itself lives in BlueprintContainer).
     /**
@@ -553,12 +576,10 @@ export class Editor {
                         if (Dialog.anyOpen()) {
                             Dialog.closeLast()
                         } else {
-                            G.UI.createInventory(
-                                'Inventory',
-                                undefined,
-                                G.BPC.spawnPaintContainer.bind(G.BPC),
-                                'items'
-                            )
+                            // Per-mode presentation (#98): Pixi dialog on
+                            // desktop, the website's DOM selector on mobile
+                            // (which toggles itself closed on a repeat press).
+                            G.UI.openMainInventory()
                         }
                         return true
                     },

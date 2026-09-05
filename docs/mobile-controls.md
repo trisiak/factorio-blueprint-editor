@@ -368,6 +368,50 @@ pipelines at once made touch taps double-act via the browser's synthetic
       contract"). Ratchet: "modal layering" in `panels.spec.ts`. The fallback
       if this ever needs iteration is migrating dialogs to DOM wholesale, not
       more coexistence rules.
+    - ✅ **DOM dialogs — shell + main item selector (#98 Slices 0–1)**: the
+      "pull the plug" arc begins. `website/src/dialogs/` gains the modal
+      shell (`shell.ts`: backdrop, ✕, Escape, auto-close on mode switch) and
+      `dialogLayer.ts` (owns `body.fbe-dialog-open`, ORing the Pixi
+      `fbe:dialogs` count with open DOM dialogs, so the contract holds
+      through the migration). First tenant: the **main inventory** —
+      E / rail "Items" on mobile opens the DOM `inventorySelector.ts`
+      (group tabs, native scrolling, a real **search box** — the first
+      selector text input touch users get, retiring that #56 case for this
+      dialog — ★ Recents with the Recent/Quickbar/On-blueprint sections,
+      tap-to-preview → ✓ Confirm, Pin/Unpin). It renders from the new
+      render-free `core/itemCatalog.ts` (unit-tested; the same walk the Pixi
+      dialog does inline) and commits through `editor.spawnPaintItem`.
+      Desktop keeps the Pixi dialog; so do the editor-embedded pickers
+      (recipe/module/filter slots) until their editors migrate. Seam:
+      `UIContainer.openMainInventory` → `fbe:openinventory`. Ratchets in
+      `inventorySelector.spec.ts` (per-mode presentation, search→select→
+      paint, backdrop/E close, readouts yield + restore).
+    - ✅ **DOM entity editor — crafting machines (#98 Slice 2)**: the
+      recipe+modules form (the editor behind the recipe-changing bug)
+      presents as the DOM `dialogs/entityEditor.ts` on mobile — both the
+      `machine` kind (assembling machines) and the generic `temp` kind
+      (furnaces, refineries, chem plants, and every modded/expansion machine
+      the name switch doesn't know — the first live-testing gap: SE's space
+      assembler opened nothing). The recipe row gates on the new shared
+      `Entity.hasRecipeSlot` (furnaces/rocket silos auto-pick — modules
+      only), now also used by editor routing and the Pixi TempEditor. Routed
+      per kind from `UIContainer.openEntityEditor` → `fbe:openentityeditor`
+      (the event
+      carries the live `Entity`; the DOM editor reads its accessors, writes
+      its History-wrapped setters, and follows its change events — undo/redo
+      reflect live, destroy closes it). Slots keep the established touch
+      grammar: tap opens the **filtered DOM picker** (the shared
+      `itemPicker.ts` — recipes confirm-gated, modules commit-on-tap, ✕
+      Clear/Cancel escape hatch), long-press clears, hint line included; the
+      picker stacks over the editor (Escape peels the top dialog only —
+      `dialogLayer.isTopDomDialog`). A mobile→desktop switch closes the DOM
+      editor (presentation follows mode). Preview decision (v1): **no live
+      sprite preview** — the header carries the entity's pack-sheet icon;
+      revisit with render-to-texture if missed. The `?test` hook is
+      DOM-aware (slot/✕/✓ probes report DOM coords in the same shape), so the
+      whole `clearSlots.spec.ts` gesture matrix runs against the DOM editor
+      unchanged; new per-mode + recipe-end-to-end ratchets in
+      `entityEditor.spec.ts`. Other kinds keep Pixi until their slices.
     - ⬜ **Phase 4 — e2e bounds-disjointness ratchets**
 - 🚧 **Touch placement: preview + confirm (Slice 1 done)** — desktop previews a
   placement by hovering (ghost shows orientation/validity before you click);

@@ -45,16 +45,16 @@ Reference viewport for concrete numbers: a Pixel-7-ish **portrait** screen,
 
 ## Layer 1 — Pixi UI (drawn _on_ the canvas, via `UIContainer`)
 
-| Element                                         | Anchor                                    | Intrinsic size              | Scaling / behavior                                                                  | Portrait notes                                                                              |
-| ----------------------------------------------- | ----------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| **Quickbar** (`QuickbarPanel`, 2 rows)          | bottom-center (desktop)                   | 442 × 100                   | `fitToWidthScale`; **retired on mobile** (hidden)                                   | **Gone on mobile** — actions live in the rail; slots/keybinds still work, desktop unchanged |
-| **Wires panel** (`WiresPanel`)                  | beside the quickbar (desktop)             | 136 × 62                    | clamp on-screen; **retired on mobile** (hidden)                                     | **Gone on mobile** — the three wires are colour-coded rail buttons (toggle to hold/drop)    |
-| **Entity-info** (`EntityInfoPanel`)             | top-right of `G.safeArea` (desktop)       | 270 × 270 (grows w/ recipe) | fit + clamp; **desktop-only** (hidden on mobile)                                    | **Gone on mobile** — presented by the DOM `#entity-info-sheet` instead (#89 Phase 2)        |
-| **Rates panel** (`RatesPanel`, #87)             | top-right, below the info panel (desktop) | 270 × 400                   | fit + clamp; **desktop-only** (hidden on mobile)                                    | **Gone on mobile** — presented by the DOM `#rates-drawer` instead (#89 Phase 2)             |
-| **Editors** (machine/inserter/chest/splitter/…) | centered                                  | 402–**504** × 171–176       | scale-to-fit + clamp                                                                | Centered modal                                                                              |
-| **Inventory** (`InventoryDialog`)               | centered                                  | **responsive W** × ~520     | width fits the tabs (capped to screen, ≥404); tab/item **scroll** + **Recents tab** | Touch-usable: long-press preview + Pin/Unpin                                                |
-| **Paint ghost icon**                            | follows finger (`globalX+16`)             | small                       | tracks pointer                                                                      | Not edge-anchored                                                                           |
-| **Debug** (`DebugContainer`)                    | top-left (≈145, 5)                        | text                        | hidden unless `?debug`                                                              | —                                                                                           |
+| Element                                         | Anchor                                    | Intrinsic size              | Scaling / behavior                                                                  | Portrait notes                                                                                                                                   |
+| ----------------------------------------------- | ----------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Quickbar** (`QuickbarPanel`, 2 rows)          | bottom-center (desktop)                   | 442 × 100                   | `fitToWidthScale`; **retired on mobile** (hidden)                                   | **Gone on mobile** — actions live in the rail; slots/keybinds still work, desktop unchanged                                                      |
+| **Wires panel** (`WiresPanel`)                  | beside the quickbar (desktop)             | 136 × 62                    | clamp on-screen; **retired on mobile** (hidden)                                     | **Gone on mobile** — the three wires are colour-coded rail buttons (toggle to hold/drop)                                                         |
+| **Entity-info** (`EntityInfoPanel`)             | top-right of `G.safeArea` (desktop)       | 270 × 270 (grows w/ recipe) | fit + clamp; **desktop-only** (hidden on mobile)                                    | **Gone on mobile** — presented by the DOM `#entity-info-sheet` instead (#89 Phase 2)                                                             |
+| **Rates panel** (`RatesPanel`, #87)             | top-right, below the info panel (desktop) | 270 × 400                   | fit + clamp; **desktop-only** (hidden on mobile)                                    | **Gone on mobile** — presented by the DOM `#rates-drawer` instead (#89 Phase 2)                                                                  |
+| **Editors** (machine/inserter/chest/splitter/…) | centered                                  | 402–**504** × 171–176       | scale-to-fit + clamp                                                                | Centered modal. **Machines gone on mobile** — the DOM entity editor presents (#98 Slice 2); other kinds follow slice by slice                    |
+| **Inventory** (`InventoryDialog`)               | centered                                  | **responsive W** × ~520     | width fits the tabs (capped to screen, ≥404); tab/item **scroll** + **Recents tab** | **Main inventory gone on mobile** — the DOM selector presents (#98); still the editor-embedded picker (recipe/module/filter slots) on both modes |
+| **Paint ghost icon**                            | follows finger (`globalX+16`)             | small                       | tracks pointer                                                                      | Not edge-anchored                                                                                                                                |
+| **Debug** (`DebugContainer`)                    | top-left (≈145, 5)                        | text                        | hidden unless `?debug`                                                              | —                                                                                                                                                |
 
 ## Layer 2 — DOM overlays (on top of the canvas)
 
@@ -138,22 +138,33 @@ should eclipse a readout). From bottom to top:
 
 1. **The world** — the full-bleed canvas; renders through every band.
 2. **Passive DOM readouts** — entity-info sheet, rates drawer. Yield to
-   everything above: they hide while any Pixi dialog is open, via
-   `fbe:dialogs` → `body.fbe-dialog-open` (the editor announces from
-   `Dialog`'s ctor/`close()`; the website toggles the class; CSS does the
-   hiding). Their logical state stays in the editor, so they restore on close.
-3. **Pixi modal dialogs** — entity editors, inventory, item preview. Centered
-   in `G.safeArea`; win the surface over readouts _by the readouts yielding_,
-   since no z-index can put canvas content above DOM.
+   everything above: they hide while any dialog is open, via
+   `body.fbe-dialog-open` — owned by the website's `dialogs/dialogLayer.ts`,
+   which ORs the Pixi count (announced over `fbe:dialogs` from `Dialog`'s
+   ctor/`close()`) with the open DOM dialogs (#98). Their logical state stays
+   in the editor, so they restore on close.
+3. **Modal dialogs** — entity editors, inventory, item preview. Pixi ones are
+   centered in `G.safeArea` and win the surface over readouts _by the
+   readouts yielding_, since no z-index can put canvas content above DOM.
+   DOM ones (#98: the item selector, opened through `dialogs/shell.ts` at
+   z90 with a full-screen backdrop) sit in the browser's own stacking order
+   and register with the dialog layer, so the same gate holds. The dialog
+   layer is what lets both kinds coexist during the #98 migration.
 4. **Active DOM overlays** — info-panel, library panel (z100), the contextual
    clusters (z21). Explicitly toggled, genuinely above modals.
 5. **Transient chrome** — toasts. Pass over anything, briefly.
 
 **The rule for new UI:** any new DOM overlay must declare its tier. A passive
 readout must subscribe to the `fbe-dialog-open` gate (or live inside an
-element that does); anything interactive that may coexist with a Pixi dialog
-must either rank above it deliberately (tier 4) or reserve its own band via
+element that does); a new modal dialog opens through `dialogs/shell.ts` (which
+registers it); anything else interactive that may coexist with a dialog must
+either rank above it deliberately (tier 4) or reserve its own band via
 `setViewportInsets`.
+
+The long-term direction is **#98**: the Pixi modal layer migrates to DOM
+dialog by dialog (the main item selector is done; editors follow with their
+slices), after which tier 3 is pure DOM and the `fbe:dialogs` half of the
+gate retires with the last Pixi dialog.
 
 ## Root cause
 

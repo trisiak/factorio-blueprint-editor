@@ -13,6 +13,7 @@ interface MarqueeState {
     blueprint: { entityCount: number }
     marquee: { count: number; origin: { x: number; y: number } | null; direction: number | null }
     infoPanelVisible: boolean
+    modalOpen: boolean
 }
 
 // A small multi-entity vanilla blueprint (assemblers + inserters + a belt line);
@@ -219,16 +220,33 @@ test.describe('touch edit bar', () => {
         await expect(page.locator('#select-dpad')).toHaveClass(/visible/) // nudge applies now
     })
 
-    test('"Edit" toggles the entity editor open and closed', async ({ page }) => {
+    test('"Edit" opens the editor; a repeat press (or the backdrop) closes it', async ({
+        page,
+    }) => {
         await gotoWithBlueprint(page)
+
+        // Pixi-editor kind (the inserter): the edit bar stays reachable over a
+        // canvas dialog, so Edit is a true toggle.
+        await tapEntity(page, 'inserter')
+        await tapIn(page, 'edit-bar', 'Edit')
+        await expect.poll(async () => (await getState(page)).modalOpen).toBe(true)
+        await tapIn(page, 'edit-bar', 'Edit')
+        await expect.poll(async () => (await getState(page)).modalOpen).toBe(false)
+
+        // DOM-editor kind (the machine, #98 Slice 2): the modal backdrop
+        // covers the edit bar — a repeat press isn't physically possible, and
+        // tapping away IS the close gesture.
         await tapEntity(page, 'assembling-machine-3')
-
         await tapIn(page, 'edit-bar', 'Edit')
-        await expect.poll(async () => (await getState(page)).dialogOpen).toBe(true)
-
-        // Tapping Edit again while the editor is open closes it (toggle).
-        await tapIn(page, 'edit-bar', 'Edit')
-        await expect.poll(async () => (await getState(page)).dialogOpen).toBe(false)
+        await expect(page.locator('.fbe-dialog.entity-editor')).toBeVisible()
+        await expect.poll(async () => (await getState(page)).modalOpen).toBe(true)
+        // (x centered, y in the band between the top chrome and the panel.)
+        await page
+            .locator('.fbe-dialog-backdrop')
+            .last()
+            .tap({ position: { x: 206, y: 120 } })
+        await expect(page.locator('.fbe-dialog.entity-editor')).toBeHidden()
+        await expect.poll(async () => (await getState(page)).modalOpen).toBe(false)
     })
 
     test('Rotate turns a single selected entity in place', async ({ page }) => {

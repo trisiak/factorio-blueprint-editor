@@ -328,6 +328,22 @@ export class Entity extends EventEmitter<EntityEvents> {
         )
     }
 
+    /**
+     * Whether this machine's recipe is user-pickable, i.e. its editor gets a
+     * recipe slot. Furnaces and rocket silos auto-select their recipe from the
+     * input, so they get none — by type rather than by name, so modded
+     * machines of those types (e.g. Space Age's recycler furnace) are covered
+     * too. The one rule shared by editor routing, the Pixi TempEditor and the
+     * DOM entity editor (#98).
+     */
+    public get hasRecipeSlot(): boolean {
+        return (
+            this.acceptedRecipes.length > 0 &&
+            this.type !== 'furnace' &&
+            this.type !== 'rocket-silo'
+        )
+    }
+
     /** Count of module slots */
     public get moduleSlots(): number {
         const e = this.entityData
