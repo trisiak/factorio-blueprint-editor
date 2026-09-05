@@ -35,6 +35,15 @@ export class GridData extends EventEmitter<GridDataEvents> {
             // forced preset still filters the pointer out entirely.
             if (!acceptsPointerType(inputMode.preset, e.pointerType)) return
             if (!isMousePipeline(e.pointerType)) return
+            // Only while the pointer is actually over the play area. The listener
+            // is on `window` (so a drag that leaves the canvas keeps tracking),
+            // but a mouse crossing the *DOM* chrome — the action rail, the
+            // on-screen clusters, a toast — is not aiming at a tile, and letting
+            // it re-derive the cursor would yank a ghost that a tap had just
+            // parked away to wherever the button happens to sit. Buttons that act
+            // on the held cursor (nudge, Place, Erase, Select) would then act on
+            // the wrong tile.
+            if (!(e.target instanceof HTMLCanvasElement)) return
             this.update(e.clientX, e.clientY)
         }
         window.addEventListener('pointermove', onMouseMove)
