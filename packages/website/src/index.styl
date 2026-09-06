@@ -171,107 +171,56 @@ body.mobile
                 width: 22px
                 height: 22px
 
-    // Fold the corner buttons (Github / Settings / Library) into one 3-wide
-    // row of flush dark squares directly under the logo — a single 44px row
-    // instead of the old three-tall stack, so the non-action chrome costs
-    // almost no vertical space and the rail starts right below the logo band.
-    // (It's wider than the portrait rail column below, like the logo is —
-    // chrome floats over the full-bleed world, so nothing collides.)
-    #buttons
-        top: 52px
-        display: grid
-        grid-template-columns: repeat(3, 44px)
-        .github-button
-        .settings-button
-            display: flex
-            align-items: center
-            justify-content: center
-            width: 44px
-            height: 44px
-            padding: 0
-            border-left: 0
-            border-radius: 0
-            background: #3a3a3a
-            transform: none
-            &:hover
-            &:active
-            &:focus
-                transform: none
-                filter: brightness(1.15)
-            span
-                display: none
-            img
-                position: static
-                top: auto
-                left: auto
-                transform: none
-                width: 24px
-                height: 24px
-
 #editor
     position: fixed
     outline: none
 
+// Top-left column chrome: the logo band and, directly under it, the corner
+// buttons (Github / Settings / Library) folded into one 3-wide row of flush dark
+// squares — the head of the action rail's column. This *was* the mobile fold;
+// since #101 Slice 4 the rail is universal, so the fold is too and desktop's old
+// three-tall stack of labelled rows (which cost height and clashed with the
+// settings pane anchored under it) is gone. Cell size follows `--rail-cell`,
+// published by actionToolbar.ts from the `coarse` signal, so the chrome and the
+// rail below it are one column of exactly one width.
 #buttons
     position: absolute
     z-index: 5
-    top: 56px
+    top: 52px
     left: 0
+    display: grid
+    grid-template-columns: repeat(3, var(--rail-cell, 44px))
     a
     button
-        position: relative
-        height: 35px
-        display: block
-        border-bottom-right-radius: 5px
-        padding: 4px 8px
+        display: flex
+        align-items: center
+        justify-content: center
+        width: var(--rail-cell, 44px)
+        height: var(--rail-cell, 44px)
+        padding: 0
+        border: none
+        border-radius: 0
+        background: #3a3a3a
         color: #ffffff
         font-family: 'Titillium Web', sans-serif
-        font-size: 18px
-        letter-spacing: 0.6px
-        line-height: 30px
         text-decoration: none
-
-        span
-            position: absolute
-            // pinned explicitly (not via static position) so it lands the same in
-            // an <a> and a <button> — the latter centers its content differently
-            top: 50%
-            left: 25px
-            transform: translateY(-50%)
-
-        img
-            position: absolute
-            top: 0
-            left: 17px
-            transform: translateX(-50%)
-            width: 22px
-            height: 100%
-
-        transition: 0.3s all linear
-        transform: translateX(-5px)
+        cursor: pointer
+        outline: none
         &:hover
         &:active
         &:focus
-            transform: translateX(0)
-
-    .github-button
-        width: 105px
-        border-left: 5px solid #31383f
-        background-color: #31383f
+            filter: brightness(1.15)
+        // The captions are dropped in the fold — the icon carries the meaning
+        // and each control keeps a `title`/`aria-label` (index.html) for
+        // hover text and assistive tech.
+        span:not(.lib-icon)
+            display: none
         img
-            width: 20px
-
-    .settings-button
-        width: 110px
-        border-left: 5px solid #8a8a8a
-        background-color: #43464b
-        cursor: pointer
-        outline: none
-        img
-            width: 20px
-            height: auto
-            top: 50%
-            transform: translate(-50%, -50%)
+            width: 22px
+            height: 22px
+        .lib-icon
+            font-size: 18px
+            line-height: 1
 
 #info-panel
     display: none
@@ -342,52 +291,6 @@ body.mobile
     &:hover
     &:active
         background-color: rgba(255, 255, 255, 0.1)
-
-// Library button in the top-left stack. Sits below Settings; styled to match it.
-// Its label uses the generic `#buttons button span` positioning (left: 25px); the
-// glyph is nudged to the icon column (left: 17px) where the others put their img.
-#buttons
-    .library-button
-        width: 110px
-        border-left: 5px solid #8a8a8a
-        background-color: #43464b
-        cursor: pointer
-        outline: none
-        .lib-icon
-            position: absolute
-            top: 50%
-            left: 17px
-            transform: translate(-50%, -50%)
-            font-size: 18px
-            line-height: 1
-
-// Mobile fold: square dark icon button, continuous with the action rail (mirrors
-// the Github/Settings treatment), showing only the glyph.
-body.mobile
-    #buttons
-        .library-button
-            display: flex
-            align-items: center
-            justify-content: center
-            width: 44px
-            height: 44px
-            padding: 0
-            border-left: 0
-            border-radius: 0
-            background: #3a3a3a
-            transform: none
-            &:hover
-            &:active
-            &:focus
-                transform: none
-                filter: brightness(1.15)
-            span:not(.lib-icon)
-                display: none
-            .lib-icon
-                position: static
-                top: auto
-                left: auto
-                transform: none
 
 // Active-project indicator: a small pill, top-centre, showing the working
 // blueprint's name. Click to open the library. Stays clear of the top-left stack.
@@ -1017,11 +920,17 @@ body.fbe-dialog-open
     to
         transform: translateX(100%)
 
-// On-screen action rail — DOM mirror of the keyboard actions for touch users.
-// A left gutter (reserved on the canvas via editor.setViewportInsets); `.visible`
-// toggles on in the `mobile` input mode (see actionToolbar.ts). `top`/`width` and
-// the overflow `left`/`top` are set inline by layout(). Dynamic: the buttons that
-// fit stay in the rail, the rest collapse into the ⋯ overflow sheet.
+// On-screen action rail — DOM mirror of the editor's action registry, and the
+// one left column every layout gets (#101 Slice 4). A left gutter (reserved on
+// the canvas via editor.setViewportInsets); `top`/`width` and the overflow
+// `left`/`top` are set inline by layout(). Dynamic: the buttons that fit stay in
+// the rail, the rest collapse into the ⋯ overflow sheet.
+//
+// Sizing comes from the signals, through classes actionToolbar.ts sets on the
+// rail: `.slim` (a fine primary pointer — 34 px icon cells, no captions) and
+// `.with-hints` (a keyboard is present — show each button's keybind badge). The
+// cell square itself is the `--rail-cell` custom property, shared with the
+// folded corner buttons above so the column has a single width.
 #action-toolbar
     position: fixed
     left: 0
@@ -1045,12 +954,13 @@ body.fbe-dialog-open
         gap: 0
 
     button
+        position: relative
         display: flex
         flex-direction: column
         align-items: center
         justify-content: center
-        width: 44px
-        height: 44px
+        width: var(--rail-cell, 44px)
+        height: var(--rail-cell, 44px)
         padding: 0
         border: none
         background: #3a3a3a
@@ -1069,14 +979,39 @@ body.fbe-dialog-open
         .label
             display: block
             margin-top: 1px
-            max-width: 44px
+            max-width: var(--rail-cell, 44px)
             overflow: hidden
             text-overflow: ellipsis
             white-space: nowrap
+        // Keybind badge (#101 Slice 4): the action's registry combo, pinned in
+        // the cell's bottom-right corner so it never reflows the glyph. Hidden
+        // unless a keyboard is present — a badge that says "R" is noise on a
+        // device that can't press R.
+        .hint
+            display: none
+            position: absolute
+            right: 1px
+            bottom: 0
+            font-size: 8px
+            line-height: 1
+            color: #ffe6c0
+            opacity: 0.85
+            pointer-events: none
+
+    // Fine pointer: an icon strip. The caption goes (the cell is too small to
+    // read one), the glyph fills the square, and the keybind badge — which the
+    // caption's row would otherwise fight — becomes the second line of text.
+    &.slim button
+        .glyph
+            font-size: 15px
+        .label
+            display: none
+    &.with-hints button .hint
+        display: block
 
     .rail-more
-        width: 44px
-        height: 44px
+        width: var(--rail-cell, 44px)
+        height: var(--rail-cell, 44px)
         font-size: 18px
         color: #ccc
         background: #2c2c2c

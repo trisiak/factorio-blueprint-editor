@@ -1,26 +1,39 @@
 import { test, expect, type Page } from '@playwright/test'
 
-// The on-screen action toolbar (packages/website/src/actionToolbar.ts) is a
-// touch affordance: it mirrors the editor's keyboard action registry into DOM
-// buttons, shown only in the `mobile` input mode. The rail is **mode-gated**
-// (#33): a button is only in the DOM when its action is useful in the current
-// editor mode, so non-live buttons are absent (count 0), not just hidden.
-// See docs/mobile-controls.md.
+// The on-screen action toolbar (packages/website/src/actionToolbar.ts) mirrors
+// the editor's action registry into DOM buttons. Since #101 Slice 4 it is the
+// **universal left column** — every layout gets it, sized by the input signals:
+// 44 px captioned cells when `coarse`, a slim 34 px strip otherwise, with a
+// keybind badge on each button when `keys`. The rail is **mode-gated** (#33): a
+// button is only in the DOM when its action is useful in the current editor
+// mode, so non-live buttons are absent (count 0), not just hidden.
+// See docs/mobile-controls.md and docs/mobile-layout-inventory.md.
 
 // A self-contained vanilla-2.0 blueprint (a single wooden chest). Starts with
 // '0', so the loader decodes it locally — no `/corsproxy` round-trip.
 const CHEST =
     '0eJxtjs0OgjAQhN9lztUgoRD6KsYYfjbapGwJLSohfXcX9ODBy2x2M9/MrmjdTONkOcKssJEGmJ+bwoOmYD3D6DKvi7rWRZ5VVVEquKYlJ+5xc4R4iCTS3UUFs53nAHOWTO7pBXNSCPbGjdt6uBlIyKf3PfGXSemiQBxttPQh92W58jy0NO0J/ziF0QeBth9XSFN21ArLPiUzpTfn9ku6'
 
-type TestHookWindow = {
-    __FBE_TEST__: {
-        getState(): {
-            blueprint: { entityCount: number }
-            wires: { visible: boolean }
-            paint: { active: boolean }
-        }
+type RailState = {
+    blueprint: { entityCount: number }
+    safeArea: { x: number; y: number; width: number; height: number }
+    quickbar: { visible: boolean; bounds: { x: number; y: number } }
+    paint: {
+        active: boolean
+        direction: number | null
+        kind: 'entity' | 'blueprint' | null
+        tileSize: number | null
     }
 }
+
+type TestHookWindow = {
+    __FBE_TEST__: {
+        getState(): RailState
+    }
+}
+
+const readState = (page: Page): Promise<RailState> =>
+    page.evaluate(() => (window as unknown as TestHookWindow).__FBE_TEST__.getState())
 const entityCount = (page: Page): Promise<number> =>
     page.evaluate(
         () => (window as unknown as TestHookWindow).__FBE_TEST__.getState().blueprint.entityCount
@@ -49,11 +62,11 @@ async function tapRail(page: Page, title: string): Promise<void> {
 // Enter paint mode deterministically: seed a quickbar item (loaded from
 // localStorage on boot), then press the slot-1 key to pick it up. In PAINT the
 // rail surfaces the Cancel button, our DOM-observable proxy for "holding a cursor".
-async function gotoAndEnterPaint(page: Page): Promise<void> {
+async function gotoAndEnterPaint(page: Page, url = '/'): Promise<void> {
     await page.addInitScript(() => {
         window.localStorage.setItem('quickbarItemNames', JSON.stringify(['transport-belt']))
     })
-    await page.goto('/')
+    await page.goto(url)
     await waitForLoaded(page)
 
     // Cancel is mode-gated: absent while idle (NONE).
@@ -66,21 +79,130 @@ async function gotoAndEnterPaint(page: Page): Promise<void> {
 }
 
 test.describe('action toolbar', () => {
-    test('is hidden in the desktop input mode', async ({ page }) => {
-        test.skip(
-            test.info().project.name !== 'desktop-chromium',
-            'desktop input mode is auto-detected on the desktop project only'
-        )
+    // The desktop contract flipped with #101 Slice 4: the rail used to be
+    // mobile-only ("is hidden in the desktop input mode"), which left a
+    // mouse+keyboard user with no on-screen mirror of the registry at all and
+    // desktop with the old three-tall top-left stack. It is now the one left
+    // column for every layout — slim cells, keybind badges, and the same
+    // reserved gutter mobile already had.
+    test.describe('desktop', () => {
+        test.beforeEach(() => {
+            test.skip(
+                test.info().project.name !== 'desktop-chromium',
+                'the slim/keyboard presentation is what the desktop project boots'
+            )
+        })
 
-        await page.goto('/')
-        await waitForLoaded(page)
+        test('renders as a slim, keybind-hinted strip', async ({ page }) => {
+            await page.goto('/')
+            await waitForLoaded(page)
 
-        // The element is always mounted; it's just not shown without `.visible`
-        // (the toolbar defaults to display:none).
-        const toolbar = page.locator('#action-toolbar')
-        await expect(toolbar).toHaveCount(1)
-        await expect(toolbar).not.toHaveClass(/visible/)
-        await expect(toolbar).toBeHidden()
+            const toolbar = page.locator('#action-toolbar')
+            await expect(toolbar).toBeVisible()
+            // `slim` = fine primary pointer (no 44 px touch cells, no captions);
+            // `with-hints` = a keyboard is present, so the badges show.
+            await expect(toolbar).toHaveClass(/slim/)
+            await expect(toolbar).toHaveClass(/with-hints/)
+
+            const undo = toolbar.locator('button[title="Undo"]')
+            await expect(undo).toBeVisible()
+            const box = await undo.boundingBox()
+            // Slim cells: smaller than the 44 px touch target, big enough to hit.
+            expect(box.width).toBeLessThan(44)
+            expect(box.width).toBeGreaterThanOrEqual(28)
+            // The caption is dropped in the strip; the keybind badge replaces it,
+            // carrying the registry's own combo (Control+KeyZ -> the badge below).
+            await expect(undo.locator('.label')).toBeHidden()
+            await expect(undo.locator('.hint')).toHaveText('\u2303Z')
+            await expect(undo).toHaveAttribute('aria-keyshortcuts', 'Control+KeyZ')
+            await expect(toolbar.locator('button[title="Items"] .hint')).toHaveText('E')
+        })
+
+        test('reserves the left inset, and the on-canvas panels keep out of it', async ({
+            page,
+        }) => {
+            await page.goto(`/?test&source=${encodeURIComponent(CHEST)}`)
+            await waitForLoaded(page)
+            await expect.poll(() => entityCount(page)).toBeGreaterThan(0)
+
+            const rail = await page.locator('#action-toolbar').boundingBox()
+            const state = await readState(page)
+            // The gutter reached the editor: G.safeArea starts at the rail's
+            // right edge (the canvas itself stays full-bleed — the world shows
+            // through under the column).
+            expect(state.safeArea.x).toBeGreaterThanOrEqual(rail.width)
+            expect(state.safeArea.width).toBe(page.viewportSize().width - state.safeArea.x)
+
+            // ...so the Pixi panels anchored within it clear the rail: the
+            // quickbar (still Pixi until Slice 5) and the entity-info panel.
+            expect(state.quickbar.visible).toBe(true)
+            expect(state.quickbar.bounds.x).toBeGreaterThanOrEqual(state.safeArea.x)
+
+            const info = await page.evaluate(() => {
+                const w = window as unknown as {
+                    __FBE_TEST__: {
+                        showEntityInfo: (n: string) => boolean
+                        infoPanelBounds: () => { x: number; width: number } | null
+                    }
+                }
+                w.__FBE_TEST__.showEntityInfo('wooden-chest')
+                return w.__FBE_TEST__.infoPanelBounds()
+            })
+            expect(info).not.toBeNull()
+            expect(info.x).toBeGreaterThanOrEqual(state.safeArea.x)
+        })
+
+        test('the rail rotates a held ghost', async ({ page }) => {
+            await gotoAndEnterPaint(page, '/?test')
+
+            const before = (await readState(page)).paint.direction
+            expect(before).not.toBeNull()
+            await page.locator('#action-toolbar button[title="Rotate"]').click({ force: true })
+            // Same registry action the R key fires — the rail is a mirror of it,
+            // not a parallel implementation.
+            await expect.poll(async () => (await readState(page)).paint.direction).not.toBe(before)
+        })
+
+        test('the wire buttons hold a wire cursor; the Pixi wires panel is gone', async ({
+            page,
+        }) => {
+            await page.goto('/?test')
+            await waitForLoaded(page)
+
+            // The desktop-only Pixi wires panel beside the quickbar is retired
+            // (#101 Slice 4) — two affordances for one action was the problem;
+            // the rail's three toggles are the survivor. Its probe field went
+            // with it, so its absence is the ratchet.
+            const hasWiresField = await page.evaluate(
+                () => 'wires' in (window as unknown as TestHookWindow).__FBE_TEST__.getState()
+            )
+            expect(hasWiresField).toBe(false)
+
+            await tapRail(page, 'Red wire')
+            const held = await readState(page)
+            expect(held.paint.active).toBe(true)
+            // A wire cursor is neither an entity/blueprint ghost nor a tile brush.
+            expect(held.paint.kind).toBeNull()
+            expect(held.paint.tileSize).toBeNull()
+
+            // Toggle semantics, exactly as the retired panel's slots had.
+            await tapRail(page, 'Red wire')
+            await expect.poll(async () => (await readState(page)).paint.active).toBe(false)
+        })
+
+        test('Settings opens the pane beside the column, not over it', async ({ page }) => {
+            await page.goto('/')
+            await waitForLoaded(page)
+            await page.locator('.dg.main').waitFor({ state: 'attached' })
+
+            const rail = await page.locator('#action-toolbar').boundingBox()
+            const pane = await page.locator('.dg.main').boundingBox()
+            // The pane defaults open on a fine pointer and is anchored under the
+            // corner buttons; it must step right of the rail instead of covering
+            // the actions it shares the left edge with.
+            expect(pane.x).toBeGreaterThanOrEqual(rail.x + rail.width)
+            expect(pane.y).toBeGreaterThanOrEqual(rail.y - 8)
+        })
     })
 
     test.describe('mobile', () => {
@@ -127,27 +249,16 @@ test.describe('action toolbar', () => {
             await expect(toolbar.locator('button.rail-more')).toBeVisible()
         })
 
-        test('wire buttons toggle a wire cursor; the bottom wires panel is retired', async ({
-            page,
-        }) => {
+        test('wire buttons toggle a wire cursor', async ({ page }) => {
             await page.goto('/?test')
             await waitForLoaded(page)
 
-            const state = (): Promise<{
-                wires: { visible: boolean }
-                paint: { active: boolean }
-            }> => page.evaluate(() => (window as unknown as TestHookWindow).__FBE_TEST__.getState())
-
-            // Retired on mobile (#89): the bottom band belongs to the PAINT/
-            // SELECT clusters; wires are reachable from the rail instead.
-            expect((await state()).wires.visible).toBe(false)
-
             // Tap → the wire lands on the cursor (PAINT); tap again → dropped
-            // (the same toggle the desktop panel's slots implement).
+            // (the same toggle the retired Pixi panel's slots implemented).
             await tapRail(page, 'Red wire')
-            await expect.poll(async () => (await state()).paint.active).toBe(true)
+            await expect.poll(async () => (await readState(page)).paint.active).toBe(true)
             await tapRail(page, 'Red wire')
-            await expect.poll(async () => (await state()).paint.active).toBe(false)
+            await expect.poll(async () => (await readState(page)).paint.active).toBe(false)
 
             // Phase 3 (#89): the wire glyphs upgrade to real game icons from
             // the pack's browser/ sheet on the data plane (progressive — poll;

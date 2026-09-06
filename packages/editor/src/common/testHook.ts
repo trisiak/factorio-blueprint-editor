@@ -30,14 +30,17 @@ export interface EditorTestState {
     /** The user's override: `auto` (signals decide), or a forced pointer kind. */
     inputPreset: InputPreset
     screen: { width: number; height: number }
+    /**
+     * The rect the Pixi UI anchors and clamps within (`G.safeArea`) — the screen
+     * minus the bands reserved for DOM chrome. Since #101 Slice 4 the action
+     * rail is universal, so *every* layout reserves a left inset; this is how a
+     * spec asserts the reservation actually reached the editor (and that the
+     * on-canvas panels kept out of the rail's column).
+     */
+    safeArea: { x: number; y: number; width: number; height: number }
     quickbar: {
         visible: boolean
         scale: number
-        bounds: { x: number; y: number; width: number; height: number }
-    }
-    /** The wires (copper/red/green) panel; sits next to the quickbar. */
-    wires: {
-        visible: boolean
         bounds: { x: number; y: number; width: number; height: number }
     }
     /**
@@ -116,22 +119,17 @@ export interface EditorTestState {
 export function getEditorTestState(): EditorTestState {
     const qb = G.UI.quickbarPanel
     const r = qb.getBounds().rectangle
-    const wp = G.UI.wiresPanel
-    const wr = wp.getBounds().rectangle
     const painting = G.BPC.mode === EditorMode.PAINT && !!G.BPC.paintContainer
     return {
         inputMode: inputMode.mode,
         signals: inputMode.signals,
         inputPreset: inputMode.preset,
         screen: { width: G.app.screen.width, height: G.app.screen.height },
+        safeArea: { ...G.safeArea },
         quickbar: {
             visible: qb.visible && r.width > 0 && r.height > 0,
             scale: qb.scale.x,
             bounds: { x: r.x, y: r.y, width: r.width, height: r.height },
-        },
-        wires: {
-            visible: wp.visible && wr.width > 0 && wr.height > 0,
-            bounds: { x: wr.x, y: wr.y, width: wr.width, height: wr.height },
         },
         blueprint: { entityCount: G.bp.entities.size, tileCount: G.bp.tiles.size },
         paint: {

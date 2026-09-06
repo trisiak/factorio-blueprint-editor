@@ -25,20 +25,37 @@
             <img src="/logo-small.svg" alt />
         </div>
         <div id="buttons">
+            <!-- The corner buttons fold into one row of icon squares at the head
+                 of the action rail's column (#101 Slice 4), so their captions are
+                 hidden by CSS — `title`/`aria-label` carry the name instead. -->
             <a
                 class="github-button"
                 href="https://github.com/Teoxoy/factorio-blueprint-editor"
                 target="_blank"
                 rel="noopener"
+                title="Github"
+                aria-label="Github"
             >
                 <span>Github</span>
                 <img src="/github.svg" alt />
             </a>
-            <button class="settings-button" id="settings-button" type="button">
+            <button
+                class="settings-button"
+                id="settings-button"
+                type="button"
+                title="Settings"
+                aria-label="Settings"
+            >
                 <span>Settings</span>
                 <img src="/settings.svg" alt />
             </button>
-            <button class="library-button" id="library-button" type="button">
+            <button
+                class="library-button"
+                id="library-button"
+                type="button"
+                title="Library"
+                aria-label="Library"
+            >
                 <span class="lib-icon">📚</span>
                 <span>Library</span>
             </button>
