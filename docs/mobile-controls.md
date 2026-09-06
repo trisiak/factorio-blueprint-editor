@@ -2,11 +2,24 @@
 
 > **Companion doc:** [`mobile-layout-inventory.md`](./mobile-layout-inventory.md)
 > (the screen-space map). **Open issues:** #52 (reposition a selection without
-> breaking wires — the broader problem behind the in-place nudge).
+> breaking wires — the broader problem behind the in-place nudge); **#101**
+> (desktop/mobile unification — brings the held-selection model below to the
+> mouse/keyboard driver and audits what the touch arc changed on desktop; the
+> "desktop unchanged" notes in this doc are reviewed there).
 > This doc is the source of truth for _what's done_ on the touch arc (it leads
 > the issue tracker) — when a slice lands, close/tick the matching issue in the
 > same change so they don't contradict each other. See CLAUDE.md "Keep issues
 > in sync with the work".
+>
+> **Desktop notes (#101 · A14 — Firefox modifier desync):** every pointer press
+> now re-syncs the action registry's modifier state from the event's own
+> `ctrlKey/shiftKey/altKey` (`packages/editor/src/actions.ts`), so a focus loss
+> — which triggers `releaseAll()` — can never leave a physically-held modifier
+> unarmed. Firefox additionally can't have `Shift+RMB` at all (it opens its own
+> context menu without dispatching the event), so **Copy entity settings**
+> defaults to `Ctrl+Shift+Click` there (`common/browser.ts`), announced by a
+> one-time toast; users can restore `Shift+Right-click` via about:config's
+> `dom.event.contextmenu.shift_suppresses_event=false` or a custom keybind.
 
 Tracking doc for the touch-support arc: what's done, what's not, and where the
 pieces live. Intentionally light — update the checkboxes as work lands.
