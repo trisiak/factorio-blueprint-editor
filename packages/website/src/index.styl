@@ -80,8 +80,10 @@ html
             animation-fill-mode: forwards
             animation-iteration-count: 1
 
-// Logo badge / info toggle (tap to open the INFO panel). The "Press I" hint was
-// dropped to reclaim height; the logo stays and remains the toggle.
+// Logo badge / info toggle (click/tap to open the INFO panel). The "Press I for
+// info" hint is desktop-only (#101 A9): a mouse user has no other cue that the
+// panel exists, while on touch there is no `I` to press and the height is
+// needed by the rail — body.mobile hides it below.
 #corner-panel
     z-index: 5
     position: fixed
@@ -92,6 +94,7 @@ html
     align-items: center
     justify-content: center
     background-color: #303030
+    gap: 8px
     padding: 6px 10px
     height: 52px
     border-color: #888
@@ -102,6 +105,11 @@ html
         width: auto
     span
         color: white
+    .info-hint
+        font-family: 'Titillium Web', sans-serif
+        font-size: 15px
+        letter-spacing: 0.6px
+        white-space: nowrap
 
 .loadingWheel
     width: 60px
@@ -147,6 +155,10 @@ html
 // input mode (see settingsPane.ts), not a media query, so it tracks the user's
 // explicit desktop/mobile choice rather than just the device.
 body.mobile
+    // No keyboard to press `I` on, and the rail needs the room.
+    #corner-panel .info-hint
+        display: none
+
     .dg.main
         width: unquote('min(360px, 100vw) !important')
     .dg
