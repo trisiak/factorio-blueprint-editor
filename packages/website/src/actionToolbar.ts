@@ -460,7 +460,7 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
     // on the canvas. Runs for every layout since #101 Slice 4 — the rail is the
     // one left column, not a touch-only affordance.
     const layout = (): void => {
-        const { coarse, keys } = inputMode.signals
+        const { coarse, keys, compact } = inputMode.signals
         rail.classList.add('visible')
         // 44 px touch cells with captions vs a slim icon strip. The cell size is
         // published as a custom property on <html> because the folded corner
@@ -497,20 +497,24 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
         // How many rows fit under the chrome, and how wide the column has to be
         // to hold the live buttons in them.
         //
-        // Coarse keeps the touch rule the feedback rounds settled on: single-file
+        // A `compact` viewport is never worth a second column — width is the
+        // scarce axis there, and the ⋯ overflow is the pressure valve. Otherwise
+        // coarse keeps the touch rule the feedback rounds settled on: single-file
         // in portrait (a second 44 px column cramps a Pixel-7-class width), 3
-        // wide in landscape, where height is the scarce axis. On a fine pointer
+        // wide in landscape, where height is scarce instead. On a fine pointer
         // the strip is slim, so it starts single-file and only widens when the
         // live buttons genuinely don't fit the height — the column stays a
         // sliver on a roomy window and never eats desktop canvas for nothing.
         // Whatever still doesn't fit collapses into the ⋯ overflow so nothing
         // falls below the viewport; the ⋯ takes the last grid cell.
         const rows = Math.max(1, Math.floor((window.innerHeight - top - MARGIN) / cell))
-        const columns = coarse
-            ? window.innerWidth > window.innerHeight
-                ? 3
-                : 1
-            : Math.min(MAX_COLUMNS, Math.max(1, Math.ceil((railCandidates.length + 1) / rows)))
+        const columns = compact
+            ? 1
+            : coarse
+              ? window.innerWidth > window.innerHeight
+                  ? 3
+                  : 1
+              : Math.min(MAX_COLUMNS, Math.max(1, Math.ceil((railCandidates.length + 1) / rows)))
         const capacity = rows * columns
 
         const overflowNeeded = parked.length > 0 || railCandidates.length > capacity
