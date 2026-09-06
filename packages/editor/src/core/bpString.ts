@@ -6,6 +6,7 @@ import FD from './factorioData'
 import blueprintSchema from './blueprintSchema.json'
 import { Blueprint } from './Blueprint'
 import { Book } from './Book'
+import { blueprintSourceRequest } from './blueprintSource'
 
 class CorruptedBlueprintStringError {
     public error: unknown
@@ -247,49 +248,34 @@ function getBlueprintOrBookFromSource(source: string): Promise<Blueprint | Book>
             }
         }).then((url: URL) => {
             console.log(`Loading data from: ${url}`)
-            const pathParts = url.pathname.slice(1).split('/')
 
+            // NOTE: `/corsproxy` is a Cloudflare Pages Function; it does not
+            // exist on the GitHub Pages deploy, where URL import therefore
+            // fails and pasting the string is the working path (see CLAUDE.md
+            // and functions/corsproxy.js).
             const fetchData = (url: string): Promise<Response> =>
                 fetch(`/corsproxy?url=${encodeURIComponent(url)}`).then(response => {
                     if (response.ok) return response
                     throw new Error('Network response was not ok.')
                 })
 
-            // TODO: add dropbox support https://www.dropbox.com/s/ID?raw=1
-            switch (url.hostname.replace(/^www\./, '').split('.')[0]) {
-                case 'pastebin':
-                    return fetchData(`https://pastebin.com/raw/${pathParts[0]}`).then(r => r.text())
-                case 'hastebin':
-                    return fetchData(`https://hastebin.com/raw/${pathParts[0]}`).then(r => r.text())
-                case 'gist':
-                    return fetchData(`https://api.github.com/gists/${pathParts[1]}`)
-                        .then(r => r.json())
-                        .then(data => data.files[Object.keys(data.files)[0]].content)
-                case 'gitlab':
-                    return fetchData(`https://gitlab.com/${pathParts.join('/')}/raw`).then(r =>
-                        r.text()
-                    )
-                case 'factorioprints':
-                    return fetchData(
-                        `https://facorio-blueprints.firebaseio.com/blueprints/${pathParts[1]}.json`
-                    )
-                        .then(r => r.json())
-                        .then(data => data.blueprintString)
-                case 'factorio': // factorio.school
-                    if (pathParts[0] === 'api') {
-                        return fetchData(url.href).then(r => r.text())
-                    }
-
-                    return fetchData(`https://www.factorio.school/api/blueprint/${pathParts[1]}`)
-                        .then(r => r.json())
-                        .then(data => data.blueprintString.blueprintString)
-                case 'docs':
-                    return fetchData(
-                        `https://docs.google.com/document/d/${pathParts[2]}/export?format=txt`
-                    ).then(r => r.text())
-                default:
-                    return fetchData(url.href).then(r => r.text())
-            }
+            // Which URL to fetch is a pure per-host rule (unit-tested in
+            // blueprintSource.test.ts); only the response shape is handled here.
+            const request = blueprintSourceRequest(url)
+            return fetchData(request.url).then(r => {
+                switch (request.format) {
+                    case 'gist':
+                        return r
+                            .json()
+                            .then(data => data.files[Object.keys(data.files)[0]].content as string)
+                    case 'factorioprints':
+                        return r.json().then(data => data.blueprintString as string)
+                    case 'factorio-school':
+                        return r.json().then(data => data.blueprintString.blueprintString as string)
+                    default:
+                        return r.text()
+                }
+            })
         })
     }
 
