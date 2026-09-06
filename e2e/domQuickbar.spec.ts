@@ -40,6 +40,31 @@ async function gotoSeeded(page: Page): Promise<void> {
     await page.addInitScript(seed => {
         window.localStorage.setItem('quickbarItemNames', JSON.stringify(seed))
     }, SEED)
+    // The hybrid project emulates touch, and headless Chromium then reports a
+    // *coarse* primary pointer even though the case being modelled is a Surface
+    // with a mouse. `hybridInput.spec.ts` solves this by stubbing the media
+    // query; do the same here, so "hybrid" means what it is meant to mean — a
+    // fine pointer on touch-capable hardware — rather than a large phone.
+    if (test.info().project.name === 'hybrid-chromium') {
+        await page.addInitScript(() => {
+            const real = window.matchMedia.bind(window)
+            window.matchMedia = (q: string): MediaQueryList => {
+                if (/pointer:\s*coarse|hover:\s*none/.test(q)) {
+                    return {
+                        matches: false,
+                        media: q,
+                        onchange: null,
+                        addEventListener: () => undefined,
+                        removeEventListener: () => undefined,
+                        addListener: () => undefined,
+                        removeListener: () => undefined,
+                        dispatchEvent: () => false,
+                    } as unknown as MediaQueryList
+                }
+                return real(q)
+            }
+        })
+    }
     await page.goto('/?test')
     await expect(page.locator('#editor')).toBeVisible()
     await expect(page.locator('#loadingScreen')).not.toHaveClass(/active/, { timeout: 60_000 })
