@@ -57,6 +57,10 @@ export { formatRate } from './UI/ratesModel'
 // the slots (the rail's wire buttons retired with the Pixi panel before it).
 export { QuickbarModel } from './UI/quickbarModel'
 export { WIRE_ITEMS } from './core/wireItems'
+// Wheel ownership (#101 Slice 5 review): the website's DOM overlays claim the
+// wheel while they're being scrolled, so the canvas can decline the inertial
+// tail of a gesture that started on a drawer instead of zooming on it.
+export { wheelGuard, WHEEL_OWNERSHIP_MS } from './common/wheelGuard'
 export default {
     registerAction,
     callAction,
