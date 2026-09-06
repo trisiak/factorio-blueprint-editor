@@ -212,7 +212,12 @@ DOM. Loading the page with **`?test`** installs `window.__FBE_TEST__`, whose
   Slice 1), `screen` size, `dialogOpen`, `viewportScale`
 - `quickbar` / `wires` bounds + visibility (and the quickbar's fit scale)
 - `blueprint.entityCount` — what got placed
-- `paint` — the held ghost's `active`/`visible`/`tile`/`direction`
+- `paint` — the held ghost's `active`/`visible`/`tile`/`direction`, plus
+  `sourceCenter` (a marquee Copy/Cut previews the ghost *at the source*, so
+  `tile === sourceCenter` is how a spec asserts it stayed put)
+- `marquee` — the held selection's `count`/`tileCount`/`origin`/`direction`; and
+  `entityPositions()` alongside, for asserting a *move* (every entity shifted by
+  the same tile delta) rather than inferring it
 
 It's opt-in, so it's absent in normal use. See
 `packages/editor/src/common/testHook.ts`; `panels.spec.ts` and

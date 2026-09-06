@@ -70,6 +70,14 @@ export interface EditorTestState {
          * is a tile brush".
          */
         tileSize: number | null
+        /**
+         * For a pasted-blueprint ghost, the source bounding-box centre tile it
+         * was built around — a marquee Copy/Cut previews *at the source*
+         * (`spawnGhostAtSource`), so `tile === sourceCenter` is how a spec
+         * asserts the ghost stayed put instead of jumping under the pointer.
+         * Null for any other cursor.
+         */
+        sourceCenter: { x: number; y: number } | null
     }
     /**
      * True while a modal dialog (e.g. an entity editor overlay) is open. On touch,
@@ -152,6 +160,10 @@ export function getEditorTestState(): EditorTestState {
             tileSize:
                 painting && G.BPC.paintContainer instanceof PaintTileContainer
                     ? G.BPC.paintContainer.brushSize
+                    : null,
+            sourceCenter:
+                painting && G.BPC.paintContainer instanceof PaintBlueprintContainer
+                    ? G.BPC.paintContainer.getSourceCenter()
                     : null,
         },
         dialogOpen: Dialog.anyOpen(),
@@ -368,6 +380,13 @@ export interface FbeTestHook {
         showInChart: boolean
         icon: string | null
     } | null
+    /**
+     * Every entity's name + world position, in blueprint order. Lets a spec
+     * assert a *move* (each position shifted by the same tile delta, count
+     * unchanged) rather than inferring it from the selection origin alone, and
+     * lets a cut/place round-trip prove the entities came back where they were.
+     */
+    entityPositions: () => { name: string; x: number; y: number }[]
     /** Quickbar slot contents, `null` for an unassigned slot. */
     quickbarItems: () => (string | null)[]
     /** On-screen centre of quickbar slot `index`, or null if it isn't rendered. */
@@ -617,6 +636,10 @@ export function installTestHook(win: Window = window): void {
                 icon: e.displayPanelIcon?.name ?? null,
             }
         },
+        entityPositions: () =>
+            G.bp.entities
+                .valuesArray()
+                .map(e => ({ name: e.name, x: e.position.x, y: e.position.y })),
         quickbarItems: () =>
             G.UI.quickbarPanel.serialize().map(itemName => itemName ?? null) as (string | null)[],
         quickbarSlotPos: index => {
