@@ -183,6 +183,27 @@ that drive chrome and sizing.
   rail _and_ quickbar. `EditorTestState` gained `safeArea` and lost `wires`.
   _(The committed desktop storyboard strips are stale until someone regenerates
   them with `STORYBOARD=1`.)_
+- ✅ **Slice 5 review follow-up: a drawer that stays where you left it (#101)** —
+  three desktop findings from the maintainer's pass over the DOM readouts. (1)
+  The rates drawer sat _below_ the entity-info sheet in the shared right-edge
+  column, so it moved every time the sheet appeared or cleared — i.e. on every
+  hover, which is precisely when a mouse is travelling toward it. The drawer is
+  now its own fixed box **bottom-right**, above the quickbar's band (whose
+  height it reads from `--fbe-bottom-band`, published by `quickbar.ts` from the
+  same measurement that feeds its viewport inset); the sheet keeps the
+  **top-right** corner and `readoutStack.ts` is deleted. (2) The drawer's
+  `min(50vh, 420px)` cap scrolled content that would have fitted on a tall
+  screen; it now takes the room between the top chrome band and that bottom
+  offset, and the sheet grew from `40vh` to `60dvh - 68px`. (3) Inertial
+  scrolling kept emitting `wheel` after the pointer left the drawer, and those
+  events zoomed the canvas: every DOM overlay now claims the wheel while it is
+  scrolled (`common/wheelGuard.ts`, a 300 ms ownership window consulted by
+  `BlueprintContainer.onWheel`, unit-tested with a fake clock) and the
+  scrollable readouts carry `overscroll-behavior: contain`. A wheel over the
+  canvas with no recent overlay wheel zooms exactly as before. e2e:
+  `domReadouts.spec.ts` gains a stationary-drawer case, a
+  1280×1400 growth case with a rates-heavy blueprint, and a wheel-bleed case,
+  on desktop **and** hybrid.
 - ✅ **One DOM quickbar for every input (#101 Slice 5b)** — the Pixi
   `QuickbarPanel` is deleted. Its state became a render-free model in the editor
   (`UI/quickbarModel.ts`: the slot array, the five activation cases, the number
@@ -215,8 +236,9 @@ that drive chrome and sizing.
   subscriptions, `onBlueprintSwapped`, `fbe:rates`) — and the website renders,
   with **placement by `compact` + orientation, never by mode**: a shared
   right-edge column (`readoutStack.ts` — info above, rates below, as the canvas
-  panels stacked) on a wide viewport, and on `compact` the column dissolves
-  (`display: contents`) back to the touch placements (portrait top band /
+  panels stacked) on a wide viewport — _superseded by the review follow-up
+  below, which pins the drawer to the bottom-right corner and deletes the
+  column_ — and on `compact` the touch placements (portrait top band /
   bottom-right drawer). The sheet also gained what only the canvas had: module
   icons and an **icon-rich circuit summary** — `EntityInfoToken` rows (signal /
   count / red-green network badge) resolved through the `packIcons.ts` seam,

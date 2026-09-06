@@ -19,6 +19,7 @@ import { Dialog } from '../UI/controls/Dialog'
 import { Viewport } from './Viewport'
 import { PinchPanRecognizer, PinchPanUpdate } from './PointerGestures'
 import { acceptsPointerType, inputMode, isMousePipeline } from '../common/input'
+import { wheelGuard } from '../common/wheelGuard'
 import { EntitySprite } from './EntitySprite'
 import { WiresContainer } from './WiresContainer'
 import { UnderlayContainer } from './UnderlayContainer'
@@ -467,6 +468,12 @@ export class BlueprintContainer extends Container {
         const onWheel = (e: WheelEvent): void => {
             e.preventDefault()
             e.stopPropagation()
+
+            // A DOM overlay that was just scrolled owns the wheel for a moment
+            // (#101 Slice 5 review): inertial scrolling keeps firing `wheel`
+            // after the pointer leaves the drawer, and without this the tail of
+            // that gesture lands here and zooms the map. See common/wheelGuard.
+            if (wheelGuard.blocksCanvas()) return
 
             if (Math.sign(e.deltaY) === 1) {
                 this.zoom(false)
