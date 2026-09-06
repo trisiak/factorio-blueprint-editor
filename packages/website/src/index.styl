@@ -492,12 +492,15 @@ body.compact
             bottom: auto
             top: 60px
 
-// Layering contract (#89): while any Pixi dialog is open (entity editor,
-// inventory — the editor mirrors the count over `fbe:dialogs`, see index.ts),
-// the passive DOM readouts yield — the browser composites DOM above the
-// canvas, so this is the only way a canvas dialog can win the surface. The
-// `body` element in the selector out-ranks `#….visible`, and the readouts'
-// own state is untouched, so they restore themselves when the dialog closes.
+// Layering contract (#89): while any modal dialog is open the passive DOM
+// readouts yield — the browser composites DOM above the canvas, so this is the
+// only way a canvas dialog can win the surface. The gate is the body class
+// alone, deliberately: *who* sets it is not this rule's business (the editor
+// mirrors its Pixi dialog count over `fbe:dialogs`; the DOM dialog layer ORs
+// its own open dialogs into the same class), so a readout keeps yielding
+// whichever technology opened the dialog. The `body` element in the selector
+// out-ranks `#….visible`, and the readouts' own state is untouched, so they
+// restore themselves when the dialog closes.
 body.fbe-dialog-open
     #entity-info-sheet,
     #rates-drawer
@@ -1077,15 +1080,6 @@ body.fbe-dialog-open
         background: #5a2a2a
         &.active
             background: #b03030
-    // Wire buttons (#89): same square, the glyph carries the wire's colour
-    // (matching the in-game copper/red/green wire tints).
-    button.wire-copper .glyph
-        color: #cf7c00
-    button.wire-red .glyph
-        color: #c83718
-    button.wire-green .glyph
-        color: #588c38
-
     .rail-overflow
         position: fixed
         display: none
@@ -1224,3 +1218,98 @@ body.fbe-dialog-open
         background: #5a2a2a
         &:active
             background: #b03030
+
+// The quickbar (#101 Slice 5) — one DOM bar for every input, bottom-centre,
+// rendering the editor's slot model (`quickbar.ts`). It replaces the Pixi panel
+// that used to draw here on desktop only, so the bottom band finally has a
+// single, non-canvas tenant.
+//
+// Sized from the signals: `--qb-cell` is 44 px when `coarse` and 36 px
+// otherwise (set inline by quickbar.ts, which also picks 10 vs 5 columns for a
+// `compact` viewport). The number-key badges only render while the bar carries
+// `.with-hints`, i.e. only when a keyboard is present — a badge reading "1" is
+// noise on a device that can't press it. Below the contextual clusters (z21)
+// and toasts (z20): on a compact viewport the bar yields the band to a cluster
+// outright (see `bandIsTaken`), so they never fight for the same pixels.
+#quickbar
+    display: none
+    position: fixed
+    z-index: 6
+    bottom: 4px
+    left: 50%
+    transform: translateX(-50%)
+    align-items: center
+    gap: 6px
+    padding: 4px
+    background: rgba(48, 48, 48, 0.88)
+    border: 1px solid #888
+    border-radius: 8px
+    user-select: none
+    &.visible
+        display: flex
+
+    .qb-grid
+        display: grid
+        gap: 2px
+
+    .qb-wires
+        display: grid
+        grid-template-columns: repeat(3, var(--qb-cell))
+        gap: 2px
+
+    .qb-cell
+        position: relative
+        width: var(--qb-cell)
+        height: var(--qb-cell)
+        padding: 0
+        color: #eee
+        font-size: 12px
+        background: #4a4a4a
+        border: 1px solid #6a6a6a
+        border-radius: 4px
+        cursor: pointer
+        &:hover
+            background: #5a5a5a
+        &.qb-slot.empty
+            background: rgba(74, 74, 74, 0.55)
+        .qb-icon
+            display: block
+            margin: 0 auto
+            line-height: var(--qb-cell)
+        // The keybind badge, bottom-right of the cell like the game's.
+        .qb-key
+            display: none
+            position: absolute
+            right: 2px
+            bottom: 0
+            color: #cfcfcf
+            font-size: 9px
+            line-height: 1
+            pointer-events: none
+
+    &.with-hints .qb-cell .qb-key
+        display: block
+
+    // Wire cells: the glyph carries the wire's colour (matching the in-game
+    // copper/red/green tints) until the pack sheet's real icon loads.
+    .qb-wire.wire-copper .qb-icon
+        color: #cf7c00
+    .qb-wire.wire-red .qb-icon
+        color: #c83718
+    .qb-wire.wire-green .qb-icon
+        color: #588c38
+
+    // Rotate the rows (the X action). Slim, since it's a shortcut rather than a
+    // slot — but still tall enough to hit with a finger.
+    .qb-swap
+        width: 18px
+        height: var(--qb-cell)
+        padding: 0
+        color: #ddd
+        font-size: 11px
+        background: #4a4a4a
+        border: 1px solid #6a6a6a
+        border-radius: 4px
+        cursor: pointer
+        &:hover
+            background: #5a5a5a
