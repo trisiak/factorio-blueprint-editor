@@ -58,9 +58,11 @@ that drive chrome and sizing.
   settings pane (`packages/website/src/settingsPane.ts`).
 - **Compatibility** — `inputMode.mode` survives as a _derived_ value (forced
   preset wins, else `coarse ? 'mobile' : 'desktop'`) and still emits `change`, so
-  every consumer that hasn't migrated yet (the website clusters, the Pixi panels,
-  `armMarquee`, `body.mobile`) keeps today's behaviour. It goes away when the last
-  consumer moves onto the signals (#101, later slices).
+  every consumer that hasn't migrated yet (the website's contextual clusters, the
+  Pixi panels, `armMarquee`, `body.mobile`) keeps today's behaviour. The action
+  rail and the top band left that list in #101 Slice 4 — they read the signals
+  directly now. It goes away when the last consumer moves onto the signals (#101,
+  later slices).
 - **Tests** — pure decision logic (migration, derived mode, the signal reducers)
   is unit-tested in `packages/editor/src/common/input.test.ts`; the end-to-end
   behaviour has its own Playwright project, `hybrid-chromium` (desktop viewport +
@@ -130,14 +132,15 @@ that drive chrome and sizing.
   `VITE_DATA_URL`; `.nojekyll`). See `.github/workflows/pages-*.yml`.
 - ✅ **Canvas e2e probe** — everything inside the editor is one `<canvas>`, so
   Playwright can't query on-canvas UI through the DOM. Loading with `?test`
-  installs `window.__FBE_TEST__.getState()` (CSS px): logical input mode, screen
-  size, `dialogOpen`, quickbar + wires bounds/scale/visibility, blueprint entity
+  installs `window.__FBE_TEST__.getState()` (CSS px): the input signals + derived
+  mode, screen size and `safeArea` (the insets the chrome reserved),
+  `dialogOpen`, quickbar bounds/scale/visibility, blueprint entity
   count, and the paint ghost's tile/direction; see
   `packages/editor/src/common/testHook.ts`. Opt-in, so it's absent in normal use.
   Extend its `EditorTestState` for any future on-canvas assertion.
 - ✅ **Mobile layout: action rail + retired quickbar** — the layout redesign
   (PR #19). The keyboard-only actions are mirrored into a **left vertical rail**
-  (DOM, mobile-only): as many priority-ordered buttons as fit stay in the rail,
+  (DOM): as many priority-ordered buttons as fit stay in the rail,
   the rest collapse behind a ⋯ overflow sheet (1 column portrait, 3 columns
   landscape). The rail **reserves a left canvas inset** (`Editor.setViewportInsets`
   → `fbe:viewportchange`, which re-anchors the Pixi panels), so the canvas is
@@ -150,7 +153,36 @@ that drive chrome and sizing.
   competition; the wires panel re-centres at the bottom. `actionToolbar.ts`,
   `index.{styl,ts,html}`, `Editor.setViewportInsets`/`onModeChange`, `Panel`;
   e2e `actionToolbar.spec.ts` + `panels.spec.ts`. Remaining: real game-sprite
-  icons (unicode glyphs for now).
+  icons (unicode glyphs for now). _(Mobile-only until #101 Slice 4 made the rail
+  universal — see below.)_
+- ✅ **Universal action rail (#101 Slice 4)** — the rail is no longer a touch
+  affordance but **the left column every layout gets**: logo, corner buttons
+  (Github / Settings / Library, folded into one row of icon squares for everyone
+  — desktop's three-tall stack of labelled rows is gone) and, under them, the
+  live actions. Sizing is by **signal, not device**: 44 px captioned cells when
+  `coarse`, otherwise a slim 34 px icon strip; **keybind badges** when `keys`
+  (read live from the registry — `EDITOR.forEachAction` → `Action.keyCombo`,
+  pretty-printed to `⌃Z` and mirrored into `aria-keyshortcuts`, while `title`
+  stays the plain label so e2e keeps its handle); the ⋯ overflow keyed on what
+  actually fits the remaining height (coarse keeps 1-col portrait / 3-col
+  landscape; a fine pointer starts single-file and only widens when the live
+  buttons don't fit). Management actions (Copy BP / Paste BP / Export / New) stay
+  parked in the ⋯ in every layout — the keyboard reaches them by keybind, so they
+  never cost everyday rail cells. **Desktop gains the left inset**
+  (`setViewportInsets({ left })` → `G.safeArea`), so the Pixi quickbar and the
+  entity-info panel re-anchor beside the column, and the settings pane steps to
+  the right of the rail instead of covering it; the top band
+  (`viewportRegions.ts`) now runs in every layout too and reserves only chrome
+  that isn't already inside the rail's column. The desktop-only Pixi
+  **wires panel is retired** (`UI/WiresPanel.ts` deleted, `WIRE_ITEMS` moved to
+  `core/wireItems.ts`) — the rail's three colour-coded toggles are the single
+  affordance for holding a wire. e2e: new desktop cases in
+  `actionToolbar.spec.ts` (slim strip + hints, rail-Rotate turns a held ghost,
+  the wire toggles, the reserved inset, the settings pane's placement), a
+  rewritten wires ratchet in `panels.spec.ts`, and the hybrid B1 case now expects
+  rail _and_ quickbar. `EditorTestState` gained `safeArea` and lost `wires`.
+  _(The committed desktop storyboard strips are stale until someone regenerates
+  them with `STORYBOARD=1`.)_
 - ✅ **Item-selector overhaul** (`InventoryDialog`, the shared item/recipe/module
   picker) — now touch-usable: **scrollable** group-tabs (◀▶) and item grid (▲▼),
   masked with viewport-gated hit-testing; a **Recents tab** (first/active) with
