@@ -334,12 +334,16 @@ export class PositionGrid {
         searchDirection: number,
         maxDistance: number
     ): number | undefined {
-        const horizontal = searchDirection % 4 !== 0
-        const sign = searchDirection === 0 || searchDirection === 6 ? -1 : 1
+        // 2.0 directions are 16-way, so the axis/sign can't be derived with the
+        // 8-way tests this used to carry (`% 4 !== 0` is false for *every*
+        // cardinal here, and west is 12, not 6) — east and west both ended up
+        // searching straight down, which is why an east/west underground pair
+        // never found its other end.
+        const step = util.directionToVector(searchDirection)
 
         for (let i = 1; i <= maxDistance; i++) {
-            const X = Math.floor(position.x) + (horizontal ? i * sign : 0)
-            const Y = Math.floor(position.y) + (horizontal ? 0 : i * sign)
+            const X = Math.floor(position.x) + step.x * i
+            const Y = Math.floor(position.y) + step.y * i
             const cell = this.grid.get(`${X},${Y}`)
 
             if (typeof cell === 'number') {

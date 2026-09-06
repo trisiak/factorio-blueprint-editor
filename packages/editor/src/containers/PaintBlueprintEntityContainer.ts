@@ -81,12 +81,15 @@ export class PaintBlueprintEntityContainer {
 
     private updateUndergroundLine(): void {
         this.destroyUndergroundLine()
+        // Same call shape as EntityContainer's hover line: the entity's own
+        // direction, and a search direction that runs *back* along the run for an
+        // exit (and for an underground pipe, whose pair faces it). Passing the
+        // flipped direction here instead made a pasted exit look for an
+        // underground facing the wrong way, so its pair line never drew.
         this.undergroundLine = this.bpc.overlayContainer.createUndergroundLine(
             this.entity.name,
             this.entityPosition,
-            this.entity.directionType === 'input'
-                ? this.entity.direction
-                : (this.entity.direction + 8) % 16,
+            this.entity.direction,
             this.entity.type === 'pipe-to-ground' || this.entity.directionType === 'output'
                 ? (this.entity.direction + 8) % 16
                 : this.entity.direction

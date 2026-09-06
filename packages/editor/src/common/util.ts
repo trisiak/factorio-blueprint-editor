@@ -89,6 +89,27 @@ const transformConnectionPosition = (position: IPoint, direction: number): IPoin
     return rotatePointBasedOnDir(position, direction)
 }
 
+/**
+ * Unit step along a direction, in Factorio 2.0's **16-value** direction space
+ * (0 = north, 4 = east, 8 = south, 12 = west) and the blueprint grid's screen
+ * axes, where y grows downwards. `{ x: 1, y: 0 }` for east, and so on.
+ *
+ * Rounding sin/cos keeps it total — a diagonal (2, 6, 10, 14) resolves to the
+ * matching diagonal step rather than throwing — and ties the mapping to the
+ * same `direction * π/8` convention the overlay arrows already rotate by.
+ *
+ * Reach for this instead of hand-rolling the axis/sign per call site: 1.1 used
+ * 8 directions, so carried-over code that tests `direction % 4` for "is this
+ * horizontal" or `direction === 6` for "is this west" is silently wrong here
+ * (every cardinal is `% 4 === 0` in 16-way, and west is 12).
+ */
+const directionToVector = (direction: number): IPoint => ({
+    // `0 -` rather than a unary minus: negating a rounded 0 gives -0, which
+    // reads back as a surprise in equality checks and in serialized positions.
+    x: 0 + Math.round(Math.sin((direction * Math.PI) / 8)),
+    y: 0 - Math.round(Math.cos((direction * Math.PI) / 8)),
+})
+
 const getDirName = (dir: number): NamedDirection => {
     switch (dir) {
         case 0:
@@ -177,6 +198,7 @@ export default {
     getRelativeDirection,
     rotatePointBasedOnDir,
     transformConnectionPosition,
+    directionToVector,
     getDirName,
     getDirName8Way,
     nearestPowerOf2,

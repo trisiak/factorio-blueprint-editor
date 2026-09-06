@@ -91,6 +91,43 @@ degradation if one does:
   `se-spaceship-console-output`, `se-spaceship-obstacle-entity-large-targetable`,
   `se-space-elevator-connection-blocker`, `se-energy-transmitter-injector-reactor`.
 
+## Round-trip fidelity fixes (2026-09)
+
+Two classes of bug found by exporting from the SE pack and importing the result
+back into the game. Neither is SE-specific in its _cause_ — the SE pack is just
+where they showed, because it is the pack people paste back into a running save.
+
+**Filters exported without a quality spec.** Every item filter Factorio writes —
+an inserter's `filters`, a splitter's `filter`, a chest request, a constant
+combinator signal — carries `quality` + `comparator`, and it does so in a game
+with no Quality mod too (`quality/normal` is a base-2.0 prototype; the SE dump's
+own blueprints read `quality: "normal", comparator: "="` even though SE's 35-mod
+list has no Quality). Omitting the pair is not "no quality stated": the game
+reads it as _any_ quality and paints the five-dot any-quality symbol over the
+slot. `core/itemFilters.ts` now supplies the pair — preferring an imported
+blueprint's own values, which the filter UI used to flatten on any edit, and a
+pasted setting's over the target's.
+
+**16-way directions, 8-way arithmetic.** `PositionGrid.getOpposingEntity` — the
+walk that finds an underground belt's other end — still derived its axis and
+sign the 1.1 way (`direction % 4 !== 0` for "horizontal", `=== 6` for west).
+Under 2.0's 16 directions _every_ cardinal is `% 4 === 0` and west is 12, so
+east- and west-facing runs both searched straight down and never found their
+partner: the held ghost stayed an entrance, a pipetted exit came back as an
+entrance facing the wrong way, and the pair silently didn't connect once the
+blueprint was back in the game (the overlay line drew off-axis for the same
+reason). `util.directionToVector` is now the one place that maps a direction to
+a step. Pinned by `core/undergroundPairs.test.ts`, all four directions, vanilla
+and SE.
+
+Two mod-safety slips rode along, both of the kind this pack exists to catch —
+name checks where a type check belongs: `EntityContainer`'s neighbour-redraw
+groups were a hardcoded vanilla belt list (so none of SE's nine belts,
+undergrounds or splitters ever redrew their neighbours, leaving stale corners
+and underground structures), and `PaintEntityContainer` tested for the literal
+`pipe-to-ground`, so `se-space-pipe-to-ground` got no pair line and its ghost
+never flipped to place the far end.
+
 ## Exporter caveats (won't-fix)
 
 - **4 skipped sprite refs.** SE's `energy-transmitter`/`antimatter-reactor` copy

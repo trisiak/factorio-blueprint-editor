@@ -15,6 +15,7 @@ import {
     SelectorCombinatorOperation,
 } from '../types'
 import util from '../common/util'
+import { qualitySpec } from './itemFilters'
 import { IllegalFlipError } from '../containers/PaintContainer'
 import G from '../common/globals'
 import FD, {
@@ -58,6 +59,14 @@ export interface IFilter {
     name: string
     /** If stacking is allowed, how many shall be stacked */
     count?: number
+    /**
+     * 2.0's quality spec. The filter UI doesn't model these — it rebuilds its
+     * slots as bare `{index, name, count}` — but they ride along on an imported
+     * blueprint and through `pasteSettings`, so the setters can carry them
+     * across an edit instead of flattening them (see `core/itemFilters.ts`).
+     */
+    quality?: string
+    comparator?: ComparatorString
 }
 
 // TODO: Handle the modules within the class differently so that modules would stay in the same place during editing the blueprint
@@ -616,7 +625,8 @@ export class Entity extends EventEmitter<EntityEvents> {
             throw new Error('pre 2.0 format!')
         }
         if (this.m_rawEntity.filter.name) {
-            return [{ index: 1, name: this.m_rawEntity.filter.name }]
+            const { name, quality, comparator } = this.m_rawEntity.filter
+            return [{ index: 1, name, quality, comparator }]
         }
         return []
     }
@@ -626,7 +636,8 @@ export class Entity extends EventEmitter<EntityEvents> {
         // — indexing it unguarded used to throw. Compare against the raw entity's
         // *name*, not the `{ name }` wrapper object, so an unchanged filter really
         // does short-circuit instead of writing a redundant history entry.
-        const filter = filters?.[0]?.name
+        const incoming = filters?.[0]
+        const filter = incoming?.name
         const current =
             typeof this.m_rawEntity.filter === 'string' ? undefined : this.m_rawEntity.filter?.name
         if (current === filter) return
@@ -635,7 +646,12 @@ export class Entity extends EventEmitter<EntityEvents> {
 
         // Clear by removing the key outright rather than storing `{ name: undefined }`,
         // which would serialize an empty `filter: {}` into the exported blueprint.
-        const f = filter === undefined ? undefined : { name: filter }
+        // A written filter names its quality (see `qualitySpec`) — a splitter
+        // filter without one shows up in game wearing the any-quality symbol.
+        const prev =
+            typeof this.m_rawEntity.filter === 'string' ? undefined : this.m_rawEntity.filter
+        const f =
+            filter === undefined ? undefined : { name: filter, ...qualitySpec(incoming, prev) }
 
         this.m_BP.history
             .updateValue(this.m_rawEntity, 'filter', f, 'Change splitter filter')
@@ -670,11 +686,25 @@ export class Entity extends EventEmitter<EntityEvents> {
         return this.m_rawEntity.filters
     }
     private set inserterFilters(filters: IFilter[]) {
-        if (filters === undefined && this.m_rawEntity.filters === undefined) return
-        if (util.areArraysEquivalent(filters, this.m_rawEntity.filters)) return
+        // Merge onto the raw slot of the same index, the way the chest requests
+        // below do: the `Filters` control rebuilds its slots as bare
+        // `{ index, name }`, so an imported blueprint's quality/comparator (and
+        // anything else the UI doesn't model) would be dropped on any edit.
+        // Slots the editor creates get Factorio's own `normal` + `=` — see
+        // `qualitySpec` for why leaving them off is not the same as "unset".
+        const existing = new Map((this.m_rawEntity.filters ?? []).map(f => [f.index, f]))
+        const next = filters?.map(f => ({
+            ...existing.get(f.index),
+            index: f.index,
+            name: f.name,
+            ...qualitySpec(f, existing.get(f.index)),
+        }))
+
+        if (next === undefined && this.m_rawEntity.filters === undefined) return
+        if (util.areArraysEquivalent(next, this.m_rawEntity.filters)) return
 
         this.m_BP.history
-            .updateValue(this.m_rawEntity, 'filters', filters, 'Change inserter filter')
+            .updateValue(this.m_rawEntity, 'filters', next, 'Change inserter filter')
             .onDone(() => this.emit('inserterFilters'))
             .onDone(() => this.emit('filters'))
             .commit()
@@ -712,6 +742,8 @@ export class Entity extends EventEmitter<EntityEvents> {
      *     its slots as bare `{index, name, count}`, so those would be dropped on
      *     any edit; merging each entry onto the existing raw filter of the same
      *     index keeps an imported blueprint's fidelity through a count change.
+     *     A slot with no prior quality gets Factorio's default pair rather than
+     *     none at all — see `qualitySpec`.
      */
     private set logisticChestFilters(filters: IFilter[]) {
         const next = (filters ?? []).filter(f => !!f.name)
@@ -738,7 +770,10 @@ export class Entity extends EventEmitter<EntityEvents> {
         if (!obj.sections) obj.sections = []
         if (!obj.sections[0]) obj.sections[0] = { index: 1 }
 
-        const existing = new Map(current.map(f => [f.index, f]))
+        // Merge onto the *raw* section filters rather than the `IFilter` view
+        // above: that view is narrowed to `{index, name, count}`, and the whole
+        // point here is to carry the attributes it drops.
+        const existing = new Map((obj.sections[0].filters ?? []).map(f => [f.index, f]))
         obj.sections[0].filters =
             next.length > 0
                 ? next.map(f => ({
@@ -749,6 +784,7 @@ export class Entity extends EventEmitter<EntityEvents> {
                       // undefined for a storage chest (one filter, no amount), so
                       // fall back the same way the pre-2.0 import does.
                       count: f.count ?? existing.get(f.index)?.count ?? 1,
+                      ...qualitySpec(f, existing.get(f.index)),
                   }))
                 : undefined
 
