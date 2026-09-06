@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import type { EditorTestState } from '@fbe/editor'
+import { isTouchProject } from './projects'
 
 /**
  * Inventory (item selector) dialog coverage. The dialog is drawn in the PixiJS
@@ -7,8 +8,6 @@ import type { EditorTestState } from '@fbe/editor'
  * window.__FBE_TEST__ (packages/editor/src/common/testHook.ts), which drives
  * the dialog into a known state and reports on-canvas coordinates to click.
  */
-
-const isMobileProject = (): boolean => test.info().project.name === 'mobile-chromium'
 
 /** Read the opt-in canvas-state probe (only present when the page is loaded with `?test`). */
 async function readTestState(page: Page): Promise<EditorTestState> {
@@ -38,7 +37,7 @@ test.describe('inventory item grid scrolling', () => {
         // Desktop-only: on touch a tap previews (Confirm-to-select) instead of
         // committing, so "click commits and closes" is the desktop contract.
         // The eventMode gating under test is shared by both input modes.
-        test.skip(isMobileProject(), 'desktop-only: click-to-commit is the desktop path')
+        test.skip(isTouchProject(), 'desktop-only: click-to-commit is the desktop path')
 
         // Space Age: its logistics group is 10 rows at 10 columns, so the item
         // grid actually scrolls (no vanilla-2.0 group exceeds the 8-row

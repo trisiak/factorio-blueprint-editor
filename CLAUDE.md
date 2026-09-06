@@ -139,12 +139,16 @@ Before declaring a change done, run the relevant subset of:
   canary for it. No exporter/:8081 needed. On a sandboxed host where outbound
   HTTPS goes through an agent proxy, the config routes Chromium's `https=` traffic
   through `HTTPS_PROXY` (never on CI, whose network is direct) and honours
-  `PLAYWRIGHT_CHROMIUM_PATH`. Two projects: `desktop-chromium` and
-  `mobile-chromium` (Pixel 7 →
-  `isMobile + hasTouch`). Touch-only specs guard on
-  `project.name === 'mobile-chromium'`. Playwright's high-level `touchscreen` API
-  is **single-touch**; multi-touch (pinch) requires raw CDP
-  `Input.dispatchTouchEvent`.
+  `PLAYWRIGHT_CHROMIUM_PATH` / `PLAYWRIGHT_FIREFOX_PATH`. Three projects:
+  `desktop-chromium`, `desktop-firefox` and `mobile-chromium` (Pixel 7 →
+  `isMobile + hasTouch`). The desktop specs run on both desktop browsers —
+  guards key off capabilities via the `e2e/projects.ts` helpers
+  (`isDesktopProject` / `isTouchProject` / `isChromiumProject`), not a browser
+  name. `desktop-firefox` is included only when a Firefox is actually runnable
+  (CI, `PLAYWRIGHT_FIREFOX_PATH`, or a `firefox-*` build in the browser cache),
+  so it self-omits in the Chromium-only sandbox; see `e2e/README.md` and #103.
+  Playwright's high-level `touchscreen` API is **single-touch**; multi-touch
+  (pinch) requires raw CDP `Input.dispatchTouchEvent`, which is Chromium-only.
 
 ## Conventions
 

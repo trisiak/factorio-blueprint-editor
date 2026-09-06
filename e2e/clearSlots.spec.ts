@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { longPressOneFinger } from './touchGestures'
+import { isTouchProject } from './projects'
 
 /**
  * Clearing a slot (module / filter / recipe).
@@ -33,8 +34,6 @@ const BP =
 // now, so it asserts the hint like the rest — `trainStop.spec.ts` covers it fully).
 const CHEST_BP =
     '0eNp9ksFuwjAQRH8F7dmpIIQW/B29VRFywkJXMrbr3SCiyP9eOaERFaUna0fjN+OVB2hshyGSE9ADkOAZ9J2mwJoGLWhoLZpYsPXCi/YTWRZHukoXERRcMDJ5B3rzWu6q3W5TlW/rcrtUQK13DPpjAKaTMzaHSB8Q9JSlwJlznlh8NCcsRjQkBeQOeAW9SrUCdEJCOIHGod+77txgBL16glAQPJOMtQa4gl6+bBT045kURPzqkGV/JCsYOXsY22yfUn7iFcyOX+otk6J3RbBG8hpa3+U1rlKd6pTUQ9VyvnZLx/isbHlX9g/SeiYFw0wXLEL0Fzo8B1b/A6sZKNGQK1h8eIRsR0SVFLCYSYf3/BVGe370N6lYxgY='
-
-const isMobileProject = (): boolean => test.info().project.name === 'mobile-chromium'
 
 type SlotKind = 'modules' | 'filters' | 'recipe'
 
@@ -141,7 +140,7 @@ const readConfirmButton = (page: Page): Promise<{ x: number; y: number } | null>
  * except the module picker (see `m_commitOnTap`), so anything else needs the
  * ✓ Confirm press to actually commit. Desktop commits on click.
  */
-async function pickFirstItem(page: Page, needsConfirm = isMobileProject()): Promise<void> {
+async function pickFirstItem(page: Page, needsConfirm = isTouchProject()): Promise<void> {
     const item = await readFirstItem(page)
     expect(item, 'the selector should show at least one item').not.toBeNull()
     await tap(page, item)
@@ -170,7 +169,7 @@ const inventoryOpen = (page: Page): Promise<boolean> =>
  * failing outright.
  */
 async function holdToClear(page: Page, at: { x: number; y: number }): Promise<void> {
-    if (isMobileProject()) {
+    if (isTouchProject()) {
         await longPressOneFinger(page, at)
         return
     }
@@ -184,7 +183,7 @@ async function holdToClear(page: Page, at: { x: number; y: number }): Promise<vo
 /** Quick tap / click — the *activate* half of the same slot gesture. */
 async function tap(page: Page, at: { x: number; y: number }): Promise<void> {
     const o = await canvasOrigin(page)
-    if (isMobileProject()) await page.touchscreen.tap(o.x + at.x, o.y + at.y)
+    if (isTouchProject()) await page.touchscreen.tap(o.x + at.x, o.y + at.y)
     else await page.mouse.click(o.x + at.x, o.y + at.y)
 }
 
@@ -295,7 +294,7 @@ test.describe('clearing a filled slot', () => {
     test('right-click still clears a module slot', async ({ page }) => {
         // The desktop path predates the touch work and is what the refactor onto
         // bindSlotGestures could plausibly have broken.
-        test.skip(isMobileProject(), 'desktop-only: touch has no right-click')
+        test.skip(isTouchProject(), 'desktop-only: touch has no right-click')
 
         await page.goto(`/?test&source=${encodeURIComponent(BP)}`)
         await waitForAppReady(page)
@@ -368,7 +367,7 @@ test.describe('the clear-a-slot hint', () => {
 
         const hint = await readClearHint(page, 'assembling-machine-2')
         expect(hint).toBe(
-            isMobileProject() ? 'Hold a slot to clear it' : 'Right-click a slot to clear it'
+            isTouchProject() ? 'Hold a slot to clear it' : 'Right-click a slot to clear it'
         )
     })
 
@@ -381,7 +380,7 @@ test.describe('the clear-a-slot hint', () => {
         await waitForAppReady(page)
 
         expect(await readClearHint(page, 'storage-chest')).toBe(
-            isMobileProject() ? 'Hold a slot to clear it' : 'Right-click a slot to clear it'
+            isTouchProject() ? 'Hold a slot to clear it' : 'Right-click a slot to clear it'
         )
     })
 
@@ -395,7 +394,7 @@ test.describe('the clear-a-slot hint', () => {
         await waitForAppReady(page)
 
         expect(await readClearHint(page, 'train-stop')).toBe(
-            isMobileProject() ? 'Hold a slot to clear it' : 'Right-click a slot to clear it'
+            isTouchProject() ? 'Hold a slot to clear it' : 'Right-click a slot to clear it'
         )
     })
 
@@ -469,7 +468,7 @@ test.describe('module selector: one tap either way', () => {
     test('the recipe selector still requires Confirm on touch', async ({ page }) => {
         // The one-tap shortcut is scoped to modules; everywhere else the deliberate
         // two-step stays, so this guards the scoping rather than the shortcut.
-        test.skip(!isMobileProject(), 'desktop commits on click everywhere by design')
+        test.skip(!isTouchProject(), 'desktop commits on click everywhere by design')
 
         await page.goto(`/?test&source=${encodeURIComponent(BP)}`)
         await waitForAppReady(page)
@@ -576,7 +575,7 @@ test.describe('quickbar slots', () => {
     // The quickbar is retired on mobile (its slots still work, but nothing renders
     // to press), so this is the desktop contract — and the refactor onto
     // bindSlotGestures is exactly the kind of change that could silently break it.
-    test.skip(() => isMobileProject(), 'the quickbar is retired on mobile')
+    test.skip(() => isTouchProject(), 'the quickbar is retired on mobile')
 
     test('long-press unassigns a quickbar slot', async ({ page }) => {
         await page.goto(`/?test&source=${encodeURIComponent(BP)}`)

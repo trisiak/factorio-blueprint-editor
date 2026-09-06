@@ -7,7 +7,7 @@ vitest covers framework-free logic only (see the root `CLAUDE.md`).
 ## Running
 
 ```bash
-npm run test:e2e         # headless, both projects
+npm run test:e2e         # headless, every available project
 npm run test:e2e:ui      # Playwright UI mode (pick/inspect specs)
 ```
 
@@ -37,11 +37,13 @@ export your own to test against something else — a local `npm run serve:data`
 shape above `<pack-id>/data.json`; the modpack specs tail-match it deliberately.
 
 Because the browser now talks to the public internet, sandboxed hosts whose
-egress goes through an agent proxy need Chromium to use it too. The config does
-that automatically when `HTTPS_PROXY` is set and `CI` is not: it routes `https=`
-through the proxy and leaves the local `http://localhost:8080` server direct. CI
-is on a direct network, so the plumbing is never engaged there. If your host's
-Chromium lives outside Playwright's cache, point at it:
+egress goes through an agent proxy need the browser to use it too. The config
+does that automatically when `HTTPS_PROXY` is set and `CI` is not — for every
+project, Firefox included: it routes `https=` through the proxy and leaves the
+local `http://localhost:8080` server direct. CI is on a direct network, so the
+plumbing is never engaged there. If your host's browser lives outside
+Playwright's cache, point at it (`PLAYWRIGHT_FIREFOX_PATH` is the Firefox
+equivalent — see "Projects" below):
 
 ```bash
 PLAYWRIGHT_CHROMIUM_PATH=/opt/pw-browsers/chromium npm run test:e2e
@@ -60,12 +62,13 @@ specs flaky under a full parallel `npm run test:e2e` even though single-test and
 sharded-CI runs passed. If you tighten these, expect the touch specs to flake
 first. (See also the slimmed CDP gesture helper under "Touch input" below.)
 
-### Browser
+### Browsers
 
-The suite uses Chromium only. This environment (and CI) already has a Chromium
-that `@playwright/test` targets, so **don't** run `playwright install` — the
+The agent/dev sandbox stages **Chromium only**, and it already has one that
+`@playwright/test` targets, so **don't** run `playwright install` there — the
 browser-download CDN isn't in the egress allowlist and the step will 403. (This
-is also why the SessionStart hook installs deps but not browsers.)
+is also why the SessionStart hook installs deps but not browsers.) CI installs
+what it needs per job (`--with-deps chromium` / `--with-deps firefox`).
 
 ### Constrained / rootless hosts (`test:e2e:host`)
 
@@ -104,12 +107,14 @@ regression; run those on a box with more headroom (or lean on CI, which shards).
 
 ## Projects
 
-Two projects are defined; most specs run on both, touch specs on the mobile one:
+Three projects; the desktop specs run on both desktop browsers, the touch specs
+on the mobile one:
 
-| Project            | Device  | Capabilities          |
-| ------------------ | ------- | --------------------- |
-| `desktop-chromium` | Desktop | mouse + keyboard      |
-| `mobile-chromium`  | Pixel 7 | `isMobile + hasTouch` |
+| Project            | Device          | Capabilities          | Runs                                    |
+| ------------------ | --------------- | --------------------- | --------------------------------------- |
+| `desktop-chromium` | Desktop Chrome  | mouse + keyboard      | the desktop suite                       |
+| `desktop-firefox`  | Desktop Firefox | mouse + keyboard      | the desktop suite (when Firefox exists) |
+| `mobile-chromium`  | Pixel 7         | `isMobile + hasTouch` | the touch suite                         |
 
 Run just one:
 
@@ -117,17 +122,98 @@ Run just one:
 npx playwright test --project=mobile-chromium
 ```
 
-Touch-only specs self-skip elsewhere — mirror the existing guard rather than
-inventing a new one:
+Firefox is there for what only a second engine can catch — context-menu rules,
+pointer-event quirks, `user-select`, focus handling (see #103; the Shift+RMB bug
+in #101/#102 was found by hand because the suite was Chromium-only). It is pinned
+to the Chromium desktop **viewport** so layout-sensitive assertions compare like
+with like, and it gets Firefox-shaped launch options — `firefoxUserPrefs` that
+force software WebGL on a GPU-less runner, the moral equivalent of Chromium's
+`--enable-unsafe-swiftshader`. The Chromium-only `args` are never handed to it.
+
+### Firefox needs a display: run it headed under Xvfb
+
+**Headless Firefox on Linux hands out no WebGL context at all.** The whole app is
+one WebGL canvas, so this is fatal — and it fails in a shape that doesn't say
+"WebGL": PixiJS's `isWebGLSupported()` probe returns false, `autoDetectRenderer`
+falls past `webgl` to its **Canvas** renderer, and the app then throws on every
+frame with
+
+```
+can't access property "push", this._renderer.filter is undefined
+```
+
+because the Canvas renderer registers `FilterPipe` but no `FilterSystem`. The
+specs that assert "no page errors" (the modpack ones) go red, and anything that
+waits on Pixi-rendered UI times out. Chromium sidesteps the whole problem with
+SwiftShader; Firefox's equivalent is a real X server, so CI runs this project
+**headed under `xvfb-run`** against Mesa/llvmpipe:
+
+```bash
+xvfb-run -a npx playwright test --project=desktop-firefox --headed
+```
+
+Do the same locally on a headless box. On a desktop with a display, plain
+`npx playwright test --project=desktop-firefox` is fine — a normal windowing
+session gives Firefox its GL. The `firefoxUserPrefs` in `playwright.config.ts`
+are still needed on top: they stop the GPU blocklist from vetoing a software
+context.
+
+### The Firefox project is skipped when Firefox isn't installed
+
+A project whose browser is missing fails the **whole** run at launch, and some
+environments (the agent sandbox above) stage Chromium only. So
+`playwright.config.ts` includes `desktop-firefox` only when one is actually
+runnable:
+
+- on **CI**, where `ci.yml` runs `npx playwright install --with-deps firefox`;
+- when **`PLAYWRIGHT_FIREFOX_PATH`** points at a binary (mirror of
+  `PLAYWRIGHT_CHROMIUM_PATH`);
+- when a **`firefox-*`** build exists in Playwright's browser cache — under
+  `PLAYWRIGHT_BROWSERS_PATH` if set, else the per-OS default
+  (`~/.cache/ms-playwright` on Linux).
+
+Otherwise it's omitted and the config prints one line saying so, and
+`npm run test:e2e` just runs the Chromium matrix. Confirm what a run would do
+without executing anything:
+
+```bash
+npx playwright test --list | tail -3      # no desktop-firefox entries locally
+```
+
+**Local setup.** Pre-staging Firefox for the agent environment is a maintainer
+task tracked as the "Local / agent environment" item in
+[#103](https://github.com/trisiak/factorio-blueprint-editor/issues/103): either a
+`firefox-<build>` under `PLAYWRIGHT_BROWSERS_PATH` matching the pinned
+`@playwright/test` (1.56.1), or a binary to point at. On an ordinary dev box
+`npx playwright install firefox` does it; wherever the browser lives elsewhere:
+
+```bash
+PLAYWRIGHT_FIREFOX_PATH=/usr/bin/firefox npx playwright test --project=desktop-firefox
+```
+
+### Guarding a spec to part of the matrix
+
+Because the matrix now has two desktop browsers, guards key off **capabilities**,
+not a browser name. The helpers live in **`e2e/projects.ts`** — use them rather
+than open-coding a `project.name` comparison, so a fourth project keeps working:
 
 ```ts
+import { isDesktopProject, isTouchProject, isChromiumProject } from './projects'
+
 test.beforeEach(() => {
-    test.skip(
-        test.info().project.name !== 'mobile-chromium',
-        'touch tests run on the mobile project only'
-    )
+    test.skip(!isDesktopProject(), 'desktop mouse pipeline only')
 })
 ```
+
+- `isTouchProject()` — the project's device sets `hasTouch` (today: `mobile-chromium`).
+- `isDesktopProject()` — everything else: mouse + keyboard.
+- `isChromiumProject()` — **only** for things that genuinely need Chrome, with a
+  comment saying which: raw CDP (`newCDPSession`, the only way to synthesize
+  touch gestures) and the clipboard read API (`navigator.clipboard.readText` is
+  not exposed to pages in Firefox — see the paste test in `wires.spec.ts`). The
+  touch specs are therefore `!isTouchProject() || !isChromiumProject()`, and
+  `storyboard.spec.ts` stays pinned to `desktop-chromium` by name because it
+  regenerates committed reference images and must run exactly once.
 
 The editor's hard mobile block is opt-in (`?desktopOnly`), which is why the app
 loads at all under `mobile-chromium`. `smoke.spec.ts` asserts desktop never hits

@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { dragOneFinger } from './touchGestures'
+import { isChromiumProject, isTouchProject } from './projects'
 
 // Slice 1 of natural touch placement: on mobile a tap positions/previews the
 // held ghost (the touch analogue of desktop hover) and only a *second* tap on
@@ -54,9 +55,11 @@ const TILE_A = { x: 180, y: 480 }
 const TILE_B = { x: 340, y: 620 }
 
 test.describe('touch placement (deferred)', () => {
+    // Touch + Chromium, not just touch: the gestures are synthesized with raw CDP
+    // (`Input.dispatchTouchEvent`), which only Chromium exposes.
     test.beforeEach(() => {
         test.skip(
-            test.info().project.name !== 'mobile-chromium',
+            !isTouchProject() || !isChromiumProject(),
             'touch placement runs on the mobile project only'
         )
     })
