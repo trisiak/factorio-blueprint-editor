@@ -1,5 +1,5 @@
 import G from './globals'
-import { inputMode, type InputMode } from './input'
+import { inputMode, type InputMode, type InputPreset, type InputSignals } from './input'
 import { EditorMode } from '../containers/BlueprintContainer'
 import { PaintEntityContainer } from '../containers/PaintEntityContainer'
 import { PaintBlueprintContainer } from '../containers/PaintBlueprintContainer'
@@ -19,7 +19,16 @@ import { Entity } from '../core/Entity'
  * All measurements are in CSS pixels (matching `page.viewportSize()`).
  */
 export interface EditorTestState {
+    /**
+     * The *derived* compatibility mode (#101 Slice 1) — a forced preset wins,
+     * else the primary pointer. Kept because most on-canvas chrome still branches
+     * on it; new assertions should prefer `signals` / `inputPreset`.
+     */
     inputMode: InputMode
+    /** The environment signals that replaced detection: see `common/input.ts`. */
+    signals: InputSignals
+    /** The user's override: `auto` (signals decide), or a forced pointer kind. */
+    inputPreset: InputPreset
     screen: { width: number; height: number }
     quickbar: {
         visible: boolean
@@ -103,6 +112,12 @@ export interface EditorTestState {
     infoPanelVisible: boolean
     /** Whether the top-left blueprint-wide production rates panel is showing. */
     ratesPanelVisible: boolean
+    /**
+     * Current viewport zoom (the blueprint container's scale). A pinch/wheel zoom
+     * is otherwise invisible to the DOM, so this is what the gesture specs
+     * compare before/after.
+     */
+    viewportScale: number
 }
 
 export function getEditorTestState(): EditorTestState {
@@ -113,6 +128,8 @@ export function getEditorTestState(): EditorTestState {
     const painting = G.BPC.mode === EditorMode.PAINT && !!G.BPC.paintContainer
     return {
         inputMode: inputMode.mode,
+        signals: inputMode.signals,
+        inputPreset: inputMode.preset,
         screen: { width: G.app.screen.width, height: G.app.screen.height },
         quickbar: {
             visible: qb.visible && r.width > 0 && r.height > 0,
@@ -154,6 +171,7 @@ export function getEditorTestState(): EditorTestState {
         },
         infoPanelVisible: G.UI.entityInfoPanelVisible,
         ratesPanelVisible: G.UI.ratesPanelVisible,
+        viewportScale: G.BPC.getViewportScale(),
     }
 }
 
@@ -251,10 +269,20 @@ export interface FbeTestHook {
     /** On-screen centre of "✓ Confirm", or null while it's hidden. */
     inventoryConfirmButtonPos: () => { x: number; y: number } | null
     /**
-     * Flip the input mode, as the settings pane's Input Mode dropdown does. Lets
-     * a spec assert that live-mode-switch handling works on already-open UI.
+     * Force the input preset by legacy *mode* name (`desktop` → force mouse,
+     * `mobile` → force touch), as the settings dropdown used to. Lets a spec
+     * assert that live-switch handling works on already-open UI.
      */
     setInputMode: (mode: InputMode) => void
+    /** Set the preset directly — `auto` is the only way back to the signals. */
+    setInputPreset: (preset: InputPreset) => void
+    /**
+     * Pin environment signals regardless of what the browser reports. Headless
+     * Chromium ties `(pointer: coarse)` to its `isMobile` emulation, so the
+     * hybrid project (fine pointer + touch) can't otherwise *observe* the coarse
+     * branches. Pass `undefined` for a key to release it back to the media query.
+     */
+    setSignals: (next: { coarse?: boolean; compact?: boolean }) => void
     /**
      * On-screen centre of the first item button in the open selector's active
      * group — lets a spec tap a real item without hardcoding which one the tab
@@ -578,6 +606,12 @@ export function installTestHook(win: Window = window): void {
         },
         setInputMode: mode => {
             inputMode.mode = mode
+        },
+        setInputPreset: preset => {
+            inputMode.preset = preset
+        },
+        setSignals: next => {
+            inputMode.overrideSignals(next)
         },
         openEditorClearHint: () => {
             const dom = document.querySelector('.fbe-dialog.entity-editor .ee-hint')

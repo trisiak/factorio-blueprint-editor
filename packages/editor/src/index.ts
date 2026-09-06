@@ -10,7 +10,7 @@ import {
     exportKeybinds,
 } from './actions'
 import { Editor } from './Editor'
-import { inputMode, InputMode } from './common/input'
+import { inputMode, InputMode, InputPreset, InputSignals } from './common/input'
 import { installTestHook } from './common/testHook'
 import type { EditorTestState, FbeTestHook } from './common/testHook'
 import FD from './core/factorioData'
@@ -30,7 +30,14 @@ export { Editor, Book, Blueprint, GridPattern, EditorMode, FD, inputMode, instal
 export { DATA_ROOT, DATA_PACK, DEFAULT_DATA_PACK, setDataPack }
 export { loadPackManifest, getCanonicalDataPack, canonicalPackId, canonicalPacks }
 export { graphicsOptions }
-export type { InputMode, EditorTestState, FbeTestHook, PackManifestEntry }
+export type {
+    InputMode,
+    InputPreset,
+    InputSignals,
+    EditorTestState,
+    FbeTestHook,
+    PackManifestEntry,
+}
 // The render-free entity-info projection consumed by the website's DOM bottom
 // sheet (#89 Phase 2); delivered at runtime via the `fbe:entityinfo` event.
 export type { EntityInfoData, EntityInfoStack } from './UI/EntityInfoPanel'

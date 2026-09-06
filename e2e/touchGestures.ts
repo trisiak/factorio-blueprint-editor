@@ -106,3 +106,52 @@ export async function longPressOneFinger(
         await cdp.detach()
     }
 }
+
+/**
+ * Pinch two fingers apart (or together) about a center point — the two-finger
+ * gesture `PointerGestures` turns into a viewport zoom. Playwright's high-level
+ * `touchscreen` API is single-touch, so this is the only way to express it.
+ *
+ * Coordinates are canvas/element-relative, like the helpers above. The fingers
+ * start `from` px either side of `center` on the x axis and end `to` px either
+ * side, so `to > from` zooms in and `to < from` zooms out. Move dispatches are
+ * pipelined for the same reason `dragOneFinger` pipelines its own: each send
+ * blocks on a renderer ack, and a starved render loop turns a handful of awaited
+ * round-trips into seconds.
+ */
+export async function pinch(
+    page: Page,
+    center: { x: number; y: number },
+    from: number,
+    to: number,
+    steps = 4
+): Promise<void> {
+    const box = await page.locator('#editor').boundingBox()
+    const cx = (box?.x ?? 0) + center.x
+    const cy = (box?.y ?? 0) + center.y
+    const points = (spread: number): { x: number; y: number }[] => [
+        { x: cx - spread, y: cy },
+        { x: cx + spread, y: cy },
+    ]
+    const cdp = await page.context().newCDPSession(page)
+    try {
+        const stream: Promise<unknown>[] = [
+            cdp.send('Input.dispatchTouchEvent', {
+                type: 'touchStart',
+                touchPoints: points(from),
+            }),
+        ]
+        for (let i = 1; i <= steps; i++) {
+            stream.push(
+                cdp.send('Input.dispatchTouchEvent', {
+                    type: 'touchMove',
+                    touchPoints: points(from + ((to - from) * i) / steps),
+                })
+            )
+        }
+        await Promise.all(stream)
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+    } finally {
+        await cdp.detach()
+    }
+}

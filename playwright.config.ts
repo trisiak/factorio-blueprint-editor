@@ -91,6 +91,25 @@ export default defineConfig({
             // (?desktopOnly) so the app loads here.
             use: { ...devices['Pixel 7'] },
         },
+        {
+            // The hybrid case (#101 Slice 1): a desktop viewport with a *mouse and
+            // a touchscreen* on the same page — a touchscreen laptop / Surface.
+            // `isMobile` stays false, so Chromium reports a fine primary pointer
+            // (`(pointer: coarse)` follows its mobile emulation), which is exactly
+            // the configuration the old `maxTouchPoints > 0` detection got wrong:
+            // touch-capable hardware that should still boot the mouse UI (B1).
+            //
+            // Scoped to its own spec via `testMatch`: the rest of the suite is
+            // already covered by the desktop and mobile projects, and running all
+            // of it a third time would triple a render-bound suite for no signal.
+            name: 'hybrid-chromium',
+            testMatch: /hybridInput\.spec\.ts/,
+            use: {
+                ...devices['Desktop Chrome'],
+                viewport: { width: 1280, height: 720 },
+                hasTouch: true,
+            },
+        },
     ],
     webServer: {
         command: 'npm run build:website && npm run preview:website',

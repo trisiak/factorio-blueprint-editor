@@ -18,21 +18,53 @@ Status: ✅ done · 🚧 partial · ⬜ not started
 Make the editor usable on touch devices without regressing the desktop
 (mouse + keyboard) experience. The site used to hard-refuse to load on mobile.
 
-## Architecture: explicit input mode
+## Architecture: input signals + per-pointer dispatch
 
-The page is in exactly one **input mode** at a time — `desktop` (mouse/keyboard)
-or `mobile` (touch). They're mutually exclusive on purpose: running both
-pipelines at once made touch taps double-act via the browser's synthetic
-("compatibility") mouse events.
+Replaces the old binary input mode (#101 Slice 1). There is no longer a global
+"which device am I" switch: **every pointer event is routed by its own
+`pointerType`**, and the _environment_ is described by orthogonal, live signals
+that drive chrome and sizing.
 
-- Source of truth: `packages/editor/src/common/input.ts` — the `inputMode`
-  controller. Auto-detects from `pointer: coarse` / `maxTouchPoints`, persists an
-  explicit choice to `localStorage` (`fbe:inputMode`), emits `change`.
-- Dispatch: `packages/editor/src/containers/BlueprintContainer.ts` reads the mode
-  per pointer event. Desktop ignores `touch`; mobile ignores `mouse` and locks
-  the canvas `touch-action: none`. Switching is live (no reload).
-- Toggle: "Input Mode" dropdown in the settings pane
-  (`packages/website/src/settingsPane.ts`).
+- **Per-pointer dispatch** — `packages/editor/src/containers/BlueprintContainer.ts`
+  sends `mouse`/`pen` to the press + hover pipeline and `touch` to the tap /
+  one-finger-drag / pinch recogniser, per event. A touchscreen laptop (mouse
+  _and_ touch on one page) therefore just works; nothing has to be switched.
+  The double-firing that originally motivated the switch is killed at the source:
+  `touch-action: none` on the canvas **always**, plus `preventDefault()` on a
+  touch `pointerdown` (a cancelled pointerdown suppresses the browser's
+  compatibility mouse events). Hover, `GridData`'s window `pointermove` tracking
+  and the per-frame `gridData.recalculate()` key off the event's `pointerType` /
+  `touchRecent` rather than a global — so the touch ghost stays pinned to its
+  tapped tile while the mouse ghost keeps following the mouse.
+- **Signals** — `packages/editor/src/common/input.ts` (the `inputMode`
+  controller), all live:
+    - `coarse` — `matchMedia('(pointer: coarse), (hover: none)')`, i.e. the
+      _primary_ pointer. `navigator.maxTouchPoints` no longer decides anything:
+      the old `coarse || maxTouchPoints > 0` booted every touchscreen laptop into
+      the touch UI (#101 B1).
+    - `keys` — true from the start on a fine pointer; on a coarse one, false
+      until the first _real_ keydown (synthetic events, IME/virtual-keyboard
+      composition and typing into a focused field on a coarse device don't count).
+    - `compact` — narrow viewport (≤ 768 px), live on resize/orientation.
+    - `touchRecent` — the last pointer event on `window` was a `touch`
+      (mouse/pen clear it). Micro-affordances only.
+    - Exposed as body classes on the website (`coarse`, `keys`, `compact`,
+      `touch-recent`) so most gating can become CSS.
+- **Preset** — `auto` (default) | `mouse` | `touch`: an override of the _inputs_,
+  not a third pipeline. A forced preset filters pointer types exactly as the old
+  binary mode did (mouse ignores touch, touch ignores mouse). Persisted to
+  `localStorage` `fbe:inputPreset`; the pre-#101 `fbe:inputMode` value **migrates
+  to `auto`** and the old key is removed. Toggle: the "Input" dropdown in the
+  settings pane (`packages/website/src/settingsPane.ts`).
+- **Compatibility** — `inputMode.mode` survives as a _derived_ value (forced
+  preset wins, else `coarse ? 'mobile' : 'desktop'`) and still emits `change`, so
+  every consumer that hasn't migrated yet (the website clusters, the Pixi panels,
+  `armMarquee`, `body.mobile`) keeps today's behaviour. It goes away when the last
+  consumer moves onto the signals (#101, later slices).
+- **Tests** — pure decision logic (migration, derived mode, the signal reducers)
+  is unit-tested in `packages/editor/src/common/input.test.ts`; the end-to-end
+  behaviour has its own Playwright project, `hybrid-chromium` (desktop viewport +
+  `hasTouch`), in `e2e/hybridInput.spec.ts`.
 
 ## Done
 
@@ -56,7 +88,18 @@ pipelines at once made touch taps double-act via the browser's synthetic
 - ✅ **One-finger tap vs. drag** — drag past ~10 px pans; release within
   10 px / 300 ms taps through the existing left-click pipeline (place / select /
   open unchanged).
-- ✅ **Explicit desktop/mobile mode + double-tap fix** — see Architecture above.
+- ✅ **Explicit desktop/mobile mode + double-tap fix** — the original fix; since
+  superseded by the signals + per-pointer dispatch below.
+- ✅ **Input signals + per-pointer dispatch (#101 Slice 1)** — the binary input
+  mode is gone as a dispatch authority: `BlueprintContainer` routes each pointer
+  event by its own `pointerType`, the canvas is always `touch-action: none` and a
+  touch `pointerdown` is `preventDefault()`ed (no compatibility mouse events, so
+  no double-fire), and detection became the live `coarse` / `keys` / `compact` /
+  `touchRecent` signals plus an `auto`/`mouse`/`touch` preset. A touchscreen
+  laptop now boots the mouse UI (B1) and a mouse works on touch hardware (B2).
+  `inputMode.mode` remains only as a derived compatibility value. See
+  Architecture above; unit tests in `common/input.test.ts`, e2e in the new
+  `hybrid-chromium` project (`e2e/hybridInput.spec.ts`).
 - ✅ **Responsive overlays** — the INFO/shortcuts panel no longer overflows in
   portrait (`width: min(640px, 90vw)`, scrolls instead of clipping) and is now
   openable/closable without a keyboard (tap the corner panel; on-screen ✕). The
