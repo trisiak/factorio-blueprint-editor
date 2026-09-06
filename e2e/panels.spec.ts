@@ -182,9 +182,21 @@ test.describe('quickbar', () => {
         expect(state.quickbar.visible).toBe(true)
         await expect(page.locator('#quickbar')).toBeVisible()
 
-        // On screen, and clear of the rail's column on the left.
+        // On screen, and not overlapping the rail. Note it is *not* required to
+        // start right of the rail's column: the bar is centred in the bottom
+        // band, which on a compact viewport begins below where the rail's
+        // buttons end — the left inset exists so the *Pixi* panels anchored in
+        // `G.safeArea` clear the column, while DOM chrome only has to not
+        // collide (the same "restrict the panels, not the world" reasoning).
         const b = state.quickbar.bounds
-        expect(b.x).toBeGreaterThanOrEqual(state.safeArea.x)
+        const rail = await page.locator('#action-toolbar').boundingBox()
+        const overlapsRail =
+            b.x < rail.x + rail.width &&
+            rail.x < b.x + b.width &&
+            b.y < rail.y + rail.height &&
+            rail.y < b.y + b.height
+        expect(overlapsRail).toBe(false)
+        expect(b.x).toBeGreaterThanOrEqual(0)
         expect(b.x + b.width).toBeLessThanOrEqual(viewport.width + 1)
         expect(b.y).toBeGreaterThan(0)
         expect(b.y + b.height).toBeLessThanOrEqual(viewport.height + 1)
