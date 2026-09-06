@@ -526,22 +526,27 @@ export class OverlayContainer extends Container {
             )
 
             if (otherEntity) {
-                // Return if directionTypes are the same
+                // Return if directionTypes are the same. Misplaced parens used
+                // to make the wrap `direction + (8 % 16)` — i.e. a plain +8 — so
+                // a south/west end came out as 16/20 and could never match, and
+                // two same-type ends were drawn as if they paired up.
                 if (
                     fd.type === 'underground-belt' &&
                     (otherEntity.directionType === 'input'
                         ? otherEntity.direction
-                        : otherEntity.direction + (8 % 16)) === searchDirection
+                        : (otherEntity.direction + 8) % 16) === searchDirection
                 ) {
                     return
                 }
 
-                const searchingAlongY = searchDirection % 4 === 0
-                const distance = searchingAlongY
-                    ? Math.abs(otherEntity.position.y - position.y)
-                    : Math.abs(otherEntity.position.x - position.x)
-
-                const sign = searchDirection === 0 || searchDirection === 6 ? -1 : 1
+                // Step along the search axis the 16-way way — the old `% 4` /
+                // `=== 6` tests are 8-way leftovers that sent east and west
+                // marching south (see util.directionToVector).
+                const step = util.directionToVector(searchDirection)
+                const distance =
+                    step.x !== 0
+                        ? Math.abs(otherEntity.position.x - position.x)
+                        : Math.abs(otherEntity.position.y - position.y)
 
                 const lineParts = new Container()
                 lineParts.x = position.x * 32
@@ -561,15 +566,15 @@ export class OverlayContainer extends Container {
                         s.scale.set(data.scale)
                     }
                     s.anchor.set(0.5)
-                    s.x = searchingAlongY ? 0 : sign * i * 32
-                    s.y = searchingAlongY ? sign * i * 32 : 0
+                    s.x = step.x * i * 32
+                    s.y = step.y * i * 32
                     lineParts.addChild(s)
                 }
 
                 const otherEntityCursorBox = this.createCursorBox(
                     {
-                        x: searchingAlongY ? 0 : sign * distance * 32,
-                        y: searchingAlongY ? sign * distance * 32 : 0,
+                        x: step.x * distance * 32,
+                        y: step.y * distance * 32,
                     },
                     otherEntity.size,
                     'pair'
