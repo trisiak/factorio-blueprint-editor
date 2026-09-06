@@ -313,14 +313,14 @@ export class EntityContainer {
             this.entityInfo = G.BPC.overlayContainer.createEntityInfo(this.m_Entity, this.position)
         }
 
-        G.UI.updateEntityInfoPanel(this.m_Entity)
+        G.UI.updateEntityInfo(this.m_Entity)
     }
 
     public pointerOverEventHandler(): void {
         this.cursorBox = 'regular'
         this.createUndergroundLine()
 
-        G.UI.updateEntityInfoPanel(this.m_Entity)
+        G.UI.updateEntityInfo(this.m_Entity)
         this.visualizationArea.show()
 
         // Highlight the entity's circuit network — box the connected entities —
@@ -335,7 +335,7 @@ export class EntityContainer {
         this.cursorBox = undefined
         this.destroyUndergroundLine()
 
-        G.UI.updateEntityInfoPanel(undefined)
+        G.UI.updateEntityInfo(undefined)
         this.visualizationArea.hide()
         G.BPC.overlayContainer.clearNetworkHighlight()
     }

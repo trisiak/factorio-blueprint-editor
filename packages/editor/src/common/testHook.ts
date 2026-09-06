@@ -100,13 +100,18 @@ export interface EditorTestState {
         direction: number | null
     }
     /**
-     * Whether the top-right entity info panel is showing (hover/tap-select).
-     * Desktop presentation only: on mobile this is always false — the DOM
-     * `#entity-info-sheet` presents instead (#89 Phase 2), and specs assert on
-     * that element directly.
+     * Whether the entity-info readout is showing (hover/tap-select). **DOM-backed
+     * truth** since #101 Slice 5: the readouts are DOM for every input, so this
+     * reports whether the website's `#entity-info-sheet` is actually rendered —
+     * which also folds in the layering contract (a Pixi dialog open ⇒ false, the
+     * `body.fbe-dialog-open` gate) rather than reporting a logical intent.
      */
     infoPanelVisible: boolean
-    /** Whether the top-left blueprint-wide production rates panel is showing. */
+    /**
+     * Whether the blueprint-wide production rates readout is showing —
+     * DOM-backed the same way (`#rates-drawer`). The *logical* toggle state
+     * lives in the editor's `RatesModel`; this is what the user can see.
+     */
     ratesPanelVisible: boolean
     /**
      * Current viewport zoom (the blueprint container's scale). A pinch/wheel zoom
@@ -114,6 +119,24 @@ export interface EditorTestState {
      * compare before/after.
      */
     viewportScale: number
+}
+
+/**
+ * Element ids the **website** gives the two DOM status readouts
+ * (`entityInfoSheet.ts` / `ratesDrawer.ts`). The probe reaches across the
+ * package boundary on purpose: since #101 Slice 5 the DOM *is* the only
+ * presentation, so "is the readout visible" can no longer be answered from
+ * inside the editor — and asking the rendered document also folds in the CSS
+ * gates (`.visible`, the `body.fbe-dialog-open` layering contract) that a
+ * logical flag would miss.
+ */
+const READOUT_IDS = { info: 'entity-info-sheet', rates: 'rates-drawer' }
+
+/** Is `id` rendered — laid out and not display:none, from any rule. */
+function domReadoutVisible(id: string): boolean {
+    if (typeof document === 'undefined') return false
+    const el = document.getElementById(id)
+    return !!el && el.getClientRects().length > 0
 }
 
 export function getEditorTestState(): EditorTestState {
@@ -159,8 +182,8 @@ export function getEditorTestState(): EditorTestState {
             origin: G.BPC.marqueeOrigin ?? null,
             direction: G.BPC.marqueeDirection ?? null,
         },
-        infoPanelVisible: G.UI.entityInfoPanelVisible,
-        ratesPanelVisible: G.UI.ratesPanelVisible,
+        infoPanelVisible: domReadoutVisible(READOUT_IDS.info),
+        ratesPanelVisible: domReadoutVisible(READOUT_IDS.rates),
         viewportScale: G.BPC.getViewportScale(),
     }
 }
@@ -298,25 +321,14 @@ export interface FbeTestHook {
      */
     openEditorClearHint: () => string | null
     /**
-     * Bounds of the entity info panel (CSS px, canvas-relative), null while
-     * hidden — desktop presentation only (see `infoPanelVisible`); on mobile
-     * the DOM sheet is asserted through the DOM instead.
+     * Toggle the blueprint-wide production rates readout (as the T keybind and
+     * the rail's Rates button do). Both readouts are DOM since #101 Slice 5, so
+     * their *contents* — the rendered lines, the ✕ hit point, the anchoring —
+     * are asserted straight off `#rates-drawer` / `#entity-info-sheet`; the
+     * canvas probes that stood in for them (`ratesPanelLines`,
+     * `ratesPanelClosePos`, `infoPanelBounds`) went with the Pixi panels.
      */
-    infoPanelBounds: () => { x: number; y: number; width: number; height: number } | null
-    /** Toggle the blueprint-wide production rates panel (as the T keybind does). */
     toggleRatesPanel: () => void
-    /**
-     * The rates panel's rendered text lines, top to bottom — section headers,
-     * per-material rates, the machines-counted footer. Canvas-drawn, so the DOM
-     * can't see them; e2e asserts on these instead of pixels.
-     */
-    ratesPanelLines: () => string[]
-    /**
-     * On-screen centre of the rates panel's ✕ close button (canvas-relative CSS
-     * px), or null while the panel is hidden — so the spec can dismiss it with
-     * a real click/tap instead of the toggle action.
-     */
-    ratesPanelClosePos: () => { x: number; y: number } | null
     /**
      * Train-stop config, read through the entity — text typed into the DOM
      * station-name overlay (#56) / flags toggled in the editor only count once
@@ -398,11 +410,11 @@ export function installTestHook(win: Window = window): void {
         getState: getEditorTestState,
         showEntityInfo: name => {
             if (name === null) {
-                G.UI.updateEntityInfoPanel(undefined)
+                G.UI.updateEntityInfo(undefined)
                 return true
             }
             const e = findEntity(name)
-            if (e) G.UI.updateEntityInfoPanel(e)
+            if (e) G.UI.updateEntityInfo(e)
             return !!e
         },
         openEntityEditor: name => {
@@ -562,10 +574,7 @@ export function installTestHook(win: Window = window): void {
             Dialog.closeAll()
             return G.UI.createEditor(e)?.clearHintText ?? null
         },
-        infoPanelBounds: () => G.UI.entityInfoPanelBounds(),
         toggleRatesPanel: () => G.UI.toggleRatesPanel(),
-        ratesPanelLines: () => G.UI.ratesPanelLines(),
-        ratesPanelClosePos: () => G.UI.ratesPanelClosePos(),
         entityTrainStop: name => {
             const e = findEntity(name)
             if (!e) return null

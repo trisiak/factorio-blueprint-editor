@@ -38,13 +38,20 @@ export type {
     FbeTestHook,
     PackManifestEntry,
 }
-// The render-free entity-info projection consumed by the website's DOM bottom
-// sheet (#89 Phase 2); delivered at runtime via the `fbe:entityinfo` event.
-export type { EntityInfoData, EntityInfoStack } from './UI/EntityInfoPanel'
-// Likewise for the rates readout (`fbe:rates`); formatRate keeps the DOM
-// drawer's numbers formatted exactly like the canvas panel's.
-export type { RatesData, RatesEntryData } from './UI/RatesPanel'
-export { formatRate } from './UI/RatesPanel'
+// The render-free entity-info projection the website's DOM sheet renders for
+// every input (#89 Phase 2, universal since #101 Slice 5); delivered at runtime
+// via the `fbe:entityinfo` event. The token types carry the circuit summary's
+// icon-or-text pieces (see `UI/entityInfo.ts`).
+export type {
+    EntityInfoData,
+    EntityInfoStack,
+    EntityInfoRow,
+    EntityInfoToken,
+} from './UI/entityInfo'
+// Likewise for the rates readout (`fbe:rates`); formatRate keeps the numbers
+// formatted by the model that computes them, not by the renderer.
+export type { RatesData, RatesEntryData } from './UI/ratesModel'
+export { formatRate } from './UI/ratesModel'
 export default {
     registerAction,
     callAction,

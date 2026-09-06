@@ -1,21 +1,25 @@
 import { Container } from 'pixi.js'
 import { Entity } from '../core/Entity'
-import { inputMode } from '../common/input'
 import { DebugContainer } from './DebugContainer'
 import { QuickbarPanel } from './QuickbarPanel'
-import { EntityInfoPanel, buildEntityInfo } from './EntityInfoPanel'
+import { buildEntityInfo } from './entityInfo'
 import { InventoryDialog, SlotClear } from './InventoryDialog'
 import { SignalPicker, SignalChoice } from './SignalPicker'
 import { NumericKeypad } from './NumericKeypad'
-import { RatesPanel } from './RatesPanel'
+import { RatesModel } from './ratesModel'
 import { Editor } from './editors/Editor'
 import { createEditor } from './editors/factory'
 
 export class UIContainer extends Container {
     private debugContainer: DebugContainer
     public quickbarPanel: QuickbarPanel
-    private entityInfoPanel: EntityInfoPanel
-    private ratesPanel: RatesPanel
+    /**
+     * The rates readout's state holder. Not a display object any more (#101
+     * Slice 5): both status readouts present as DOM now, so what the editor
+     * keeps is the toggle state, the live-recompute subscriptions and the
+     * projection it dispatches — see `ratesModel.ts`.
+     */
+    private ratesModel: RatesModel
     private dialogsContainer: Container
     private paintIconContainer: Container
 
@@ -24,28 +28,26 @@ export class UIContainer extends Container {
 
         this.debugContainer = new DebugContainer()
         this.quickbarPanel = new QuickbarPanel(2)
-        this.entityInfoPanel = new EntityInfoPanel()
-        this.ratesPanel = new RatesPanel()
+        this.ratesModel = new RatesModel()
         this.dialogsContainer = new Container()
         this.paintIconContainer = new Container()
 
         this.addChild(
             this.debugContainer,
             this.quickbarPanel,
-            this.entityInfoPanel,
-            this.ratesPanel,
             this.dialogsContainer,
             this.paintIconContainer
         )
     }
 
-    public updateEntityInfoPanel(entity?: Entity): void {
-        // Desktop shows the canvas panel; mobile shows the website's DOM
-        // bottom sheet (#89 Phase 2) — one presentation per input mode, same
-        // signal. The sheet gets a render-free data projection over a window
-        // event (the same DOM/canvas bridge pattern as `fbe:viewportchange`),
-        // dispatched in both modes so a live mode switch has fresh data ready.
-        this.entityInfoPanel.updateVisualization(inputMode.mode === 'desktop' ? entity : undefined)
+    /**
+     * Publish the hovered/selected entity to the DOM entity-info sheet, which
+     * presents it for **every** input (#101 Slice 5 — the Pixi panel that used
+     * to draw this on desktop is retired). The sheet gets a render-free data
+     * projection over a window event, the same DOM/canvas bridge pattern as
+     * `fbe:viewportchange`; `undefined` clears it.
+     */
+    public updateEntityInfo(entity?: Entity): void {
         window.dispatchEvent(
             new CustomEvent('fbe:entityinfo', {
                 detail: entity ? buildEntityInfo(entity) : null,
@@ -53,49 +55,19 @@ export class UIContainer extends Container {
         )
     }
 
-    /** Whether the top-right entity info panel is currently shown (for e2e). */
-    public get entityInfoPanelVisible(): boolean {
-        return this.entityInfoPanel.visible
-    }
-
-    /**
-     * Screen-space bounds of the entity info panel (CSS px, canvas-relative),
-     * or null while hidden — backs the top-band e2e ratchet (#89): the panel
-     * anchors to the canvas top, so with the top inset reserved its viewport
-     * position must clear the DOM chrome above the canvas.
-     */
-    public entityInfoPanelBounds(): { x: number; y: number; width: number; height: number } | null {
-        if (!this.entityInfoPanel.visible) return null
-        const r = this.entityInfoPanel.getBounds().rectangle
-        return { x: r.x, y: r.y, width: r.width, height: r.height }
-    }
-
-    /** Toggle the blueprint-wide production rates panel (`showRates` action). */
+    /** Toggle the blueprint-wide production rates readout (`showRates` action). */
     public toggleRatesPanel(): void {
-        this.ratesPanel.toggle()
+        this.ratesModel.toggle()
     }
 
-    /**
-     * Whether the rates readout is open (for e2e) — logical state, true in
-     * either presentation (desktop canvas panel / mobile DOM drawer).
-     */
-    public get ratesPanelVisible(): boolean {
-        return this.ratesPanel.shown
+    /** Whether the rates readout is open (logical state; the drawer follows it). */
+    public get ratesShown(): boolean {
+        return this.ratesModel.shown
     }
 
-    /** The rates panel's rendered text lines, top to bottom (for e2e). */
-    public ratesPanelLines(): string[] {
-        return this.ratesPanel.textLines
-    }
-
-    /** Screen-space center of the rates panel's ✕ (null while hidden; for e2e). */
-    public ratesPanelClosePos(): { x: number; y: number } | null {
-        return this.ratesPanel.closeButtonPosition()
-    }
-
-    /** Let panels tracking `G.bp` re-attach after `loadBlueprint` swaps it. */
+    /** Let state holders tracking `G.bp` re-attach after `loadBlueprint` swaps it. */
     public onBlueprintSwapped(): void {
-        this.ratesPanel.onBlueprintSwapped()
+        this.ratesModel.onBlueprintSwapped()
     }
 
     public addPaintIcon(icon: Container): void {
