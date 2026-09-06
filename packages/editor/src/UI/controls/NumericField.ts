@@ -17,7 +17,9 @@ export class NumericField extends Slot<undefined> {
         value: number | undefined,
         private readonly onChange: (value: number) => void,
         private readonly title = 'Enter value',
-        width = 64
+        width = 64,
+        /** Passed to the keypad: whether this field accepts negative values. */
+        private readonly allowNegative = true
     ) {
         super(width, 32)
         this.m_value = value
@@ -43,9 +45,14 @@ export class NumericField extends Slot<undefined> {
     private onPointerDown(e: FederatedPointerEvent): void {
         e.stopPropagation()
         if (e.button !== 0) return
-        G.UI.createNumericKeypad(this.title, this.m_value, v => {
-            this.value = v
-            this.onChange(v)
-        })
+        G.UI.createNumericKeypad(
+            this.title,
+            this.m_value,
+            v => {
+                this.value = v
+                this.onChange(v)
+            },
+            this.allowNegative
+        )
     }
 }

@@ -19,6 +19,7 @@ import { BlueprintContainer, EditorMode, GridPattern } from './containers/Bluepr
 import { PaintTileContainer } from './containers/PaintTileContainer'
 import { UIContainer } from './UI/UIContainer'
 import { Dialog } from './UI/controls/Dialog'
+import { NumericKeypad } from './UI/NumericKeypad'
 import { ActionRegistry, MouseButton } from './actions'
 
 export class Editor {
@@ -798,6 +799,15 @@ export class Editor {
             if (e.repeat) return
             if (e.target instanceof HTMLInputElement) return
             if (e.target instanceof HTMLTextAreaElement) return
+            // An open numeric keypad is modal text entry (#101 A7): it takes the
+            // digits, Backspace, `-`, Enter and Escape itself, so they don't
+            // *also* fire editor actions (Escape closing windows, KeyS panning).
+            // The topmost keypad swallows them; anything it ignores falls
+            // through to the registry as usual.
+            if (NumericKeypad.handleWindowKeyDown(e)) {
+                e.preventDefault()
+                return
+            }
             G.actions.pressKey(e)
         }
 
