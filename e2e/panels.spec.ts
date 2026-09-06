@@ -185,41 +185,39 @@ test.describe('quickbar', () => {
         expect(state.quickbar.visible).toBe(true)
         expect(state.quickbar.scale).toBe(1)
 
+        // ...and inside the safe area, whose left edge is now the universal
+        // action rail's column (#101 Slice 4) rather than the screen edge.
         const b = state.quickbar.bounds
-        expect(b.x).toBeGreaterThanOrEqual(0)
+        expect(b.x).toBeGreaterThanOrEqual(state.safeArea.x)
         expect(b.x + b.width).toBeLessThanOrEqual(viewport.width + 1)
         expect(b.y).toBeGreaterThanOrEqual(0)
         expect(b.y).toBeLessThan(viewport.height)
     })
 })
 
-test.describe('wires panel', () => {
-    test('desktop: fits within the viewport; mobile: retired (wires live in the rail)', async ({
-        page,
-    }) => {
+test.describe('wires', () => {
+    // The Pixi wires panel (beside the desktop quickbar) is **retired** — #101
+    // Slice 4. It used to be the desktop half of a split affordance: three rail
+    // buttons on touch, a canvas panel on desktop, for the same three paint
+    // items. The rail is universal now, so the panel is gone everywhere and with
+    // it the geometry ratchet that guarded its anchoring (it used to fall off
+    // narrow viewports). What replaces it: the rail carries the three toggles in
+    // every layout, asserted per project in actionToolbar.spec.ts.
+    test('the Pixi panel is gone; the three toggles live in the rail', async ({ page }) => {
         await page.goto('/?test')
         await waitForAppReady(page)
 
-        const state = await readTestState(page)
-        const viewport = page.viewportSize()!
+        // The probe field went with the panel — its absence is the ratchet.
+        const hasWiresField = await page.evaluate(() => {
+            const w = window as unknown as { __FBE_TEST__: { getState: () => object } }
+            return 'wires' in w.__FBE_TEST__.getState()
+        })
+        expect(hasWiresField).toBe(false)
 
-        if (isMobileProject()) {
-            // Retired on mobile (#89): the bottom band belongs to the contextual
-            // PAINT/SELECT clusters; the three wires are rail buttons instead
-            // (covered in actionToolbar.spec.ts).
-            expect(state.wires.visible).toBe(false)
-            return
+        const toolbar = page.locator('#action-toolbar')
+        for (const title of ['Copper', 'Red wire', 'Green wire']) {
+            await expect(toolbar.locator(`button[title="${title}"]`)).toBeVisible()
         }
-
-        // Regression: the wires panel was anchored off the right edge of the
-        // (now scaled) quickbar via a hardcoded width, so on a narrow viewport
-        // it fell entirely off-screen.
-        expect(state.wires.visible).toBe(true)
-        const b = state.wires.bounds
-        expect(b.x).toBeGreaterThanOrEqual(0)
-        expect(b.y).toBeGreaterThanOrEqual(0)
-        expect(b.x + b.width).toBeLessThanOrEqual(viewport.width + 1)
-        expect(b.y + b.height).toBeLessThanOrEqual(viewport.height + 1)
     })
 })
 
