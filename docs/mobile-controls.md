@@ -581,6 +581,59 @@ pipelines at once made touch taps double-act via the browser's synthetic
   Covered by the marquee half of `e2e/touchTiles.spec.ts` via
   `marquee.tileCount` on the `?test` hook.
 
+## Desktop notes (#101 Slice 0)
+
+The touch arc landed a handful of its changes on shared code paths, so desktop
+inherited them without ever being designed for. #101 ("one editor model, two
+input drivers") is the tracking issue and holds the full review tables; this
+section records only what Slice 0 actually changed here — the doc and the issue
+should agree, so update both together.
+
+- ✅ **A7 — the numeric keypad takes keyboard input.** `NumericField` replaced
+  upstream's slider+text input, and the canvas `NumericKeypad` was click-only:
+  a 10-digit constant cost 10 clicks. While a keypad is open it is now modal
+  text entry — digits (main row, and the numpad by `code` so NumLock doesn't
+  matter), `Backspace`, `Delete` (= the `C` key), `-` where the field allows
+  negatives, `Enter` (= `✓ OK`), `Escape`. Digits **append** to the buffer, the
+  same as pressing the on-screen keys. Routed through `Editor.ts`'s window
+  `keydown` _before_ `ActionRegistry`, so the topmost open keypad swallows its
+  keys and they don't also fire editor actions (`Escape` closing windows, `KeyS`
+  panning); anything it ignores falls through unchanged. The transition is a
+  pure function in `packages/editor/src/UI/keypadInput.ts` (vitest:
+  `keypadInput.test.ts`), and `allowNegative` is threaded from the field —
+  request counts and the 0-255 station priority set it false, which also drops
+  their `±` key. Retired for good when Slice 6 puts DOM dialogs on desktop.
+- ✅ **A9 — "Press I for info" is back on desktop.** Dropped when the mobile
+  rail folded the top-left chrome (187915e7); `I` still worked but nothing said
+  so. Restored in `packages/website/index.html` as `#corner-panel .info-hint`
+  and hidden for `body.mobile` in `index.styl` — no `I` to press on touch, and
+  the rail needs the height. The panel stays clickable either way.
+- ✅ **A10 — the scratchpad restore is silent.** "Restored your scratchpad" on
+  every load announced the _default_ state. `loadBp` now accepts `null` for "no
+  toast"; a named project ("Opened …"), a `?source` import and all error paths
+  still toast.
+- ✅ **A13 — no red `textures.json` 404 on full packs.** Only a graphics variant
+  ships the sidecar, so `loadTextureTransforms` asks the (cached) pack manifest
+  first — `packMayHaveTextureTransforms` in `core/packManifest.ts`, unit-tested.
+  An unlisted pack or a manifest-less deploy still probes, as before.
+- ✅ **Factoriobin as a `?source` host** (upstream #272 / `12bbcef0`, ported).
+  The per-host page-URL → raw-content-URL table moved out of `bpString.ts` into
+  a pure `core/blueprintSource.ts` (`blueprintSourceRequest`) with unit tests.
+  Same caveat as every URL import: it goes through `/corsproxy`, which is a
+  Cloudflare Pages Function and does **not** exist on the GitHub Pages deploy.
+- ✅ **Desktop e2e ratchets** — `e2e/desktopEditing.spec.ts` (desktop project
+  only, alongside the older `desktopBuild.spec.ts` build/mine net): hover → info
+  panel; `Ctrl+LMB` drag → a blueprint ghost that follows the mouse; `→` nudges
+  it a tile; a click places all 8 entities clear of the originals; `Escape`
+  drops the cursor; `Ctrl+Z` undoes; `Ctrl+RMB` drag deletes the box; `Enter`
+  with nothing held is a no-op; a single click on an entity opens its editor;
+  `E` → inventory → one click commits to the cursor; `T` toggles the rates
+  panel; and every test asserts the page threw nothing.
+- Still open in #101 and deliberately untouched here: A5 (the always-on circuit
+  hover highlight), A6 (the inventory's Recents default tab), and Slices 1-6 —
+  the hybrid input signals, held selection from mouse + keyboard, and the DOM
+  chrome convergence.
+
 ## Notes / tradeoffs
 
 - `Editor.ts`'s window `pointerup` → `releaseButton` and `GridData`'s window

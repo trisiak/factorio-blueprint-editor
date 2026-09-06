@@ -204,9 +204,10 @@ export class UIContainer extends Container {
     public createNumericKeypad(
         title: string,
         initial: number | undefined,
-        onConfirm: (value: number) => void
+        onConfirm: (value: number) => void,
+        allowNegative = true
     ): NumericKeypad {
-        const pad = new NumericKeypad(title, initial, onConfirm)
+        const pad = new NumericKeypad(title, initial, onConfirm, allowNegative)
         this.dialogsContainer.addChild(pad)
         return pad
     }

@@ -432,9 +432,11 @@ async function loadInitialBlueprint(): Promise<void> {
             console.error('Failed to open the active blueprint', error)
             return undefined
         })
-        const message = library.isScratchpad(active.id)
-            ? 'Restored your scratchpad'
-            : `Opened "${active.name}"`
+        // The scratchpad IS the default state, so restoring it is not news —
+        // toasting on every single load was just noise (#101 A10). A named
+        // project still announces itself (you asked for that one), as do a
+        // `?source` import and every error path.
+        const message = library.isScratchpad(active.id) ? null : `Opened "${active.name}"`
         await loadBp(bpOrBook || new Blueprint(), message)
         // The "modified" (uncommitted-since-last-version) state is persisted, not
         // transient — reflect it on the indicator straight from the stored content.
@@ -447,7 +449,8 @@ async function loadInitialBlueprint(): Promise<void> {
 
 async function loadBp(
     bpOrBook: Blueprint | Book,
-    successMessage = 'Blueprint string loaded successfully'
+    /** Success toast to show, or `null` to load silently (see #101 A10). */
+    successMessage: string | null = 'Blueprint string loaded successfully'
 ): Promise<void> {
     if (bpOrBook instanceof Book) {
         book = bpOrBook
@@ -482,7 +485,7 @@ async function loadBp(
     loadingScreen.hide()
 
     const bpIsEmpty = bpOrBook instanceof Blueprint && bpOrBook.isEmpty()
-    if (!bpIsEmpty) {
+    if (!bpIsEmpty && successMessage !== null) {
         createToast({ text: successMessage, type: 'success' })
     }
 }

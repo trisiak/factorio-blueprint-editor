@@ -2,6 +2,7 @@ import { Container, Graphics, Text } from 'pixi.js'
 import { Button } from './controls/Button'
 import { Dialog } from './controls/Dialog'
 import { styles } from './style'
+import { keypadKeyAction } from './keypadInput'
 
 /**
  * A PixiJS-native numeric keypad dialog. The editor's text fields use a DOM
@@ -20,7 +21,9 @@ export class NumericKeypad extends Dialog {
     public constructor(
         title: string,
         initial: number | undefined,
-        private readonly onConfirm: (value: number) => void
+        private readonly onConfirm: (value: number) => void,
+        /** Whether the sign can be flipped (the `±` key and the `-` keybind). */
+        private readonly allowNegative = true
     ) {
         super(NumericKeypad.W, NumericKeypad.H, title)
         this.value = initial !== undefined ? String(initial) : ''
@@ -36,6 +39,9 @@ export class NumericKeypad extends Dialog {
         // Keypad — respond on pointerdown so presses register instantly.
         const keys = ['7', '8', '9', '4', '5', '6', '1', '2', '3', '±', '0', '⌫']
         keys.forEach((k, i) => {
+            // A field that can't go negative gets no sign key (its cell stays
+            // blank) — the keyboard's `-` is refused for the same reason.
+            if (k === '±' && !allowNegative) return
             const col = i % 3
             const row = Math.floor(i / 3)
             const b = this.key(k, 60, 44)
@@ -65,6 +71,42 @@ export class NumericKeypad extends Dialog {
             this.close()
         })
         this.addChild(confirm)
+    }
+
+    /**
+     * Route a window keydown to the topmost open keypad, if there is one.
+     *
+     * @returns whether the key was consumed — the caller must then *not* pass it
+     * on to the action registry, so digits, `Enter` and `Escape` drive the
+     * keypad instead of also firing editor actions (`Escape` closing windows,
+     * `KeyS` panning). An open keypad is modal text entry: it swallows its keys.
+     */
+    public static handleWindowKeyDown(e: KeyboardEvent): boolean {
+        const dialogs = Dialog.openDialogs
+        const top = dialogs[dialogs.length - 1]
+        return top instanceof NumericKeypad ? top.handleKeyDown(e) : false
+    }
+
+    /** Apply one keydown to this keypad. @returns whether it was consumed. */
+    public handleKeyDown(e: KeyboardEvent): boolean {
+        // Chorded keys belong to the app (copy/paste, browser shortcuts).
+        if (e.ctrlKey || e.metaKey || e.altKey) return false
+        const action = keypadKeyAction(this.value, e, this.allowNegative)
+        switch (action.type) {
+            case 'value':
+                this.value = action.value
+                this.refresh()
+                return true
+            case 'confirm':
+                this.onConfirm(this.parsed())
+                this.close()
+                return true
+            case 'cancel':
+                this.close()
+                return true
+            default:
+                return false
+        }
     }
 
     private key(label: string, w: number, h: number): Button {
