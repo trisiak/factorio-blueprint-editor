@@ -1299,11 +1299,12 @@ body.fbe-dialog-open
             border-radius: 6px
             .glyph
                 font-size: 15px
-    // Keybind badges: shown only here, and only where a keyboard is believed to
-    // exist (`body.keys`) — the bottom-band placement is thumb-driven and its
-    // layout must not change.
-    .hint
-        display: none
+
+// Keybind badges. Hidden by default in *both* placements, so the thumb-sized
+// bottom-band buttons keep the layout they had; shown only in the anchored
+// placement, and only where a keyboard is believed to exist (`body.keys`).
+#select-float .hint
+    display: none
 
 body.keys #select-float.floating .hint
     display: block
