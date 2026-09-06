@@ -540,7 +540,11 @@ function importKeybinds(keybinds: Record<string, string>): void {
     if (!keybinds) return
 
     for (const [name, kc] of Object.entries(keybinds)) {
-        G.actions.get(name).keyCombo = kc
+        // Skip names the registry no longer knows: actions get renamed as the
+        // model evolves (e.g. #101's `copySelection` mouse-drag → `selectArea`),
+        // and a stored keybind for a retired one must not take the boot down.
+        const action = G.actions.get(name)
+        if (action) action.keyCombo = kc
     }
 }
 

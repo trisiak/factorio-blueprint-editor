@@ -124,7 +124,7 @@ const BUTTONS: ToolbarButton[] = [
         glyph: '✕',
         label: 'Cancel',
         className: 'cancel',
-        modes: [EM.PAINT, EM.COPY, EM.DELETE, EM.SELECT],
+        modes: [EM.PAINT, EM.SELECT],
     },
     // Wires (#89): paint items, but not inventory items — the Items dialog can't
     // reach them, so they get rail buttons (which also retires the bottom-band
@@ -245,12 +245,7 @@ const MARGIN = 2 // sliver between the rail and the canvas
 
 /** A cursor mode the user needs an explicit way out of (no keyboard on touch). */
 function isCancelableMode(mode: EditorMode): boolean {
-    return (
-        mode === EditorMode.PAINT ||
-        mode === EditorMode.COPY ||
-        mode === EditorMode.DELETE ||
-        mode === EditorMode.SELECT
-    )
+    return mode === EditorMode.PAINT || mode === EditorMode.SELECT
 }
 
 /**

@@ -123,7 +123,7 @@ export class Editor {
         this.m_bpEmitter.emit('change')
     }
 
-    /** Current editor mode (NONE / EDIT / PAINT / PAN / COPY / DELETE / SELECT). */
+    /** Current editor mode (NONE / EDIT / PAINT / PAN / SELECT). */
     public get mode(): EditorMode {
         return G.BPC.mode
     }
@@ -201,14 +201,15 @@ export class Editor {
     public get marqueeTileCount(): number {
         return G.BPC.marqueeTileCount
     }
-    public copyMarquee(): void {
-        G.BPC.copyMarquee()
+    /** @returns whether a selection was held (so a keybind can decline the key). */
+    public copyMarquee(): boolean {
+        return G.BPC.copyMarquee()
     }
-    public cutMarquee(): void {
-        G.BPC.cutMarquee()
+    public cutMarquee(): boolean {
+        return G.BPC.cutMarquee()
     }
-    public deleteMarquee(): void {
-        G.BPC.deleteMarquee()
+    public deleteMarquee(): boolean {
+        return G.BPC.deleteMarquee()
     }
     public cancelMarquee(): void {
         G.BPC.cancelMarquee()
@@ -216,6 +217,15 @@ export class Editor {
     /** Nudge the held selection one tile in place (preserves wiring). */
     public nudgeSelection(offset: { x: number; y: number }): void {
         G.BPC.nudgeSelection(offset)
+    }
+    /**
+     * The held selection as a standalone `Blueprint`, or undefined when nothing
+     * is held. The website encodes this for `Ctrl+C` / `Ctrl+X` so the clipboard
+     * carries the *selection* rather than the whole blueprint (the clipboard and
+     * its toasts live there, not in the editor).
+     */
+    public selectionBlueprint(): Blueprint | undefined {
+        return G.BPC.selectionBlueprint()
     }
     /** EDIT bar: promote the tapped entity into a one-entity held selection. */
     public selectHovered(): void {
@@ -357,6 +367,22 @@ export class Editor {
 
     private initActions(): void {
         G.actions = new ActionRegistry({
+            // SELECT: a left-drag that starts *inside* the held selection moves the
+            // real entities with the pointer (wires preserved). Declared before
+            // `pan`/`build`/`openEntityGUI` on purpose: the registry sorts by
+            // number of modifiers and is otherwise insertion-ordered, so this is
+            // what gives the plain left button first refusal. It declines (and
+            // clears the selection) for a press outside it, which then falls
+            // through to `pan` exactly as before.
+            moveSelection: {
+                trigger: {
+                    button: MouseButton.Left,
+                },
+                callbacks: {
+                    onPress: () => G.BPC.startSelectionDrag(),
+                    onRelease: () => G.BPC.endSelectionDrag(),
+                },
+            },
             // NONE -> PAN
             pan: {
                 trigger: {
@@ -425,8 +451,12 @@ export class Editor {
                     onRelease: () => G.BPC.pasteEntitySettingsModifiersEnd(),
                 },
             },
-            // any -> COPY
-            copySelection: {
+            // any -> SELECT. Upstream committed a copy the instant you released
+            // (the covered entities jumped onto the cursor as a paste ghost);
+            // now the drag *holds* what it caught and the keyboard/toolbar
+            // decide what happens to it — the mouse driver for the held
+            // selection touch has had since #21 (#101 Slice 2).
+            selectArea: {
                 trigger: {
                     button: MouseButton.Left,
                 },
@@ -434,12 +464,14 @@ export class Editor {
                     control: true,
                 },
                 callbacks: {
-                    onPress: () => G.BPC.enterCopyMode(),
-                    onRelease: () => G.BPC.exitCopyMode(),
+                    onPress: () => G.BPC.startMarqueeDrag('select'),
+                    onRelease: () => G.BPC.endMarqueeDragFromMouse(),
                 },
             },
-            // any -> DELETE
-            deleteSelection: {
+            // The wipe-the-area accelerator: the same box, red, committing a
+            // delete on release — now via the marquee, so the tiles under it go
+            // too (upstream's DELETE mode only ever removed entities).
+            deleteArea: {
                 trigger: {
                     button: MouseButton.Right,
                 },
@@ -447,8 +479,8 @@ export class Editor {
                     control: true,
                 },
                 callbacks: {
-                    onPress: () => G.BPC.enterDeleteMode(),
-                    onRelease: () => G.BPC.exitDeleteMode(),
+                    onPress: () => G.BPC.startMarqueeDrag('delete'),
+                    onRelease: () => G.BPC.endMarqueeDragFromMouse(),
                 },
             },
 
@@ -657,6 +689,26 @@ export class Editor {
                         }
                         return true
                     },
+                },
+            },
+            // SELECT: the keyboard's Delete. Reports false when nothing is held,
+            // so the key isn't swallowed (and `preventDefault` isn't called) for
+            // a press that did nothing — Backspace's twin binding below exists
+            // because the registry maps one trigger per action.
+            deleteSelection: {
+                trigger: {
+                    code: 'Delete',
+                },
+                callbacks: {
+                    onPress: () => G.BPC.deleteMarquee(),
+                },
+            },
+            deleteSelectionAlt: {
+                trigger: {
+                    code: 'Backspace',
+                },
+                callbacks: {
+                    onPress: () => G.BPC.deleteMarquee(),
                 },
             },
             undo: {
