@@ -15,6 +15,7 @@
 // `index.ts` only for things that need the PixiJS canvas (load/encode), the
 // shared toast/confirm/clipboard chrome, or the pack switch.
 
+import { wheelGuard } from '@fbe/editor'
 import { LibraryController } from './controller'
 import { LibraryNode } from './model'
 import { SyncStatus, ConflictChoice, ConflictKind } from './syncService'
@@ -356,6 +357,11 @@ export function initLibraryPanel(
 
     panel.append(header, syncBar, packBar, actions, body)
     document.body.appendChild(panel)
+    // The panel (and every picker/dialog it hosts) claims the wheel while it's
+    // being scrolled — capture phase, so an inner list that stops propagation
+    // still registers. Without it the tail of an inertial scroll lands on the
+    // canvas and zooms (#101 Slice 5 review, `wheelGuard`).
+    wheelGuard.watch(panel)
     renderSync()
 
     // --- a small popover menu (the per-row "⋯") -----------------------------

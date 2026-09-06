@@ -326,35 +326,38 @@ body.mobile
 // retired, so what decides their placement is the `compact` signal and
 // orientation, never a device mode.
 //
-// Wide: they share the right edge in a flex column — info above, rates below,
-// the same order the two canvas panels stacked in (a fixed box can't sit under
-// another whose height varies, hence the shared stack). The column itself is
-// click-through; only the readouts take pointer events, so its empty tail
-// doesn't eat canvas drags.
-#readout-stack
+// Wide: they take **opposite corners of the right edge** — the passive sheet
+// top-right, the toggled rates drawer bottom-right. They used to stack in a
+// shared flex column (info above, rates below, as the canvas panels did), which
+// coupled the drawer's position to the sheet's height: the sheet appears and
+// clears on *every* hover, so the drawer jumped away under a mouse aiming for
+// it (#101 Slice 5 review). Two independent fixed boxes can't do that. The
+// drawer clears the quickbar's reserved band (`--fbe-bottom-band`, published by
+// quickbar.ts — the band's height follows the `coarse` cell size, so reading it
+// beats hard-coding the arithmetic here) and grows into whatever vertical space
+// is left rather than stopping at half the viewport: on a tall screen a
+// rates-heavy blueprint should just be *readable*, not scrolled.
+//
+// They can therefore overlap when both are content-rich; the sheet ranks above
+// (z16 vs z15) because it is the transient one you are actively pointing at.
+//
+// Both scroll with `overscroll-behavior: contain` so a scroll that reaches
+// their end doesn't chain to the page — the other half of the wheel fix, whose
+// timing half is `wheelGuard` (a scrolled overlay owns the wheel for 300 ms, so
+// an inertial tail can't zoom the canvas after the pointer leaves).
+#entity-info-sheet
+    display: none
     position: fixed
-    z-index: 15
+    z-index: 16
     top: 60px
     right: 8px
     width: unquote('min(320px, 34vw)')
-    max-height: unquote('calc(100dvh - 76px)')
-    display: flex
-    flex-direction: column
-    gap: 8px
-    pointer-events: none
-    > *
-        pointer-events: auto
-
-// Compact: the column dissolves and each readout is its own fixed box again,
-// in the touch-designed spots below.
-body.compact #readout-stack
-    display: contents
-
-#entity-info-sheet
-    display: none
-    position: static
-    max-height: 40vh
+    // Grown from the stack's 40vh — the sheet no longer has to leave room for
+    // the drawer below it — but still bounded well short of the full column, so
+    // a verbose entity doesn't routinely bury the drawer it now overlaps.
+    max-height: unquote('calc(60dvh - 68px)')
     overflow-y: auto
+    overscroll-behavior: contain
     padding: 10px 14px
     color: #eee
     font-size: 13px
@@ -398,9 +401,19 @@ body.compact #readout-stack
 
 #rates-drawer
     display: none
-    position: static
-    max-height: unquote('min(50vh, 420px)')
+    position: fixed
+    z-index: 15
+    right: 8px
+    // Above the quickbar band, with a small gap; 56px is the fallback for the
+    // first paint, before quickbar.ts has measured itself.
+    bottom: unquote('calc(var(--fbe-bottom-band, 56px) + 8px)')
+    width: unquote('min(320px, 34vw)')
+    // All the room between the top chrome band and that bottom offset. The old
+    // `min(50vh, 420px)` cap made a tall screen scroll a drawer that would
+    // otherwise have fit (#101 Slice 5 review); beyond this it still scrolls.
+    max-height: unquote('calc(100dvh - 60px - var(--fbe-bottom-band, 56px) - 24px)')
     overflow-y: auto
+    overscroll-behavior: contain
     padding: 8px 12px 10px
     color: #eee
     font-size: 13px
@@ -473,6 +486,8 @@ body.compact
         left: 54px
         right: 8px
         top: 60px
+        // left+right span the band, so the wide layout's fixed width must go.
+        width: auto
         max-height: 40vh
         @media (orientation: landscape)
             left: auto

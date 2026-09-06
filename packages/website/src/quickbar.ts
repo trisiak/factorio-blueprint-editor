@@ -1,4 +1,4 @@
-import EDITOR, { type Editor, EditorMode, inputMode, WIRE_ITEMS } from '@fbe/editor'
+import EDITOR, { type Editor, EditorMode, inputMode, wheelGuard, WIRE_ITEMS } from '@fbe/editor'
 import { formatKeyCombo } from './keyCombo'
 import { applyPackIcon } from './packIcons'
 
@@ -110,6 +110,10 @@ export function initQuickbar(editor: Editor): void {
 
     bar.append(grid, swap, wires)
     document.body.appendChild(bar)
+    // The bar isn't scrollable today, but it is a DOM overlay: a wheel over it
+    // must not be replayed onto the canvas as a zoom once the pointer moves off
+    // (#101 Slice 5 review, see `wheelGuard`).
+    wheelGuard.watch(bar)
 
     /**
      * Tap/click activates, right-click or long-press clears — the contract the
@@ -263,9 +267,14 @@ export function initQuickbar(editor: Editor): void {
 
         const hidden = compact && bandIsTaken(editor.mode)
         bar.classList.toggle('visible', !hidden)
-        editor.setViewportInsets({
-            bottom: hidden ? 0 : Math.ceil(bar.getBoundingClientRect().height) + 4,
-        })
+        const band = hidden ? 0 : Math.ceil(bar.getBoundingClientRect().height) + 4
+        editor.setViewportInsets({ bottom: band })
+        // The same band, published to CSS: the bottom-anchored DOM readouts (the
+        // rates drawer on a wide viewport) sit above it, and hard-coding the
+        // cell arithmetic in the stylesheet would rot the moment `coarse`
+        // changes the cell size. One writer per edge here too — this module
+        // owns `--fbe-bottom-band` exactly as it owns the bottom inset.
+        document.documentElement.style.setProperty('--fbe-bottom-band', `${band}px`)
     }
 
     const refresh = (): void => {
