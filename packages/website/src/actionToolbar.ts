@@ -1,4 +1,5 @@
 import EDITOR, { Editor, EditorMode, inputMode } from '@fbe/editor'
+import { formatKeyCombo } from './keyCombo'
 
 // On-screen action rail: a DOM (not Pixi) mirror of the editor's action
 // registry — the one left column every layout gets (#101 Slice 4). It carries
@@ -262,36 +263,6 @@ const MARGIN = 2 // sliver between the rail and the canvas
 /** Widest the rail may grow, in cells — beyond this the ⋯ overflow takes over. */
 const MAX_COLUMNS = 3
 
-/**
- * Registry key combos, pretty-printed for a badge: `Control+Shift+KeyR` → `⌃⇧R`.
- * Bare `Key`/`Digit` prefixes are noise on a 34 px cell, and the mouse triggers
- * (copy/paste entity settings) read better as LMB/RMB than as `ClickL`.
- */
-const KEY_LABELS: Record<string, string> = {
-    BracketLeft: '[',
-    BracketRight: ']',
-    Escape: 'Esc',
-    Delete: 'Del',
-    Backspace: '⌫',
-    Enter: '⏎',
-    ArrowUp: '↑',
-    ArrowDown: '↓',
-    ArrowLeft: '←',
-    ArrowRight: '→',
-    ClickL: 'LMB',
-    ClickM: 'MMB',
-    ClickR: 'RMB',
-}
-
-export function formatKeyCombo(combo: string): string {
-    const parts = combo.split('+')
-    const trigger = parts.pop() ?? ''
-    const mods = parts
-        .map(m => (m === 'Control' ? '⌃' : m === 'Shift' ? '⇧' : m === 'Alt' ? '⌥' : m))
-        .join('')
-    return mods + (KEY_LABELS[trigger] ?? trigger.replace(/^(Key|Digit|Numpad)/, ''))
-}
-
 /** A cursor mode the user needs an explicit way out of (no keyboard on touch). */
 function isCancelableMode(mode: EditorMode): boolean {
     return (
@@ -361,9 +332,10 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
      * `title` stays exactly the action's label in every layout — it is the
      * stable handle the e2e suite locates buttons by, so the keybind rides
      * along in `aria-keyshortcuts` (the raw registry combo, e.g.
-     * `Control+KeyZ`) and in a `.hint` badge (the pretty form, `⌃Z`). CSS shows
-     * the badge only under `body.keys`, so a keyboard-less touch layout is
-     * unchanged.
+     * `Control+KeyZ`) and in a `.hint` badge (the pretty form, `⌃Z` — see
+     * `keyCombo.ts`). CSS shows the badge only while the rail carries
+     * `.with-hints`, i.e. only when a keyboard is present: a badge reading "R"
+     * is noise on a device that can't press R.
      */
     const makeButton = (spec: ToolbarButton, withLabel: boolean): HTMLButtonElement => {
         const button = document.createElement('button')
