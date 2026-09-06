@@ -24,6 +24,7 @@ interface HybridState {
     quickbar: { visible: boolean }
     blueprint: { entityCount: number }
     paint: { active: boolean; visible: boolean; tile: { x: number; y: number } | null }
+    marquee: { count: number }
     viewportScale: number
 }
 
@@ -108,6 +109,10 @@ async function holdItem(page: Page): Promise<void> {
 // Two well-separated points in open canvas, clear of the top-left button stack
 // and the bottom quickbar. Element-relative for `tap({position})`; the canvas
 // has no left inset here (no rail), so they double as page coordinates.
+/** The multi-entity vanilla blueprint the marquee specs use (decodes locally). */
+const SELECTION_BLUEPRINT =
+    '0eJyd0tuKgzAQgOF3mWuFrYdu66sspcQ42x2IE0nGUhHffUcLpdDj7o2QxHx/Ahmhdj12gVigGoEEW6iu5hJwpkanc84Mvpc0Gm5qf9KFI4ZInqEq19m22G7LvMhW+SpLgKznCNXXCJEObNwsy9ChKksgATbtPDIxYls74kPaGvtDjGkOkwLc4Amq1bRLAFlICM/eMhj23Lc1Bv3huZRA56Nung85goIfCQz61UJAS8uBuuAtxjhv7JlE6zeV7I+V8raCDq0Ez2RTS8H290P5v65TXodMczRssXmWKS6ZbxMlJY4YRBceXGT2G9LCeaW4I5YX8TGWL1j+GltfMAmGY+eDpPoE5RG5eU1+vk0W75Kbt8nyPrmbpl8tsiv1'
+
 const AT_A = { x: 420, y: 300 }
 const AT_B = { x: 700, y: 380 }
 
@@ -269,6 +274,41 @@ test.describe('hybrid input (mouse + touch on one page)', () => {
         expect(s.inputMode).toBe('desktop') // detection now gets this right
         expect(await page.evaluate(() => window.localStorage.getItem('fbe:inputMode'))).toBeNull()
         expect(await page.evaluate(() => window.localStorage.getItem('fbe:inputPreset'))).toBeNull()
+    })
+
+    /**
+     * #101 Slice 2 on hybrid hardware: the mouse's `Ctrl+LMB` drag holds a
+     * selection (it used to commit a copy on release), and the touch driver is
+     * still live on the very same page — a tap dismisses what the mouse just
+     * selected. Both drivers, one `EditorMode.SELECT`, no switching.
+     */
+    test('Ctrl-drag holds a selection, and a tap dismisses it', async ({ page }) => {
+        await page.goto(`/?test&source=${encodeURIComponent(SELECTION_BLUEPRINT)}`)
+        await waitForLoaded(page)
+        await expect.poll(() => entityCount(page)).toBeGreaterThan(1)
+        const original = await entityCount(page)
+
+        // Zoom out so the blueprint fits comfortably inside the drag box.
+        await page.mouse.move(700, 400)
+        for (let i = 0; i < 5; i++) await page.mouse.wheel(0, 120)
+
+        await page.keyboard.down('Control')
+        await page.mouse.move(380, 190)
+        await page.mouse.down()
+        await page.mouse.move(700, 380)
+        await page.mouse.move(1100, 560)
+        await page.mouse.up()
+        await page.keyboard.up('Control')
+
+        await expect.poll(async () => (await getState(page)).marquee.count).toBeGreaterThan(0)
+        const held = await getState(page)
+        expect(held.paint.active).toBe(false) // held, not committed as a ghost
+        expect(held.blueprint.entityCount).toBe(original) // and nothing changed
+
+        // Touch, on the same page: a tap on the canvas drops the held selection.
+        await page.locator('#editor').tap({ position: { x: 900, y: 240 } })
+        await expect.poll(async () => (await getState(page)).marquee.count).toBe(0)
+        expect(await entityCount(page)).toBe(original)
     })
 
     test('a two-finger pinch still zooms', async ({ page }) => {

@@ -59,15 +59,12 @@ export enum EditorMode {
     PAINT,
     /** Active when panning */
     PAN,
-    /** Active when selecting multiple entities for copy/stamp */
-    COPY,
-    /** Active when selecting multiple entities for deletion */
-    DELETE,
     /**
-     * Active when a touch marquee selection is *held* — the box is drawn, the
-     * entities under it are highlighted, and the on-screen Copy/Cut/Delete bar is
-     * waiting for the user to choose. (Desktop's copy/delete commit on
-     * mouse-release; touch defers the choice, so the selection persists.)
+     * Active when a marquee selection is *held* — the box is drawn, the entities
+     * (or tiles) under it are highlighted, and the Copy/Cut/Delete actions are
+     * waiting for the user to choose. Reached by a touch `Select` + drag or a
+     * mouse `Ctrl+LMB` drag: one held-selection model, two input drivers (#101
+     * Slice 2). It replaced the old commit-on-release COPY / DELETE modes.
      */
     SELECT,
 }
@@ -133,26 +130,33 @@ export class BlueprintContainer extends Container {
      * same entity opens the editor. Undefined when nothing is selected.
      */
     private lastEditTapEntity?: number
-    private copyModeEntities: Entity[] = []
-    private deleteModeEntities: Entity[] = []
-    private copyModeUpdateFn: (endX: number, endY: number) => void
-    private deleteModeUpdateFn: (endX: number, endY: number) => void
     private copySettingsActive = false
     /**
-     * Touch marquee (#21). `marqueeArmed` = the rail's Select button was tapped
-     * and the next one-finger drag should draw a selection box (instead of
-     * panning). `marqueeEntities` / `marqueeTiles` are what the drawn box
+     * Marquee (#21 touch, #101 Slice 2 mouse). `marqueeArmed` = the rail's Select
+     * button was tapped and the next one-finger drag should draw a selection box
+     * (instead of panning) — a mouse needs no arming, its `Ctrl+LMB` drag *is*
+     * the arm. `marqueeEntities` / `marqueeTiles` are what the drawn box
      * currently covers — always one or the other, never both (game-like: the
      * box selects entities, falling back to tiles only when it holds none;
      * `marqueeTilesOnly` — the rail's "Select tiles" — forces the tile side
      * even under entities). While the selection is *held* (mode SELECT) it
-     * drives the Copy/Cut/Delete bar.
+     * drives the Copy/Cut/Delete bar and the keyboard's Ctrl+C / Ctrl+X / Delete.
      */
     private marqueeArmed = false
     private marqueeTilesOnly = false
     private marqueeEntities: Entity[] = []
     private marqueeTiles: Tile[] = []
     private marqueeUpdateFn?: (endX: number, endY: number) => void
+    /**
+     * `delete` while a `Ctrl+RMB` drag is in flight: the box paints red and
+     * commits `deleteMarquee` on release, the mouse accelerator for "wipe this
+     * area" (tiles included). `select` is the ordinary hold-the-selection drag.
+     */
+    private marqueeFlavour: 'select' | 'delete' = 'select'
+    /** Tile-delta tracker for an in-progress left-drag of the held selection. */
+    private selectionDragFn?: (x32: number, y32: number) => void
+    /** Over-reaching wires counted when that drag began (warn once, on release). */
+    private selectionDragBrokenBefore = 0
     private readonly pointerGestures = new PinchPanRecognizer()
     /** in-progress single-finger touch, pending a tap-vs-drag decision */
     private touchPan: {
@@ -561,7 +565,7 @@ export class BlueprintContainer extends Container {
                     // pan/pinch also works).
                     if (this.marqueeArmed) {
                         tp.target = 'marquee'
-                        this.beginMarqueeDrag(tp.startX, tp.startY)
+                        this.beginMarqueeDrag({ x: tp.startX, y: tp.startY })
                     } else if (this.grabsPaintGhost(tp.startX, tp.startY)) {
                         tp.target = 'ghost'
                         const t = this.viewport.getTransform()
@@ -801,23 +805,19 @@ export class BlueprintContainer extends Container {
         } else if (this.mode === EditorMode.PAINT) {
             this.paintContainer.destroy()
         }
-        this.exitCopyMode(true)
-        this.exitDeleteMode(true)
+        this.cancelMarquee()
     }
 
     /**
-     * Cancel whatever the cursor is currently doing — painting, a copy/delete
-     * drag, or a held touch marquee selection — and return to NONE. Desktop
-     * reaches this by toggling the trigger off (e.g. pipette again); this is the
-     * single explicit "stop" that the Escape key and the on-screen toolbar's
-     * cancel button both route through, since touch has no keyboard to bail with.
+     * Cancel whatever the cursor is currently doing — painting, an in-flight
+     * selection box, or a held marquee selection — and return to NONE. This is
+     * the single explicit "stop" that the Escape key and the on-screen toolbar's
+     * cancel button both route through (touch has no keyboard to bail with).
      */
     public clearCursor(): void {
         if (this.mode === EditorMode.PAINT) {
             this.paintContainer.destroy()
         }
-        this.exitCopyMode(true)
-        this.exitDeleteMode(true)
         this.cancelMarquee()
     }
 
@@ -889,6 +889,10 @@ export class BlueprintContainer extends Container {
     public moveEntity(offset: IPoint) {
         if (this.mode === EditorMode.EDIT) {
             this.hoverContainer.entity.moveBy(offset)
+        } else if (this.mode === EditorMode.SELECT) {
+            // A held selection nudges as a unit, wiring preserved — the keyboard
+            // twin of the SELECT d-pad (#101 Slice 2).
+            this.nudgeSelection(offset)
         } else if (this.mode === EditorMode.PAINT) {
             // Fine-tune nudge for the held ghost: shift the grid cursor (which
             // the ghost follows) by whole tiles. Drives the rail's arrow buttons
@@ -904,134 +908,30 @@ export class BlueprintContainer extends Container {
         }
     }
 
-    public enterCopyMode(): boolean {
-        if (this.mode === EditorMode.COPY) return false
-        if (this.mode === EditorMode.PAINT) this.paintContainer.destroy()
-
-        this.updateHoverContainer(true)
-        this.setMode(EditorMode.COPY)
-
-        this.overlayContainer.showSelectionArea(0x00d400)
-
-        const startPos = { x: this.gridData.x32, y: this.gridData.y32 }
-        this.copyModeUpdateFn = (endX: number, endY: number) => {
-            const X = Math.min(startPos.x, endX)
-            const Y = Math.min(startPos.y, endY)
-            const W = Math.abs(endX - startPos.x) + 1
-            const H = Math.abs(endY - startPos.y) + 1
-
-            for (const e of this.copyModeEntities) {
-                EntityContainer.mappings.get(e.entityNumber).cursorBox = undefined
-            }
-
-            this.copyModeEntities = this.bp.entityPositionGrid.getEntitiesInArea({
-                x: X + W / 2,
-                y: Y + H / 2,
-                w: W,
-                h: H,
-            })
-
-            for (const e of this.copyModeEntities) {
-                EntityContainer.mappings.get(e.entityNumber).cursorBox = 'copy'
-            }
-        }
-        this.copyModeUpdateFn(startPos.x, startPos.y)
-        this.gridData.on('update32', this.copyModeUpdateFn, this)
-
-        return true
-    }
-
-    public exitCopyMode(cancel = false): void {
-        if (this.mode !== EditorMode.COPY) return
-
-        this.overlayContainer.hideSelectionArea()
-        this.gridData.off('update32', this.copyModeUpdateFn, this)
-
-        this.setMode(EditorMode.NONE)
-        this.updateHoverContainer()
-
-        if (!cancel && this.copyModeEntities.length !== 0) {
-            this.spawnPaintContainer(this.copyModeEntities)
-        }
-        for (const e of this.copyModeEntities) {
-            EntityContainer.mappings.get(e.entityNumber).cursorBox = undefined
-        }
-        this.copyModeEntities = []
-    }
-
-    public enterDeleteMode(): boolean {
-        if (this.mode === EditorMode.DELETE) return false
-        if (this.mode === EditorMode.PAINT) this.paintContainer.destroy()
-
-        this.updateHoverContainer(true)
-        this.setMode(EditorMode.DELETE)
-
-        this.overlayContainer.showSelectionArea(0xff3200)
-
-        const startPos = { x: this.gridData.x32, y: this.gridData.y32 }
-        this.deleteModeUpdateFn = (endX: number, endY: number) => {
-            const X = Math.min(startPos.x, endX)
-            const Y = Math.min(startPos.y, endY)
-            const W = Math.abs(endX - startPos.x) + 1
-            const H = Math.abs(endY - startPos.y) + 1
-
-            for (const e of this.deleteModeEntities) {
-                EntityContainer.mappings.get(e.entityNumber).cursorBox = undefined
-            }
-
-            this.deleteModeEntities = this.bp.entityPositionGrid.getEntitiesInArea({
-                x: X + W / 2,
-                y: Y + H / 2,
-                w: W,
-                h: H,
-            })
-
-            for (const e of this.deleteModeEntities) {
-                EntityContainer.mappings.get(e.entityNumber).cursorBox = 'not_allowed'
-            }
-        }
-        this.deleteModeUpdateFn(startPos.x, startPos.y)
-        this.gridData.on('update32', this.deleteModeUpdateFn, this)
-
-        return true
-    }
-
-    public exitDeleteMode(cancel = false): void {
-        if (this.mode !== EditorMode.DELETE) return
-
-        this.overlayContainer.hideSelectionArea()
-        this.gridData.off('update32', this.deleteModeUpdateFn, this)
-
-        this.setMode(EditorMode.NONE)
-        this.updateHoverContainer()
-
-        if (cancel) {
-            for (const e of this.deleteModeEntities) {
-                EntityContainer.mappings.get(e.entityNumber).cursorBox = undefined
-            }
-        } else {
-            this.bp.removeEntities(this.deleteModeEntities)
-        }
-
-        this.deleteModeEntities = []
-    }
-
-    // --- Touch marquee (#21) ---------------------------------------------------
-    // Desktop area-select is modifier+drag, committing on mouse-release (copy →
-    // paste ghost, delete → remove). Touch has no modifier and wants to *choose*
-    // the action after seeing the selection, so the flow is: arm (Select button)
-    // → one-finger drag draws the box → release holds the selection (mode SELECT)
-    // → the on-screen Copy/Cut/Delete bar commits. Reuses the same selection
-    // rectangle + area query + cursor-box highlight as the desktop modes.
+    // --- Marquee selection (#21 touch, #101 Slice 2 mouse) ---------------------
+    // One held-selection model, two input drivers. Upstream's desktop
+    // area-select was modifier+drag committing on mouse-release (copy → paste
+    // ghost, delete → remove) — no chance to look at what you caught. Both
+    // drivers now *hold* the selection instead: draw a box → the entities (or
+    // tiles) under it stay highlighted in mode SELECT → Copy / Cut / Delete /
+    // nudge / rotate act on it, from the on-screen bar (touch) or the keyboard
+    // (mouse). The two differ only in how a box is *started*: a touch drag means
+    // pan, so touch arms first (the Select button); a mouse has a spare
+    // modifier, so `Ctrl+LMB` drag is itself the arm. `Ctrl+RMB` stays the
+    // wipe-the-area accelerator — the same box, committing a delete on release.
 
     /**
      * Arm the marquee: the next one-finger drag draws a selection box.
      * `tilesOnly` (the rail's "Select tiles") makes the box collect tiles even
      * where entities sit on top — the escape hatch the regular game-like
      * resolution (entities win) would otherwise never reach.
+     *
+     * Touch-flavoured by nature (a mouse doesn't arm — see the section note),
+     * but no longer device-*gated*: nothing breaks if a hybrid taps Select and
+     * then drags with a pen, and the gate was the reason the whole held-selection
+     * model was unreachable from a mouse (#101 B3).
      */
     public armMarquee(tilesOnly = false): void {
-        if (inputMode.mode !== 'mobile') return
         // Drop any in-flight cursor / prior selection so the drag is unambiguous.
         this.clearCursor()
         this.cancelMarquee()
@@ -1047,12 +947,19 @@ export class BlueprintContainer extends Container {
         })
     }
 
-    /** Begin drawing the box: seed the start tile, show the rect, track coverage. */
-    private beginMarqueeDrag(screenX: number, screenY: number): void {
+    /**
+     * Begin drawing the box: seed the start tile, show the rect, track coverage.
+     * `screen` is the point the box starts at — a touch supplies its own
+     * touchdown point (there was no preceding hover to place the grid cursor);
+     * a mouse omits it and the box starts wherever the cursor already is.
+     */
+    private beginMarqueeDrag(screen?: { x: number; y: number }): void {
         this.marqueeArmed = false
-        this.gridData.moveTo(screenX, screenY)
-        // Neutral (blue) box — the action (copy/cut/delete) is chosen afterwards.
-        this.overlayContainer.showSelectionArea(0x3b9eff)
+        if (screen) this.gridData.moveTo(screen.x, screen.y)
+        // Neutral (blue) box while the action is still open, red once the drag is
+        // already committed to deleting (Ctrl+RMB) — same rectangle, honest colour.
+        const deleting = this.marqueeFlavour === 'delete'
+        this.overlayContainer.showSelectionArea(deleting ? 0xff3200 : 0x3b9eff)
 
         const startPos = { x: this.gridData.x32, y: this.gridData.y32 }
         this.marqueeUpdateFn = (endX: number, endY: number) => {
@@ -1076,7 +983,7 @@ export class BlueprintContainer extends Container {
             this.marqueeTiles = this.marqueeEntities.length > 0 ? [] : this.bp.getTilesInArea(area)
             for (const e of this.marqueeEntities) {
                 const m = EntityContainer.mappings.get(e.entityNumber)
-                if (m) m.cursorBox = 'copy'
+                if (m) m.cursorBox = deleting ? 'not_allowed' : 'copy'
             }
             // Tiles get their own highlight (no container mapping to hang a
             // cursor box on) — live during the drag, and the held selection's
@@ -1110,6 +1017,41 @@ export class BlueprintContainer extends Container {
         this.setMode(EditorMode.SELECT)
     }
 
+    /**
+     * Mouse driver, press half (#101 Slice 2): `Ctrl+LMB` starts a box that will
+     * *hold* its selection, `Ctrl+RMB` one that deletes what it caught. No arming
+     * step — the modifier is the arm — so this begins the box immediately, at the
+     * grid cursor the hover pipeline is already tracking. Returns whether the
+     * action took the press (always: the box is unconditional), which is what
+     * keeps `pan` from also firing on the same button.
+     */
+    public startMarqueeDrag(flavour: 'select' | 'delete' = 'select'): boolean {
+        // A held cursor / prior selection would make the drag ambiguous — drop
+        // both, exactly as arming does on touch.
+        this.clearCursor()
+        this.marqueeTilesOnly = false
+        this.marqueeFlavour = flavour
+        // Clear a showing hover/info panel: hover updates are suppressed for the
+        // duration of the drag, so a lingering panel would never go away.
+        this.updateHoverContainer(true)
+        this.beginMarqueeDrag()
+        return true
+    }
+
+    /**
+     * Mouse driver, release half: hold the drawn selection (`Ctrl+LMB`), or commit
+     * the delete the red box promised (`Ctrl+RMB`). `deleteMarquee` runs *through*
+     * the held selection, so a delete box takes the tiles under it too — the gap
+     * upstream's DELETE mode left (it only ever removed entities).
+     */
+    public endMarqueeDragFromMouse(): void {
+        if (!this.marqueeUpdateFn) return
+        const deleting = this.marqueeFlavour === 'delete'
+        this.marqueeFlavour = 'select'
+        this.endMarqueeDrag()
+        if (deleting) this.deleteMarquee()
+    }
+
     /** Number of entities in the held marquee selection (0 when none). */
     public get marqueeCount(): number {
         return this.mode === EditorMode.SELECT ? this.marqueeEntities.length : 0
@@ -1135,19 +1077,25 @@ export class BlueprintContainer extends Container {
         return this.marqueeEntities[0].direction
     }
 
-    /** Copy the selection into a paste ghost (originals stay), previewed in place. */
-    public copyMarquee(): void {
-        if (this.mode !== EditorMode.SELECT) return
+    /**
+     * Copy the selection into a paste ghost (originals stay), previewed in place.
+     * Returns whether there was a selection to act on — the keybinds report that
+     * back to the registry so a no-op press isn't swallowed (see `deleteMarquee`).
+     */
+    public copyMarquee(): boolean {
+        if (this.mode !== EditorMode.SELECT) return false
         const entities = this.marqueeEntities
         const tiles = this.marqueeTiles
         this.clearMarqueeVisuals()
         this.setMode(EditorMode.NONE)
-        if (entities.length !== 0 || tiles.length !== 0) this.spawnGhostAtSource(entities, tiles)
+        if (entities.length === 0 && tiles.length === 0) return false
+        this.spawnGhostAtSource(entities, tiles)
+        return true
     }
 
     /** Cut: pick the selection up as a paste ghost *and* remove the originals. */
-    public cutMarquee(): void {
-        if (this.mode !== EditorMode.SELECT) return
+    public cutMarquee(): boolean {
+        if (this.mode !== EditorMode.SELECT) return false
         const entities = this.marqueeEntities
         const tiles = this.marqueeTiles
         this.clearMarqueeVisuals()
@@ -1157,7 +1105,9 @@ export class BlueprintContainer extends Container {
             this.spawnGhostAtSource(entities, tiles)
             if (entities.length !== 0) this.bp.removeEntities(entities)
             if (tiles.length !== 0) this.bp.removeTiles(tiles.map(t => ({ x: t.x, y: t.y })))
+            return true
         }
+        return false
     }
 
     /**
@@ -1177,21 +1127,28 @@ export class BlueprintContainer extends Container {
         }
     }
 
-    /** Delete the selection — the covered entities, or the covered tiles. */
-    public deleteMarquee(): void {
-        if (this.mode !== EditorMode.SELECT) return
+    /**
+     * Delete the selection — the covered entities, or the covered tiles. Returns
+     * whether anything was held: `Delete`/`Backspace` pass that back to the
+     * registry so a press with no selection stays unclaimed (and un-prevented).
+     */
+    public deleteMarquee(): boolean {
+        if (this.mode !== EditorMode.SELECT) return false
         const entities = this.marqueeEntities
         const tiles = this.marqueeTiles
         this.clearMarqueeVisuals()
         this.setMode(EditorMode.NONE)
         if (entities.length !== 0) this.bp.removeEntities(entities)
         if (tiles.length !== 0) this.bp.removeTiles(tiles.map(t => ({ x: t.x, y: t.y })))
+        return entities.length !== 0 || tiles.length !== 0
     }
 
     /** Drop the marquee (armed, drawing, or held) without acting on it. */
     public cancelMarquee(): void {
         this.marqueeArmed = false
         this.marqueeTilesOnly = false
+        this.marqueeFlavour = 'select'
+        this.endSelectionDrag()
         if (this.marqueeUpdateFn) {
             this.gridData.off('update32', this.marqueeUpdateFn, this)
             this.marqueeUpdateFn = undefined
@@ -1218,12 +1175,138 @@ export class BlueprintContainer extends Container {
      * entities (`EntityContainer.refreshCursorBox`), which is the held
      * selection's visual — the drag rectangle is gone by the time we're here.
      */
-    public nudgeSelection(offset: IPoint): void {
-        if (this.mode !== EditorMode.SELECT || this.marqueeEntities.length === 0) return
+    public nudgeSelection(offset: IPoint): boolean {
+        if (this.mode !== EditorMode.SELECT || this.marqueeEntities.length === 0) return false
         const brokenBefore = this.countOverReach()
-        if (this.bp.moveEntitiesBy(this.marqueeEntities, offset)) {
-            this.warnNewOverReach(brokenBefore)
+        if (!this.bp.moveEntitiesBy(this.marqueeEntities, offset)) return false
+        this.warnNewOverReach(brokenBefore)
+        return true
+    }
+
+    /**
+     * Left-drag *inside* a held selection moves the real entities with the mouse
+     * (#101 Slice 2) — the pointer twin of the nudge d-pad, and the reason a cut
+     * isn't the only way to reposition something wired up: `moveEntitiesBy` keeps
+     * every connection, including wires out of the group.
+     *
+     * Returns whether the press was taken. A press *outside* the selection is the
+     * universal "never mind": it drops the selection and reports false, so the
+     * same click falls through to `pan` exactly as it would have in NONE.
+     */
+    public startSelectionDrag(): boolean {
+        if (this.mode !== EditorMode.SELECT) return false
+        if (!this.cursorInsideSelection()) {
+            this.cancelMarquee()
+            return false
         }
+        // A tiles-only selection has nothing to move in place (tiles aren't
+        // relocatable through moveEntitiesBy) — leave it held and let the press
+        // through rather than pretending to grab it.
+        if (this.marqueeEntities.length === 0) return false
+
+        let lastX = this.gridData.x32
+        let lastY = this.gridData.y32
+        // Count the already-broken wires once, at grab time: the per-step warning
+        // would otherwise fire on every tile crossed during a single drag.
+        const brokenBefore = this.countOverReach()
+        this.selectionDragFn = (x32: number, y32: number): void => {
+            const dx = x32 - lastX
+            const dy = y32 - lastY
+            if (dx === 0 && dy === 0) return
+            // A blocked step leaves the anchor where it was, so the selection
+            // resumes following the pointer as soon as the way is clear again
+            // instead of drifting by the refused delta.
+            if (this.bp.moveEntitiesBy(this.marqueeEntities, { x: dx, y: dy })) {
+                lastX = x32
+                lastY = y32
+            }
+        }
+        this.gridData.on('update32', this.selectionDragFn, this)
+        this.selectionDragBrokenBefore = brokenBefore
+        return true
+    }
+
+    /** Finish a selection drag; warn once if the move newly over-stretched wires. */
+    public endSelectionDrag(): void {
+        if (!this.selectionDragFn) return
+        this.gridData.off('update32', this.selectionDragFn, this)
+        this.selectionDragFn = undefined
+        if (this.mode === EditorMode.SELECT) this.warnNewOverReach(this.selectionDragBrokenBefore)
+    }
+
+    /** Whether the grid cursor's tile falls within the held selection's extent. */
+    private cursorInsideSelection(): boolean {
+        const b = this.selectionTileBounds()
+        if (!b) return false
+        const x = this.gridData.x32
+        const y = this.gridData.y32
+        return x >= b.minX && x <= b.maxX && y >= b.minY && y <= b.maxY
+    }
+
+    /**
+     * Tile-space AABB of the held selection — entity footprints and/or tile
+     * cells. The drag rectangle is gone by the time a selection is held (it was
+     * drag feedback), so "inside the selection" means inside what's *highlighted*,
+     * not inside the box that caught it.
+     */
+    private selectionTileBounds():
+        | { minX: number; minY: number; maxX: number; maxY: number }
+        | undefined {
+        if (this.mode !== EditorMode.SELECT) return undefined
+        let minX = Infinity
+        let minY = Infinity
+        let maxX = -Infinity
+        let maxY = -Infinity
+        for (const e of this.marqueeEntities) {
+            minX = Math.min(minX, Math.floor(e.position.x - e.size.x / 2))
+            minY = Math.min(minY, Math.floor(e.position.y - e.size.y / 2))
+            maxX = Math.max(maxX, Math.ceil(e.position.x + e.size.x / 2) - 1)
+            maxY = Math.max(maxY, Math.ceil(e.position.y + e.size.y / 2) - 1)
+        }
+        // A tile's stored position is its centre (x.5), so its cell is floor(x).
+        for (const t of this.marqueeTiles) {
+            minX = Math.min(minX, Math.floor(t.x))
+            minY = Math.min(minY, Math.floor(t.y))
+            maxX = Math.max(maxX, Math.floor(t.x))
+            maxY = Math.max(maxY, Math.floor(t.y))
+        }
+        if (minX === Infinity) return undefined
+        return { minX, minY, maxX, maxY }
+    }
+
+    /**
+     * The held selection as a standalone `Blueprint` — what `Ctrl+C` / `Ctrl+X`
+     * put on the clipboard (the website encodes it; the ghost is spawned
+     * separately). Built exactly like `PaintBlueprintContainer`'s internal
+     * blueprint: the entities re-serialized against a whitelist, plus only the
+     * wires whose *both* ends are in the selection, so a copied sub-assembly
+     * doesn't carry dangling connections. Undefined when nothing is held.
+     */
+    public selectionBlueprint(): Blueprint | undefined {
+        if (this.mode !== EditorMode.SELECT) return undefined
+        const entities = this.marqueeEntities
+        const tiles = this.marqueeTiles
+        if (entities.length === 0 && tiles.length === 0) return undefined
+
+        const entNrWhitelist = new Set(entities.map(e => e.entityNumber))
+        const wires =
+            entities.length === 0
+                ? []
+                : entities[0].Blueprint.wireConnections
+                      .serializeBpWires()
+                      .filter(wire => entNrWhitelist.has(wire[0]) && entNrWhitelist.has(wire[2]))
+        return new Blueprint({
+            entities:
+                entities.length === 0 ? undefined : entities.map(e => e.serialize(entNrWhitelist)),
+            tiles:
+                tiles.length === 0
+                    ? undefined
+                    : tiles.map(t => ({
+                          name: t.name,
+                          position: { x: Math.floor(t.x), y: Math.floor(t.y) },
+                      })),
+            wires,
+        })
     }
 
     /** Selected entities with at least one connection beyond max wire reach. */
