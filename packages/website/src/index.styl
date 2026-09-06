@@ -1244,3 +1244,70 @@ body.fbe-dialog-open
         background: #5a2a2a
         &:active
             background: #b03030
+    // Same gate as the d-pads: a button whose `when` is off (Rotate on a
+    // multi-entity selection — group rotation is #52) leaves the row entirely
+    // rather than sitting there as a no-op.
+    button.gated-off
+        display: none
+
+// Floating SELECT toolbar (#101 Slice 3). The held selection is editor state,
+// not a device state, so the SELECT cluster shows for everyone; on a **fine
+// pointer** it is placed next to what's selected instead of down in the thumb
+// band — the wrapper is positioned by actionToolbar.ts from the selection's
+// screen box (`marqueeScreenBounds`) and re-anchored as it moves.
+//
+// Without `.floating` the wrapper generates no box at all and its two children
+// stay viewport-fixed on their own bottom-band rules, i.e. exactly the touch
+// layout that was there before this slice.
+#select-float
+    display: contents
+
+#select-float.floating
+    display: flex
+    position: fixed
+    z-index: 21
+    flex-direction: column
+    align-items: flex-start
+    gap: 6px
+    // The children stop being viewport-fixed and stack inside the wrapper, so
+    // there is one box to measure and clamp. Compact sizing: a mouse doesn't
+    // need 52px thumb targets, and the toolbar sits over the blueprint.
+    #select-dpad
+        position: static
+        width: auto
+        margin: 0
+        grid-template-columns: repeat(3, 34px)
+        grid-template-rows: repeat(3, 34px)
+        gap: 2px
+        button
+            width: 34px
+            height: 34px
+            border-radius: 6px
+            .glyph
+                font-size: 15px
+    #select-actions
+        position: static
+        width: auto
+        max-width: none
+        margin: 0
+        gap: 4px
+        button
+            width: auto
+            min-width: 52px
+            height: 42px
+            padding: 0 7px
+            border-radius: 6px
+            .glyph
+                font-size: 15px
+    // Keybind badges: shown only here, and only where a keyboard is believed to
+    // exist (`body.keys`) — the bottom-band placement is thumb-driven and its
+    // layout must not change.
+    .hint
+        display: none
+
+body.keys #select-float.floating .hint
+    display: block
+    margin-top: 1px
+    font: 500 8px 'Roboto', sans-serif
+    color: #9fb0bb
+    white-space: nowrap
