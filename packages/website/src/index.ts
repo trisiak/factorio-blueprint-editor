@@ -514,6 +514,37 @@ function copyBlueprintToClipboard(): void {
         .catch(error => createErrorMessage('Blueprint string could not be generated.', error))
 }
 
+// Copy/cut a *held marquee selection* (#101 Slice 2): the selection's own
+// blueprint string goes to the clipboard and the ghost is picked up at the
+// source, so `Ctrl+X` → move the mouse → click reads as one move gesture. The
+// clipboard (and its toasts) live here, the selection lives in the editor.
+//
+// `Ctrl+C` reaches us twice — once as the registry keybind below, once as the
+// document `copy` event — so exactly one of them must act. The keybind claims
+// the key *only* when a selection is held (returning true makes the registry
+// `preventDefault` the keydown, which suppresses the `copy` event entirely);
+// with nothing held it declines, the browser fires `copy`, and the handler
+// below copies the whole blueprint exactly as it always has.
+function copySelectionToClipboard(cut: boolean): boolean {
+    const selection = editor.selectionBlueprint()
+    if (!selection) return false
+    // Serialize before the ghost is spawned — copy/cutMarquee consume the
+    // selection (and cut removes the originals).
+    const encoded = encode(selection)
+    const acted = cut ? editor.cutMarquee() : editor.copyMarquee()
+    if (!acted) return false
+    encoded
+        .then(str => navigator.clipboard.writeText(str))
+        .then(() =>
+            createToast({
+                text: cut ? 'Selection cut to clipboard' : 'Selection copied to clipboard',
+                type: 'success',
+            })
+        )
+        .catch(error => createErrorMessage('Blueprint string could not be generated.', error))
+    return true
+}
+
 document.addEventListener('copy', (e: ClipboardEvent) => {
     if (document.activeElement !== CANVAS) return
     e.preventDefault()
@@ -685,6 +716,22 @@ function registerActions(): void {
                 clearBlueprint()
                 return true
             },
+        },
+    })
+
+    EDITOR.registerAction('copySelection', {
+        trigger: { code: 'KeyC' },
+        modifiers: { control: true },
+        callbacks: {
+            onPress: () => copySelectionToClipboard(false),
+        },
+    })
+
+    EDITOR.registerAction('cutSelection', {
+        trigger: { code: 'KeyX' },
+        modifiers: { control: true },
+        callbacks: {
+            onPress: () => copySelectionToClipboard(true),
         },
     })
 
