@@ -52,6 +52,11 @@ export type {
 // formatted by the model that computes them, not by the renderer.
 export type { RatesData, RatesEntryData } from './UI/ratesModel'
 export { formatRate } from './UI/ratesModel'
+// The quickbar's slot model (#101 Slice 5) — the website's DOM quickbar is its
+// only view, and `WIRE_ITEMS` is the list of paint-only items it pins beside
+// the slots (the rail's wire buttons retired with the Pixi panel before it).
+export { QuickbarModel } from './UI/quickbarModel'
+export { WIRE_ITEMS } from './core/wireItems'
 export default {
     registerAction,
     callAction,

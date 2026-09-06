@@ -38,9 +38,15 @@ export interface EditorTestState {
      * on-canvas panels kept out of the rail's column).
      */
     safeArea: { x: number; y: number; width: number; height: number }
+    /**
+     * The quickbar, **DOM-backed** since #101 Slice 5 (the Pixi panel is
+     * retired): whether the website's `#quickbar` is rendered, its viewport
+     * bounds, and how many slot cells it currently draws — the last of which is
+     * what the `compact` reflow changes.
+     */
     quickbar: {
         visible: boolean
-        scale: number
+        slotCount: number
         bounds: { x: number; y: number; width: number; height: number }
     }
     /**
@@ -132,6 +138,10 @@ export interface EditorTestState {
  */
 const READOUT_IDS = { info: 'entity-info-sheet', rates: 'rates-drawer' }
 
+/** Likewise for the DOM quickbar (`quickbar.ts`) and its slot cells. */
+const QUICKBAR_ID = 'quickbar'
+const QUICKBAR_SLOT_SELECTOR = '#quickbar .qb-slot'
+
 /** Is `id` rendered — laid out and not display:none, from any rule. */
 function domReadoutVisible(id: string): boolean {
     if (typeof document === 'undefined') return false
@@ -139,9 +149,21 @@ function domReadoutVisible(id: string): boolean {
     return !!el && el.getClientRects().length > 0
 }
 
+/** The DOM quickbar's rendered geometry, as the state snapshot reports it. */
+function domQuickbarState(): EditorTestState['quickbar'] {
+    const empty = { visible: false, slotCount: 0, bounds: { x: 0, y: 0, width: 0, height: 0 } }
+    if (typeof document === 'undefined') return empty
+    const el = document.getElementById(QUICKBAR_ID)
+    if (!el || el.getClientRects().length === 0) return empty
+    const r = el.getBoundingClientRect()
+    return {
+        visible: true,
+        slotCount: document.querySelectorAll(QUICKBAR_SLOT_SELECTOR).length,
+        bounds: { x: r.x, y: r.y, width: r.width, height: r.height },
+    }
+}
+
 export function getEditorTestState(): EditorTestState {
-    const qb = G.UI.quickbarPanel
-    const r = qb.getBounds().rectangle
     const painting = G.BPC.mode === EditorMode.PAINT && !!G.BPC.paintContainer
     return {
         inputMode: inputMode.mode,
@@ -149,11 +171,7 @@ export function getEditorTestState(): EditorTestState {
         inputPreset: inputMode.preset,
         screen: { width: G.app.screen.width, height: G.app.screen.height },
         safeArea: { ...G.safeArea },
-        quickbar: {
-            visible: qb.visible && r.width > 0 && r.height > 0,
-            scale: qb.scale.x,
-            bounds: { x: r.x, y: r.y, width: r.width, height: r.height },
-        },
+        quickbar: domQuickbarState(),
         blueprint: { entityCount: G.bp.entities.size, tileCount: G.bp.tiles.size },
         paint: {
             active: painting,
@@ -380,8 +398,6 @@ export interface FbeTestHook {
     } | null
     /** Quickbar slot contents, `null` for an unassigned slot. */
     quickbarItems: () => (string | null)[]
-    /** On-screen centre of quickbar slot `index`, or null if it isn't rendered. */
-    quickbarSlotPos: (index: number) => { x: number; y: number } | null
     /**
      * Seed quickbar slot 0 with a known item, so a spec has something to clear
      * without driving the assign flow (which is not what those tests are about).
@@ -625,16 +641,9 @@ export function installTestHook(win: Window = window): void {
             }
         },
         quickbarItems: () =>
-            G.UI.quickbarPanel.serialize().map(itemName => itemName ?? null) as (string | null)[],
-        quickbarSlotPos: index => {
-            const slot = G.UI.quickbarPanel.slotAt(index)
-            if (!slot) return null
-            const r = slot.getBounds().rectangle
-            if (r.width === 0 || r.height === 0) return null
-            return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
-        },
+            G.UI.quickbar.serialize().map(itemName => itemName ?? null) as (string | null)[],
         quickbarAssign: (name = 'fast-inserter') => {
-            G.UI.quickbarPanel.slotAt(0)?.assignItem(name)
+            G.UI.quickbar.assign(0, name)
         },
     }
     ;(win as unknown as Record<string, unknown>)[TEST_HOOK_KEY] = hook
