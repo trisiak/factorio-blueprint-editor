@@ -18,6 +18,7 @@ import { Blueprint, oilOutpostSettings, IOilOutpostSettings } from './core/Bluep
 import { BlueprintContainer, EditorMode, GridPattern } from './containers/BlueprintContainer'
 import { PaintTileContainer } from './containers/PaintTileContainer'
 import { UIContainer } from './UI/UIContainer'
+import { QuickbarModel } from './UI/quickbarModel'
 import { Dialog } from './UI/controls/Dialog'
 import { ActionRegistry, MouseButton } from './actions'
 
@@ -271,11 +272,22 @@ export class Editor {
         G.BPC.gridPattern = pattern
     }
 
+    /**
+     * The quickbar's slot model (#101 Slice 5) — the render-free state the DOM
+     * quickbar draws and follows (`change`), and the same object the number-key
+     * bindings and the inventory's Pin/Unpin act on.
+     */
+    public get quickbar(): QuickbarModel {
+        return G.UI.quickbar
+    }
+
     public get quickbarItems(): string[] {
-        return G.UI.quickbarPanel.serialize()
+        // `undefined` for an empty slot round-trips through JSON as `null`,
+        // which the persisted `quickbarItemNames` shape has always allowed.
+        return G.UI.quickbar.serialize() as string[]
     }
     public set quickbarItems(items: string[]) {
-        G.UI.quickbarPanel.generateSlots(items)
+        G.UI.quickbar.generateSlots(items)
     }
 
     public get limitWireReach(): boolean {
@@ -776,7 +788,7 @@ export class Editor {
                 trigger: { code: 'KeyX' },
                 callbacks: {
                     onPress: () => {
-                        G.UI.quickbarPanel.changeActiveQuickbar()
+                        G.UI.quickbar.changeActiveQuickbar()
                         return true
                     },
                 },
@@ -784,7 +796,7 @@ export class Editor {
         })
 
         const bindKeyToSlot = (slot: number): boolean => {
-            G.UI.quickbarPanel.bindKeyToSlot(slot)
+            G.UI.quickbar.bindKeyToSlot(slot)
             return true
         }
 

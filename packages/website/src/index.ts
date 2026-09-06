@@ -27,6 +27,7 @@ import { initActionToolbar } from './actionToolbar'
 import { initViewportRegions } from './viewportRegions'
 import { loadPackIcons } from './packIcons'
 import { initEntityInfoSheet } from './entityInfoSheet'
+import { initQuickbar } from './quickbar'
 import { initRatesDrawer } from './ratesDrawer'
 import { loadSavedBlueprint, clearSavedBlueprint } from './blueprintStorage'
 import { LibraryController } from './library/controller'
@@ -219,6 +220,11 @@ editor
         // Slice 5, placed by the `compact` signal rather than by a device mode.
         initEntityInfoSheet()
         initRatesDrawer()
+        // ...and the quickbar, likewise one DOM bar for every input (#101 Slice
+        // 5b): it renders the editor's slot model and carries the wire toggles
+        // the rail used to hold. Built after the persisted slots are restored
+        // above, so the first paint already shows them.
+        initQuickbar(editor)
         // Layering contract: DOM always composites above the canvas, so a Pixi
         // dialog (entity editor, inventory) can never paint over the readouts —
         // instead they yield while any dialog is open. The editor mirrors its

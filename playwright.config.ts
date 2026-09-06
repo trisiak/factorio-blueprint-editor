@@ -103,11 +103,12 @@ export default defineConfig({
             // to say about hybrid hardware: the rest of the suite is already
             // covered by the desktop and mobile projects, and running all of it
             // a third time would triple a render-bound suite for no signal.
-            // `domReadouts` is here because #101 Slice 5's whole claim is that
-            // the readouts follow the viewport, not the presence of a
-            // touchscreen — which only this project can falsify.
+            // `domReadouts` and `domQuickbar` are here because #101 Slice 5's
+            // whole claim is that these surfaces follow the viewport and the
+            // primary pointer, not the presence of a touchscreen — which only
+            // this project can falsify.
             name: 'hybrid-chromium',
-            testMatch: /(hybridInput|domReadouts)\.spec\.ts/,
+            testMatch: /(hybridInput|domReadouts|domQuickbar)\.spec\.ts/,
             use: {
                 ...devices['Desktop Chrome'],
                 viewport: { width: 1280, height: 720 },

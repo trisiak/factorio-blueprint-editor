@@ -141,31 +141,10 @@ const BUTTONS: ToolbarButton[] = [
         className: 'cancel',
         modes: [EM.PAINT, EM.COPY, EM.DELETE, EM.SELECT],
     },
-    // Wires (#89): paint items, but not inventory items — the Items dialog can't
-    // reach them, so they get rail buttons (which also retires the bottom-band
-    // wires panel on mobile). Tapping toggles: spawn the wire, or drop it if
-    // it's already held. Colored glyphs (index.styl) until the pack icon loads.
-    {
-        action: 'copper-wire',
-        glyph: '∿',
-        icon: 'item/copper-wire',
-        label: 'Copper',
-        className: 'wire-copper',
-    },
-    {
-        action: 'red-wire',
-        glyph: '∿',
-        icon: 'item/red-wire',
-        label: 'Red wire',
-        className: 'wire-red',
-    },
-    {
-        action: 'green-wire',
-        glyph: '∿',
-        icon: 'item/green-wire',
-        label: 'Green wire',
-        className: 'wire-green',
-    },
+    // (The three wire toggles used to sit here, as the touch stand-in for the
+    // Pixi wires panel. Both are gone: since #101 Slice 5 they are pinned cells
+    // on the DOM quickbar — paint items belong with the other paint items, and
+    // one affordance per action is the rule this slice keeps applying.)
     // Blueprint-level / management actions — global; keyboard-only otherwise, so
     // unreachable on touch (see issue #26). Rare and deliberate, so they live
     // *permanently* in the ⋯ overflow (`parked`), never occupying rail cells.
@@ -283,9 +262,6 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
     // Built-in handlers for buttons backed by Editor methods rather than the
     // keybind registry. Caller overrides win.
     handlers = {
-        'copper-wire': () => editor.togglePaintItem('copper-wire'),
-        'red-wire': () => editor.togglePaintItem('red-wire'),
-        'green-wire': () => editor.togglePaintItem('green-wire'),
         marquee: () => editor.armMarquee(),
         marqueeTiles: () => editor.armMarquee(true),
         copyMarquee: () => editor.copyMarquee(),

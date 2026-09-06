@@ -568,48 +568,56 @@ test.describe('logistic chest requests', () => {
 })
 
 test.describe('quickbar slots', () => {
-    // The quickbar is retired on mobile (its slots still work, but nothing renders
-    // to press), so this is the desktop contract — and the refactor onto
-    // bindSlotGestures is exactly the kind of change that could silently break it.
-    test.skip(() => isMobileProject(), 'the quickbar is retired on mobile')
+    // The quickbar is DOM for every input since #101 Slice 5b (it used to be a
+    // Pixi panel, retired on mobile — hence the old desktop-only skip). The
+    // slot gesture contract has to survive that move intact, on both drivers:
+    // a tap/click activates, a long-press or right-click clears.
+    const slotZero = (page: Page) => page.locator('#quickbar .qb-slot').first()
+
+    /** Seed slot 0 through the model, as the picker path would. */
+    const seedSlotZero = async (page: Page): Promise<void> => {
+        await page.evaluate(() =>
+            (
+                window as unknown as { __FBE_TEST__: { quickbarAssign: () => void } }
+            ).__FBE_TEST__.quickbarAssign()
+        )
+        await expect.poll(async () => (await readQuickbar(page))[0]).toBe('fast-inserter')
+    }
+
+    /** Centre of the DOM slot, in page coordinates. */
+    const slotCentre = async (page: Page): Promise<{ x: number; y: number }> => {
+        const box = await slotZero(page).boundingBox()
+        expect(box, 'quickbar slot 0 should be rendered').not.toBeNull()
+        return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    }
 
     test('long-press unassigns a quickbar slot', async ({ page }) => {
         await page.goto(`/?test&source=${encodeURIComponent(BP)}`)
         await waitForAppReady(page)
+        await seedSlotZero(page)
 
-        // Seed slot 0 by picking an item through the (empty-slot) picker path.
-        await page.evaluate(() =>
-            (
-                window as unknown as { __FBE_TEST__: { quickbarAssign: () => void } }
-            ).__FBE_TEST__.quickbarAssign()
-        )
-        await expect.poll(async () => (await readQuickbar(page))[0]).toBe('fast-inserter')
+        const at = await slotCentre(page)
+        if (isMobileProject()) {
+            await longPressOneFinger(page, at)
+        } else {
+            await page.mouse.move(at.x, at.y)
+            await page.mouse.down()
+            await page.waitForTimeout(1_500)
+            await page.mouse.up()
+        }
 
-        const slot = await page.evaluate(() =>
-            (window as unknown as { __FBE_TEST__: ClearHook }).__FBE_TEST__.quickbarSlotPos(0)
-        )
-        expect(slot, 'quickbar slot 0 should be rendered on desktop').not.toBeNull()
-
-        await holdToClear(page, slot)
         await expect.poll(async () => (await readQuickbar(page))[0]).toBeNull()
     })
 
     test('right-click still unassigns a quickbar slot', async ({ page }) => {
+        test.skip(isMobileProject(), 'no right button on a touchscreen — long-press covers it')
+
         await page.goto(`/?test&source=${encodeURIComponent(BP)}`)
         await waitForAppReady(page)
+        await seedSlotZero(page)
 
-        await page.evaluate(() =>
-            (
-                window as unknown as { __FBE_TEST__: { quickbarAssign: () => void } }
-            ).__FBE_TEST__.quickbarAssign()
-        )
-        await expect.poll(async () => (await readQuickbar(page))[0]).toBe('fast-inserter')
-
-        const slot = await page.evaluate(() =>
-            (window as unknown as { __FBE_TEST__: ClearHook }).__FBE_TEST__.quickbarSlotPos(0)
-        )
-        const o = await canvasOrigin(page)
-        await page.mouse.click(o.x + slot.x, o.y + slot.y, { button: 'right' })
+        const at = await slotCentre(page)
+        await page.mouse.click(at.x, at.y, { button: 'right' })
 
         await expect.poll(async () => (await readQuickbar(page))[0]).toBeNull()
     })
