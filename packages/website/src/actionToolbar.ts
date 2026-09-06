@@ -617,6 +617,23 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
         positionSelectFloat()
     }
 
+    // While a pointer is pressed anywhere *but* on the toolbar, the toolbar goes
+    // pointer-transparent. A left-drag inside a held selection moves the real
+    // entities (#101 Slice 2) and the anchored toolbar follows them down — if it
+    // slid under the cursor mid-drag it would start swallowing the pointermoves
+    // the canvas is tracking the drag with, and the selection would stop
+    // following the mouse. A press that starts *on* a button is a button press,
+    // so it keeps its events.
+    const dragThrough =
+        (on: boolean) =>
+        (e: PointerEvent): void => {
+            if (on && selectFloat.contains(e.target as Node)) return
+            selectFloat.classList.toggle('drag-through', on)
+        }
+    window.addEventListener('pointerdown', dragThrough(true), true)
+    window.addEventListener('pointerup', dragThrough(false), true)
+    window.addEventListener('pointercancel', dragThrough(false), true)
+
     moreBtn.addEventListener('click', () => overflow.classList.toggle('open'))
     // A tap outside the rail dismisses the overflow sheet.
     window.addEventListener('pointerdown', e => {

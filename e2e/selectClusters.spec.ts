@@ -308,6 +308,28 @@ test.describe('SELECT cluster on a fine pointer (floating, anchored)', () => {
         expect(Math.abs((await boxOf(float(page))).x - zoomed.x)).toBeLessThanOrEqual(16)
     })
 
+    test('a drag-to-move still works with the toolbar following underneath', async ({ page }) => {
+        await gotoWithBlueprint(page)
+        await selectAll(page)
+        const before = (await getState(page)).marquee.origin!
+        const b = await selectionBounds(page)
+
+        // Grab inside the selection and drag straight down — the toolbar is
+        // anchored just below it, so it travels right under the cursor. It has
+        // to stay pointer-transparent for the duration or it would start eating
+        // the pointermoves the canvas is tracking the drag with.
+        const from = { x: b.x + b.width / 2, y: b.y + b.height / 2 }
+        await page.mouse.move(from.x, from.y)
+        await page.mouse.down()
+        for (let i = 1; i <= 6; i++) await page.mouse.move(from.x, from.y + i * 20)
+        await page.mouse.up()
+
+        const after = (await getState(page)).marquee.origin!
+        expect(after.y).toBeGreaterThan(before.y) // the entities moved with it
+        expect(after.x).toBe(before.x)
+        await expect(actions(page)).toHaveClass(/visible/) // still held
+    })
+
     test('Cancel and Escape both put the toolbar away', async ({ page }) => {
         await gotoWithBlueprint(page)
         await selectAll(page)

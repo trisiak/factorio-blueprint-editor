@@ -1300,6 +1300,12 @@ body.fbe-dialog-open
             .glyph
                 font-size: 15px
 
+// Pointer-transparent while a drag that started elsewhere is in flight: the
+// anchored toolbar follows a selection being dragged, and must not slide under
+// the cursor and swallow the drag's pointermoves (see actionToolbar.ts).
+#select-float.floating.drag-through
+    pointer-events: none
+
 // Keybind badges. Hidden by default in *both* placements, so the thumb-sized
 // bottom-band buttons keep the layout they had; shown only in the anchored
 // placement, and only where a keyboard is believed to exist (`body.keys`).
