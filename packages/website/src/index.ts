@@ -215,7 +215,8 @@ editor
         // Upgrade marked chrome (the rail's wire buttons) to real game icons
         // from the pack's browser/ sheet — progressive, glyphs stay on failure.
         void loadPackIcons()
-        // Mobile presentations of the status readouts (#89 Phase 2).
+        // The status readouts (#89 Phase 2) — DOM for every input since #101
+        // Slice 5, placed by the `compact` signal rather than by a device mode.
         initEntityInfoSheet()
         initRatesDrawer()
         // Layering contract: DOM always composites above the canvas, so a Pixi

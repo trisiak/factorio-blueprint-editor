@@ -320,21 +320,39 @@ body.mobile
         color: #ffe6c0
         margin-right: 6px
 
-// Entity-info bottom sheet (#89 Phase 2) — the mobile presentation of the
-// entity info panel (entityInfoSheet.ts). Floats over the full-bleed canvas.
-// Portrait: a full-width band at the **top** (below the reserved chrome band) —
-// the sheet appears on every tap-select, and in portrait the active, reachable
-// area is the bottom of the screen, so the passive readout stays out of it
-// (and clear of the EDIT Select/Edit bar, which always co-occurs with it).
-// Landscape: a bottom-right drawer, complementing the rates drawer. Below the
-// contextual clusters (z21) so their buttons win if they ever overlap.
-#entity-info-sheet
-    display: none
+// The two passive status readouts (#101 Slice 5) — the entity-info sheet
+// (entityInfoSheet.ts) and the production-rates drawer (ratesDrawer.ts). Both
+// are DOM for **every** input now that the Pixi panels they mirrored are
+// retired, so what decides their placement is the `compact` signal and
+// orientation, never a device mode.
+//
+// Wide: they share the right edge in a flex column — info above, rates below,
+// the same order the two canvas panels stacked in (a fixed box can't sit under
+// another whose height varies, hence the shared stack). The column itself is
+// click-through; only the readouts take pointer events, so its empty tail
+// doesn't eat canvas drags.
+#readout-stack
     position: fixed
     z-index: 15
-    left: 54px
-    right: 8px
     top: 60px
+    right: 8px
+    width: unquote('min(320px, 34vw)')
+    max-height: unquote('calc(100dvh - 76px)')
+    display: flex
+    flex-direction: column
+    gap: 8px
+    pointer-events: none
+    > *
+        pointer-events: auto
+
+// Compact: the column dissolves and each readout is its own fixed box again,
+// in the touch-designed spots below.
+body.compact #readout-stack
+    display: contents
+
+#entity-info-sheet
+    display: none
+    position: static
     max-height: 40vh
     overflow-y: auto
     padding: 10px 14px
@@ -345,16 +363,6 @@ body.mobile
     border-radius: 10px
     &.visible
         display: block
-    // Landscape: a bottom-right drawer — the top-right is the rates drawer's
-    // spot, so the two can be open at once (mirroring the desktop right-edge
-    // stack: info above, rates below).
-    @media (orientation: landscape)
-        left: auto
-        right: 8px
-        top: auto
-        bottom: 8px
-        width: 300px
-        max-height: unquote('calc(50vh - 16px)')
     .eis-name
         font-weight: 600
         font-size: 15px
@@ -374,21 +382,24 @@ body.mobile
         display: inline-flex
         align-items: center
         gap: 3px
+    // Circuit-network id badges, coloured like the game's wires.
+    .eis-net
+        min-width: 18px
+        padding: 0 4px
+        color: #1c1c1c
+        font-weight: 600
+        font-size: 11px
+        text-align: center
+        border-radius: 9px
+    .eis-net-red
+        background: #f28b82
+    .eis-net-green
+        background: #a5d6a7
 
-// Production-rates drawer (#89 Phase 2) — the mobile presentation of the rates
-// readout (ratesDrawer.ts). Portrait: bottom-right, in the reachable band —
-// it's an explicitly toggled overview the user interacts with (scroll, ✕),
-// unlike the passive tap-select sheet at the top; the bottom offset budgets
-// for the contextual clusters it can share the band with. Landscape:
-// top-right, complementing the sheet (bottom-right) like the desktop stack.
 #rates-drawer
     display: none
-    position: fixed
-    z-index: 15
-    bottom: 96px
-    right: 8px
-    width: unquote('min(300px, 70vw)')
-    max-height: unquote('calc(50vh - 40px)')
+    position: static
+    max-height: unquote('min(50vh, 420px)')
     overflow-y: auto
     padding: 8px 12px 10px
     color: #eee
@@ -398,9 +409,6 @@ body.mobile
     border-radius: 10px
     &.visible
         display: block
-    @media (orientation: landscape)
-        bottom: auto
-        top: 60px
     .rd-header
         display: flex
         align-items: center
@@ -446,6 +454,43 @@ body.mobile
         gap: 3px
         color: #b5b5b5
         font-size: 12px
+
+// Compact placements — the touch layout the sheets were designed for, kept
+// verbatim and now reached by viewport rather than by input mode.
+// Entity info, portrait: a full-width band at the **top** (below the reserved
+// chrome band) — it appears on every tap-select, and in portrait the active,
+// reachable area is the bottom of the screen, so the passive readout stays out
+// of it (and clear of the EDIT Select/Edit bar, which always co-occurs with
+// it). Landscape: a bottom-right drawer, complementing the rates one.
+// Rates, portrait: bottom-right, in the reachable band — an explicitly toggled
+// overview the user scrolls and dismisses; the bottom offset budgets for the
+// contextual clusters it can share the band with. Landscape: top-right.
+// Both sit below the clusters (z21) so their buttons win on any overlap.
+body.compact
+    #entity-info-sheet
+        position: fixed
+        z-index: 15
+        left: 54px
+        right: 8px
+        top: 60px
+        max-height: 40vh
+        @media (orientation: landscape)
+            left: auto
+            right: 8px
+            top: auto
+            bottom: 8px
+            width: 300px
+            max-height: unquote('calc(50vh - 16px)')
+    #rates-drawer
+        position: fixed
+        z-index: 15
+        bottom: 96px
+        right: 8px
+        width: unquote('min(300px, 70vw)')
+        max-height: unquote('calc(50vh - 40px)')
+        @media (orientation: landscape)
+            bottom: auto
+            top: 60px
 
 // Layering contract (#89): while any Pixi dialog is open (entity editor,
 // inventory — the editor mirrors the count over `fbe:dialogs`, see index.ts),
