@@ -59,8 +59,9 @@ that drive chrome and sizing.
 - **Compatibility** — `inputMode.mode` survives as a _derived_ value (forced
   preset wins, else `coarse ? 'mobile' : 'desktop'`) and still emits `change`, so
   every consumer that hasn't migrated yet (the website clusters, the Pixi panels,
-  `armMarquee`, `body.mobile`) keeps today's behaviour. It goes away when the last
-  consumer moves onto the signals (#101, later slices).
+  `body.mobile`) keeps today's behaviour. It goes away when the last consumer
+  moves onto the signals (#101, later slices). `armMarquee` left that list in
+  Slice 2 — it no longer gates on the mode at all.
 - **Tests** — pure decision logic (migration, derived mode, the signal reducers)
   is unit-tested in `packages/editor/src/common/input.test.ts`; the end-to-end
   behaviour has its own Playwright project, `hybrid-chromium` (desktop viewport +
@@ -100,6 +101,45 @@ that drive chrome and sizing.
   `inputMode.mode` remains only as a derived compatibility value. See
   Architecture above; unit tests in `common/input.test.ts`, e2e in the new
   `hybrid-chromium` project (`e2e/hybridInput.spec.ts`).
+- ✅ **Desktop selection: the held-selection model on mouse + keyboard (#101
+  Slice 2)** — the marquee is no longer a touch-only feature. Both drivers now
+  land in the same `EditorMode.SELECT`; they differ only in how a box is
+  _started_, because a touch drag already means "pan" (so touch arms first, via
+  the rail's Select button) while a mouse has a spare modifier.
+    - `Ctrl+LMB` drag **holds** what the box catches instead of committing a
+      copy on release (upstream turned it into a paste ghost the instant you let
+      go, with no chance to look at the selection — and it silently ignored
+      tiles). The tiles fallback is the marquee's: entities win, tiles only when
+      the box holds none. `Ctrl+RMB` drag stays the wipe-the-area accelerator —
+      the same box, painted red, committing `deleteMarquee` on release, so the
+      **tiles** under a delete box now go too.
+    - `EditorMode.COPY` / `EditorMode.DELETE` and their `enter*`/`exit*Mode`
+      methods are **retired** — the marquee replaced both.
+    - Keyboard on a held selection: `Ctrl+C` → copy, `Ctrl+X` → cut, `Delete` /
+      `Backspace` → delete, `R` → rotate (a single entity; group rotation about a
+      pivot is still #52), arrows → nudge in place, `Escape` → clear. Each
+      keybind _declines_ the key when nothing is held, so nothing is swallowed.
+    - **Clipboard arbitration**: `Ctrl+C` arrives twice — as the keybind and as
+      the document `copy` event. With a selection held the keybind claims it
+      (`preventDefault` on the keydown suppresses the `copy` event) and puts the
+      _selection's_ blueprint string on the clipboard; with nothing held it
+      declines and the whole-blueprint copy runs exactly as before.
+    - **Move with the mouse**: a left-drag starting _inside_ the held selection
+      moves the real entities tile by tile (`Blueprint.moveEntitiesBy`, wiring
+      preserved, one over-reach warning on release); a press outside drops the
+      selection and falls through to pan. Copy/Cut preview the ghost **at the
+      source** on mouse too, so "select → cut → move the mouse → click to drop"
+      is one flow.
+    - `armMarquee` lost its `inputMode.mode === 'mobile'` gate (#101 B3) — it is
+      touch-_flavoured_, not device-gated. The website's SELECT cluster stays
+      mobile-gated in this slice; Slice 3 makes the clusters editor-state-driven
+      for everyone.
+    - e2e: `e2e/desktopSelection.spec.ts` (desktop-chromium) plus a hybrid case
+      in `e2e/hybridInput.spec.ts`; `e2e/touchMarquee.spec.ts` is unchanged and
+      remains the touch ratchet. New `?test` hook fields: `paint.sourceCenter`,
+      `entityPositions()`.
+      (`packages/editor/src/containers/BlueprintContainer.ts`,
+      `packages/editor/src/{Editor,actions}.ts`, `packages/website/src/index.ts`)
 - ✅ **Responsive overlays** — the INFO/shortcuts panel no longer overflows in
   portrait (`width: min(640px, 90vw)`, scrolls instead of clipping) and is now
   openable/closable without a keyboard (tap the corner panel; on-screen ✕). The
@@ -486,8 +526,9 @@ that drive chrome and sizing.
   bounding-box center) so it previews _in place_ — for Cut this reads as
   move-in-place; the ghost is then the same paste ghost the placement work (#30)
   makes drag/nudge/center-placeable, closing the cut/copy/paste loop on touch.
-  Reuses the desktop selection rectangle + `getEntitiesInArea` + cursor-box
-  highlight. _(Originally the box stayed frozen on release; the tiles round
+  Reuses the same selection rectangle + `getEntitiesInArea` + cursor-box
+  highlight the (now retired) desktop copy/delete modes drew — which is what let
+  #101 Slice 2 put the mouse driver on this same model rather than forking it. _(Originally the box stayed frozen on release; the tiles round
   changed that — the rectangle is drag feedback only and hides once the
   selection is held, whose visual is the cursor boxes / tile highlight.)_
   While the box is drawn/held the hover/info panel is suppressed (it would
