@@ -183,6 +183,29 @@ that drive chrome and sizing.
   rail _and_ quickbar. `EditorTestState` gained `safeArea` and lost `wires`.
   _(The committed desktop storyboard strips are stale until someone regenerates
   them with `STORYBOARD=1`.)_
+- ✅ **One DOM quickbar for every input (#101 Slice 5b)** — the Pixi
+  `QuickbarPanel` is deleted. Its state became a render-free model in the editor
+  (`UI/quickbarModel.ts`: the slot array, the five activation cases, the number
+  keys, `changeActiveQuickbar`, and the `hasItem`/`addItem`/`removeItem` the
+  inventory's Pin/Unpin drives) with a `change` event; `packages/website/src/quickbar.ts`
+  is its only view. Signals, not modes, decide everything device-ish: **44 px
+  cells when `coarse`** and 36 px otherwise, **number-key badges when `keys`**
+  (read live from the registry, so the second row correctly reads `⇧1`…`⇧5`),
+  and **5 columns instead of 10 when `compact`**, where the swap button (`X`)
+  rotates the rows so every slot stays reachable. Slot gestures match the canvas
+  slots: click/tap activates, right-click or a 500 ms long-press clears. The
+  **three wire toggles moved onto the quickbar** and left the rail — they are
+  paint items, and after the Pixi wires panel (Slice 4) this retires the last
+  duplicate affordance for them. Bottom-band etiquette: on a `compact` viewport
+  the quickbar yields the band whenever a contextual cluster owns it (PAINT /
+  SELECT / touch-EDIT), and the rail's Cancel remains the way out of a held
+  cursor; otherwise it **reserves the band** as a bottom inset of `G.safeArea`,
+  so Pixi dialogs never overlap it. `?test`: `quickbar` is DOM-backed
+  (`visible` / `bounds` / `slotCount`, replacing the canvas `scale`), and
+  `quickbarSlotPos` is gone — specs address `#quickbar .qb-slot` directly.
+  e2e: new `domQuickbar.spec.ts` on all three projects, plus flipped ratchets in
+  `panels.spec.ts` (quickbar + wires), `clearSlots.spec.ts` (the clear gestures,
+  which now run on touch too) and `actionToolbar.spec.ts`.
 - ✅ **DOM status readouts for every input (#101 Slice 5a)** — the entity-info
   and production-rates readouts were the last split affordance: Pixi panels on
   desktop, DOM sheets on touch, one presentation per `inputMode.mode`. Both Pixi
