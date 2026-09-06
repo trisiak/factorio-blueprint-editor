@@ -5,11 +5,13 @@ import type { EditorTestState } from '@fbe/editor'
  * UI coverage for the mobile-layout work:
  *  - the INFO / shortcuts panel (responsive, openable/closable without a keyboard)
  *  - the dat.gui settings pane (touch layout: closes properly, hides Keybinds)
- *  - the quickbar (canvas-rendered, asserted via the `?test` window hook)
+ *  - the quickbar, the wire toggles and the status readouts, whose per-mode
+ *    presentations all collapsed into one DOM surface each (#101 Slice 5)
  *
- * The quickbar is drawn in the PixiJS canvas, so the DOM has nothing to query;
- * loading with `?test` installs window.__FBE_TEST__, which exposes its logical
- * bounds/scale (see packages/editor/src/common/testHook.ts).
+ * `?test` installs window.__FBE_TEST__ (packages/editor/src/common/testHook.ts).
+ * Its `quickbar` / `infoPanelVisible` / `ratesPanelVisible` fields are DOM-backed
+ * now — they report what is actually rendered — so a spec can assert geometry
+ * through the probe and content through the element, whichever reads better.
  */
 
 const isMobileProject = (): boolean => test.info().project.name === 'mobile-chromium'
@@ -166,57 +168,51 @@ test.describe('settings pane (dat.gui)', () => {
 })
 
 test.describe('quickbar', () => {
-    test('renders on desktop and fits; retired on mobile', async ({ page }) => {
+    test('renders for every input, inside the safe area', async ({ page }) => {
         await page.goto('/?test')
         await waitForAppReady(page)
 
+        // #101 Slice 5b: one DOM quickbar for everyone. It used to be a Pixi
+        // panel that was *retired on mobile*, so touch users had no pinned items
+        // at all; the ratchet flips from "desktop only" to "present in both,
+        // reflowed by `compact`" (the column count and the cell size are
+        // asserted in domQuickbar.spec.ts).
         const state = await readTestState(page)
         const viewport = page.viewportSize()!
-
-        if (isMobileProject()) {
-            // Retired on mobile — touch users build via the action rail's Items
-            // (Recents) + Pick instead of a fixed bottom bar.
-            expect(state.quickbar.visible).toBe(false)
-            return
-        }
-
-        // Desktop: rendered full-size, anchored along the bottom, on-screen.
-        // (Regression: a NaN scale during super() once left it invisible.)
         expect(state.quickbar.visible).toBe(true)
-        expect(state.quickbar.scale).toBe(1)
+        await expect(page.locator('#quickbar')).toBeVisible()
 
-        // ...and inside the safe area, whose left edge is now the universal
-        // action rail's column (#101 Slice 4) rather than the screen edge.
+        // On screen, and clear of the rail's column on the left.
         const b = state.quickbar.bounds
         expect(b.x).toBeGreaterThanOrEqual(state.safeArea.x)
         expect(b.x + b.width).toBeLessThanOrEqual(viewport.width + 1)
-        expect(b.y).toBeGreaterThanOrEqual(0)
-        expect(b.y).toBeLessThan(viewport.height)
+        expect(b.y).toBeGreaterThan(0)
+        expect(b.y + b.height).toBeLessThanOrEqual(viewport.height + 1)
     })
 })
 
 test.describe('wires', () => {
-    // The Pixi wires panel (beside the desktop quickbar) is **retired** — #101
-    // Slice 4. It used to be the desktop half of a split affordance: three rail
-    // buttons on touch, a canvas panel on desktop, for the same three paint
-    // items. The rail is universal now, so the panel is gone everywhere and with
-    // it the geometry ratchet that guarded its anchoring (it used to fall off
-    // narrow viewports). What replaces it: the rail carries the three toggles in
-    // every layout, asserted per project in actionToolbar.spec.ts.
-    test('the Pixi panel is gone; the three toggles live in the rail', async ({ page }) => {
+    // The three wire toggles have had three homes and now have one. They were a
+    // Pixi panel beside the desktop quickbar and three rail buttons on touch —
+    // two affordances for one action; #101 Slice 4 deleted the panel, and Slice
+    // 5b moved the rail's buttons onto the DOM quickbar, where the other paint
+    // items live. The panel's probe field went with it, so its absence is the
+    // ratchet that it can't come back.
+    test('the toggles live on the quickbar; neither Pixi panel nor rail entry remains', async ({
+        page,
+    }) => {
         await page.goto('/?test')
         await waitForAppReady(page)
 
-        // The probe field went with the panel — its absence is the ratchet.
         const hasWiresField = await page.evaluate(() => {
             const w = window as unknown as { __FBE_TEST__: { getState: () => object } }
             return 'wires' in w.__FBE_TEST__.getState()
         })
         expect(hasWiresField).toBe(false)
 
-        const toolbar = page.locator('#action-toolbar')
         for (const title of ['Copper', 'Red wire', 'Green wire']) {
-            await expect(toolbar.locator(`button[title="${title}"]`)).toBeVisible()
+            await expect(page.locator(`#quickbar button[title="${title}"]`)).toBeVisible()
+            await expect(page.locator(`#action-toolbar button[title="${title}"]`)).toHaveCount(0)
         }
     })
 })

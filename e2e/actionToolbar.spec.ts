@@ -133,9 +133,13 @@ test.describe('action toolbar', () => {
             expect(state.safeArea.x).toBeGreaterThanOrEqual(rail.width)
             expect(state.safeArea.width).toBe(page.viewportSize().width - state.safeArea.x)
 
-            // ...so the Pixi quickbar anchored within it clears the rail.
+            // ...so the DOM quickbar (#101 Slice 5b) lays out clear of the rail's
+            // column, and its own band is reserved back on the canvas.
             expect(state.quickbar.visible).toBe(true)
             expect(state.quickbar.bounds.x).toBeGreaterThanOrEqual(state.safeArea.x)
+            expect(state.safeArea.y + state.safeArea.height).toBeLessThanOrEqual(
+                state.quickbar.bounds.y + 1
+            )
 
             // The entity-info readout is DOM since #101 Slice 5 (the Pixi panel
             // and its `infoPanelBounds` probe are retired), so the same
@@ -163,31 +167,25 @@ test.describe('action toolbar', () => {
             await expect.poll(async () => (await readState(page)).paint.direction).not.toBe(before)
         })
 
-        test('the wire buttons hold a wire cursor; the Pixi wires panel is gone', async ({
-            page,
-        }) => {
+        test('the wire toggles left the rail for the quickbar', async ({ page }) => {
             await page.goto('/?test')
             await waitForLoaded(page)
 
-            // The desktop-only Pixi wires panel beside the quickbar is retired
-            // (#101 Slice 4) — two affordances for one action was the problem;
-            // the rail's three toggles are the survivor. Its probe field went
-            // with it, so its absence is the ratchet.
+            // Two retirements, one rule — one affordance per action. The Pixi
+            // wires panel went in #101 Slice 4 (its probe field went with it,
+            // which is the ratchet below); the rail buttons that had stood in
+            // for it on touch went in Slice 5b, because the wires are paint
+            // items and now sit on the DOM quickbar with the other paint items.
             const hasWiresField = await page.evaluate(
                 () => 'wires' in (window as unknown as TestHookWindow).__FBE_TEST__.getState()
             )
             expect(hasWiresField).toBe(false)
 
-            await tapRail(page, 'Red wire')
-            const held = await readState(page)
-            expect(held.paint.active).toBe(true)
-            // A wire cursor is neither an entity/blueprint ghost nor a tile brush.
-            expect(held.paint.kind).toBeNull()
-            expect(held.paint.tileSize).toBeNull()
-
-            // Toggle semantics, exactly as the retired panel's slots had.
-            await tapRail(page, 'Red wire')
-            await expect.poll(async () => (await readState(page)).paint.active).toBe(false)
+            const toolbar = page.locator('#action-toolbar')
+            for (const title of ['Copper', 'Red wire', 'Green wire']) {
+                await expect(toolbar.locator(`button[title="${title}"]`)).toHaveCount(0)
+                await expect(page.locator(`#quickbar button[title="${title}"]`)).toBeVisible()
+            }
         })
 
         test('Settings opens the pane beside the column, not over it', async ({ page }) => {
@@ -249,16 +247,16 @@ test.describe('action toolbar', () => {
             await expect(toolbar.locator('button.rail-more')).toBeVisible()
         })
 
-        test('wire buttons toggle a wire cursor', async ({ page }) => {
+        test('the quickbar wire cells hold a wire cursor, with real game icons', async ({
+            page,
+        }) => {
             await page.goto('/?test')
             await waitForLoaded(page)
 
-            // Tap → the wire lands on the cursor (PAINT); tap again → dropped
-            // (the same toggle the retired Pixi panel's slots implemented).
-            await tapRail(page, 'Red wire')
+            // The wires moved from the rail to the quickbar (#101 Slice 5b);
+            // tapping a cell lands the wire on the cursor (PAINT).
+            await page.locator('#quickbar button[title="Red wire"]').tap()
             await expect.poll(async () => (await readState(page)).paint.active).toBe(true)
-            await tapRail(page, 'Red wire')
-            await expect.poll(async () => (await readState(page)).paint.active).toBe(false)
 
             // Phase 3 (#89): the wire glyphs upgrade to real game icons from
             // the pack's browser/ sheet on the data plane (progressive — poll;
@@ -268,7 +266,7 @@ test.describe('action toolbar', () => {
                     () =>
                         page.evaluate(() => {
                             const glyph = document.querySelector(
-                                '#action-toolbar button[title="Red wire"] .glyph'
+                                '#quickbar button[title="Red wire"] .qb-icon'
                             )
                             return glyph ? getComputedStyle(glyph).backgroundImage : ''
                         }),
@@ -293,7 +291,7 @@ test.describe('action toolbar', () => {
                     () =>
                         page.evaluate(() => {
                             const glyph = document.querySelector(
-                                '#action-toolbar button[title="Red wire"] .glyph'
+                                '#quickbar button[title="Red wire"] .qb-icon'
                             )
                             return glyph ? getComputedStyle(glyph).backgroundImage : ''
                         }),
