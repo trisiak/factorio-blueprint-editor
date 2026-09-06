@@ -99,11 +99,15 @@ export default defineConfig({
             // the configuration the old `maxTouchPoints > 0` detection got wrong:
             // touch-capable hardware that should still boot the mouse UI (B1).
             //
-            // Scoped to its own spec via `testMatch`: the rest of the suite is
-            // already covered by the desktop and mobile projects, and running all
-            // of it a third time would triple a render-bound suite for no signal.
+            // Scoped by `testMatch` to the specs that actually need both drivers
+            // on one page (Slice 1's input plumbing, Slice 3's contextual
+            // clusters): the rest of the suite is already covered by the desktop
+            // and mobile projects, and running all of it a third time would
+            // triple a render-bound suite for no signal. Each of those specs
+            // guards its own describes by project name, so the same file also
+            // carries its desktop-/mobile-flavoured cases.
             name: 'hybrid-chromium',
-            testMatch: /hybridInput\.spec\.ts/,
+            testMatch: /(?:hybridInput|selectClusters)\.spec\.ts/,
             use: {
                 ...devices['Desktop Chrome'],
                 viewport: { width: 1280, height: 720 },

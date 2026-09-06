@@ -31,6 +31,11 @@ export class Editor {
     // box-select button on a non-empty blueprint) subscribe here once and we
     // re-forward each new blueprint's create/remove-entity events onto it.
     private readonly m_bpEmitter = new EventEmitter<{ change: [] }>()
+    // Stable held-selection emitter: fires whenever the selection's *screen* box
+    // may have moved — the selection was taken or dropped, nudged/dragged/rotated
+    // in place, or the camera panned/zoomed under it. The DOM chrome anchors the
+    // floating SELECT toolbar to `marqueeScreenBounds` off this (#101 Slice 3).
+    private readonly m_selectionEmitter = new EventEmitter<{ selection: [] }>()
 
     // Viewport insets (CSS px) reserved for DOM chrome — e.g. the mobile action
     // rail's left gutter and the top logo/pill band. The canvas stays
@@ -110,6 +115,7 @@ export class Editor {
     /** Re-emit the active container's mode + the blueprint's content changes on the stable emitters. */
     private bindBPCMode(): void {
         G.BPC.on('mode', (mode: EditorMode) => this.m_modeEmitter.emit('mode', mode))
+        G.BPC.on('selection', () => this.m_selectionEmitter.emit('selection'))
         G.bp.on('create-entity', () => this.m_bpEmitter.emit('change'))
         G.bp.on('remove-entity', () => this.m_bpEmitter.emit('change'))
         // Tiles count as blueprint content too: the rail's Select-tiles button
@@ -136,6 +142,26 @@ export class Editor {
     /** Subscribe to blueprint entity/tile add/remove (across blueprint swaps on load). */
     public onBlueprintChange(cb: () => void): void {
         this.m_bpEmitter.on('change', cb)
+    }
+
+    /**
+     * Subscribe to held-selection geometry changes — see `marqueeScreenBounds`.
+     * Emitted on every mode transition and whenever the selection or the camera
+     * moves, so a DOM element anchored to the selection stays glued to it.
+     */
+    public onSelectionChange(cb: () => void): void {
+        this.m_selectionEmitter.on('selection', cb)
+    }
+
+    /**
+     * Screen-space (CSS px) box of the held selection, or undefined when nothing
+     * is held. What the website's floating SELECT toolbar anchors to on a fine
+     * pointer; pairs with `onSelectionChange` for the "when".
+     */
+    public get marqueeScreenBounds():
+        | { x: number; y: number; width: number; height: number }
+        | undefined {
+        return G.BPC.marqueeScreenBounds
     }
 
     /** Whether the working blueprint holds any tiles (gates the rail's Select tiles). */

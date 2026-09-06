@@ -103,6 +103,13 @@ export interface EditorTestState {
         origin: { x: number; y: number } | null
         /** Direction of the first selected entity (for the rotate-in-select test). */
         direction: number | null
+        /**
+         * The selection's screen-space box (CSS px), or null when nothing is
+         * held. The floating SELECT toolbar is anchored to it on a fine pointer
+         * (#101 Slice 3), so the cluster specs assert the DOM element's geometry
+         * against this rather than against hard-coded coordinates.
+         */
+        screenBounds: { x: number; y: number; width: number; height: number } | null
     }
     /**
      * Whether the top-right entity info panel is showing (hover/tap-select).
@@ -172,6 +179,7 @@ export function getEditorTestState(): EditorTestState {
             tileCount: G.BPC.marqueeTileCount,
             origin: G.BPC.marqueeOrigin ?? null,
             direction: G.BPC.marqueeDirection ?? null,
+            screenBounds: G.BPC.marqueeScreenBounds ?? null,
         },
         infoPanelVisible: G.UI.entityInfoPanelVisible,
         ratesPanelVisible: G.UI.ratesPanelVisible,

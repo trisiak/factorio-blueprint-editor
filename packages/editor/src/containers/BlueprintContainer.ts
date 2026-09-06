@@ -257,6 +257,10 @@ export class BlueprintContainer extends Container {
                 const t = this.viewport.getTransform()
                 this.position.set(t.tx, t.ty)
                 this.scale.set(t.a, t.d)
+                // A held selection's *screen* box moved with the camera: the
+                // floating SELECT toolbar is anchored to it (#101 Slice 3), so
+                // it has to follow a pan/zoom frame by frame.
+                if (this.mode === EditorMode.SELECT) this.emit('selection')
             }
         }
         G.app.ticker.add(update)
@@ -754,6 +758,10 @@ export class BlueprintContainer extends Container {
     private setMode(mode: EditorMode): void {
         this._mode = mode
         this.emit('mode', mode)
+        // Entering/leaving SELECT is also a selection-geometry change (the box
+        // appeared or went away) — one event, so consumers of the anchored
+        // toolbar don't have to subscribe to modes as well.
+        this.emit('selection')
     }
 
     public rotate(ccw: boolean): void {
@@ -775,6 +783,9 @@ export class BlueprintContainer extends Container {
                 const brokenBefore = this.countOverReach()
                 this.marqueeEntities[0].rotate(ccw, true)
                 this.warnNewOverReach(brokenBefore)
+                // A rotate can change the footprint (a 1×2 becomes 2×1), so the
+                // anchored toolbar re-reads the box.
+                this.emit('selection')
             }
         }
     }
@@ -1071,6 +1082,33 @@ export class BlueprintContainer extends Container {
         }
     }
 
+    /**
+     * Screen-space (CSS px) AABB of the held selection, or undefined when none
+     * is held. The DOM chrome anchors the floating SELECT toolbar to it on a
+     * fine pointer (#101 Slice 3): the cluster is the same component either way,
+     * only its *placement* differs, and on a mouse the useful place is next to
+     * what's selected rather than at the bottom of the screen.
+     *
+     * Derived from the tile-space extent of what's highlighted (`selectionTileBounds`)
+     * through the viewport transform — the canvas is full-bleed at the window's
+     * origin, so its screen space *is* CSS pixels. Recomputed on demand; the
+     * `selection` event says when it's worth asking again (a nudge/move/rotate,
+     * a camera change, or entering/leaving SELECT).
+     */
+    public get marqueeScreenBounds():
+        | { x: number; y: number; width: number; height: number }
+        | undefined {
+        const b = this.selectionTileBounds()
+        if (!b) return undefined
+        const t = this.viewport.getTransform()
+        // Tile bounds are inclusive, so the far edge is one tile further out.
+        const x = b.minX * 32 * t.a + t.tx
+        const y = b.minY * 32 * t.d + t.ty
+        const w = (b.maxX + 1) * 32 * t.a + t.tx - x
+        const h = (b.maxY + 1) * 32 * t.d + t.ty - y
+        return { x, y, width: w, height: h }
+    }
+
     /** Direction of the first held-selection entity (for the rotate-in-select e2e). */
     public get marqueeDirection(): number | undefined {
         if (this.mode !== EditorMode.SELECT || this.marqueeEntities.length === 0) return undefined
@@ -1180,6 +1218,7 @@ export class BlueprintContainer extends Container {
         const brokenBefore = this.countOverReach()
         if (!this.bp.moveEntitiesBy(this.marqueeEntities, offset)) return false
         this.warnNewOverReach(brokenBefore)
+        this.emit('selection')
         return true
     }
 
@@ -1219,6 +1258,7 @@ export class BlueprintContainer extends Container {
             if (this.bp.moveEntitiesBy(this.marqueeEntities, { x: dx, y: dy })) {
                 lastX = x32
                 lastY = y32
+                this.emit('selection')
             }
         }
         this.gridData.on('update32', this.selectionDragFn, this)
