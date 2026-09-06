@@ -1,21 +1,26 @@
-import EDITOR, { formatRate, inputMode } from '@fbe/editor'
+import EDITOR, { formatRate } from '@fbe/editor'
 import type { RatesData, RatesEntryData } from '@fbe/editor'
 import { applyPackIcon } from './packIcons'
+import { readoutStack } from './readoutStack'
 
-// Production-rates drawer (#89 Phase 2): the mobile presentation of the rates
-// readout (#87). The editor's RatesPanel stays the state holder and computer —
-// it recomputes live (entity add/remove, recipe/module edits) and mirrors
-// every result over the `fbe:rates` CustomEvent (null = closed); this module
-// renders that projection as a DOM drawer — bottom-right in portrait (the
-// reachable band: it's an explicitly toggled overview the user scrolls and
-// dismisses, unlike the passive tap-select sheet at the top), top-right in
-// landscape. The canvas panel is desktop-only, so exactly one presentation is
-// live per input mode; sheet + drawer anchor complementarily so both can be
-// open at once, like their desktop counterparts stacked on the right edge.
+// Production-rates drawer (#89 Phase 2): **the** presentation of the rates
+// readout (#87), for every input since #101 Slice 5 — the Pixi panel is
+// retired. The editor's `RatesModel` stays the state holder and computer: it
+// recomputes live (entity add/remove, recipe/module edits) and mirrors every
+// result over the `fbe:rates` CustomEvent (null = closed); this module renders
+// that projection as DOM.
+//
+// Placement follows `compact` + orientation, never an input mode (CSS, see
+// index.styl): wide → the right-edge readout stack, below the entity-info
+// sheet, the same order the two canvas panels had; compact portrait →
+// bottom-right, in the reachable band (it's an explicitly toggled overview the
+// user scrolls and dismisses, unlike the passive tap-select sheet at the top);
+// compact landscape → top-right, complementing the sheet at the bottom. Sheet
+// and drawer never claim the same corner, so both can be open at once.
 export function initRatesDrawer(): void {
     const drawer = document.createElement('div')
     drawer.id = 'rates-drawer'
-    document.body.appendChild(drawer)
+    readoutStack().appendChild(drawer)
 
     const iconSpan = (type: string, name: string, size = 20): HTMLElement => {
         const icon = document.createElement('span')
@@ -66,7 +71,7 @@ export function initRatesDrawer(): void {
     }
 
     const render = (data: RatesData | null): void => {
-        if (!data || inputMode.mode !== 'mobile') {
+        if (!data) {
             drawer.classList.remove('visible')
             return
         }
@@ -83,7 +88,7 @@ export function initRatesDrawer(): void {
         close.textContent = '✕'
         // Route through the same toggle as the keybind / rail button, so the
         // logical state (and its live-recompute subscriptions) stays in the
-        // editor's RatesPanel where it lives.
+        // editor's `RatesModel` where it lives.
         close.addEventListener('click', () => EDITOR.callAction('showRates'))
         header.append(title, close)
         drawer.appendChild(header)
@@ -120,8 +125,4 @@ export function initRatesDrawer(): void {
     }
 
     window.addEventListener('fbe:rates', e => render((e as CustomEvent<RatesData | null>).detail))
-    // A live mobile→desktop switch hands presentation back to the Pixi panel.
-    inputMode.on('change', () => {
-        if (inputMode.mode !== 'mobile') drawer.classList.remove('visible')
-    })
 }

@@ -1,39 +1,44 @@
-import { inputMode } from '@fbe/editor'
-import type { EntityInfoData, EntityInfoStack } from '@fbe/editor'
+import type { EntityInfoData, EntityInfoRow, EntityInfoStack, EntityInfoToken } from '@fbe/editor'
 import { applyPackIcon } from './packIcons'
+import { readoutStack } from './readoutStack'
 
-// Entity-info sheet (#89 Phase 2): the mobile presentation of the entity info
-// panel. The editor dispatches a render-free `EntityInfoData` on every
-// hover/tap-select via the `fbe:entityinfo` window event (see
-// `UIContainer.updateEntityInfoPanel`); this module renders it as DOM — a
-// full-width top sheet in portrait, a bottom-right drawer in landscape (CSS
-// decides, see index.styl) — with real game icons through the packIcons seam.
-// The Pixi panel stays the desktop presentation; on mobile it's hidden, so
-// exactly one renderer is live per input mode.
+// Entity-info sheet: **the** presentation of the entity-info readout (#89
+// Phase 2, universal since #101 Slice 5 — the Pixi panel that drew this on
+// desktop is retired). The editor dispatches a render-free `EntityInfoData` on
+// every hover/tap-select via the `fbe:entityinfo` window event (see
+// `UIContainer.updateEntityInfo`); this module renders it as DOM, with real
+// game icons through the packIcons seam.
 //
-// Placement: the sheet floats over the world (full-bleed canvas) at the *top*
-// in portrait — it appears on every tap-select, and the active, reachable area
-// of a portrait phone is the bottom of the screen, so the passive readout
-// stays out of it (and clear of the bottom-center EDIT Select/Edit bar, which
-// always co-occurs with it). z-index below the clusters keeps their buttons
-// tappable if they ever overlap on a very short viewport.
+// Placement is decided by the `compact` signal and orientation, never by an
+// input mode (CSS does it, see index.styl):
+//   - wide: a top-right drawer in the shared readout stack, above the rates
+//     drawer — the same right-edge order the two canvas panels had;
+//   - compact portrait: a full-width band at the **top**. It appears on every
+//     tap-select, and the active, reachable area of a portrait phone is the
+//     bottom of the screen, so the passive readout stays out of it (and clear
+//     of the bottom-centre EDIT Select/Edit bar, which always co-occurs with
+//     it);
+//   - compact landscape: a bottom-right drawer, complementing the rates one.
+// z-index below the clusters keeps their buttons tappable on any overlap.
 export function initEntityInfoSheet(): void {
     const sheet = document.createElement('div')
     sheet.id = 'entity-info-sheet'
-    document.body.appendChild(sheet)
+    readoutStack().appendChild(sheet)
+
+    /** An icon span for `iconId`, falling back to `label` when the pack has none. */
+    const iconSpan = (className: string, iconId: string | undefined, label: string, size = 20) => {
+        const icon = document.createElement('span')
+        icon.className = className
+        if (!iconId || !applyPackIcon(icon, iconId, size)) icon.textContent = label
+        return icon
+    }
 
     const stackSpan = (stack: EntityInfoStack): HTMLElement => {
         const wrap = document.createElement('span')
         wrap.className = 'eis-stack'
-        const icon = document.createElement('span')
-        icon.className = 'eis-icon'
-        // Text fallback when the pack has no sheet (or the id is unknown).
-        if (!applyPackIcon(icon, `${stack.type}/${stack.name}`, 20)) {
-            icon.textContent = stack.name
-        }
         const amount = document.createElement('span')
         amount.textContent = String(stack.amount)
-        wrap.append(icon, amount)
+        wrap.append(iconSpan('eis-icon', `${stack.type}/${stack.name}`, stack.name), amount)
         return wrap
     }
 
@@ -58,8 +63,46 @@ export function initEntityInfoSheet(): void {
         return row
     }
 
+    // One piece of the circuit summary. The retired canvas panel drew this
+    // section icon-rich, so the sheet does too — signals resolve to pack icons
+    // where the browser artifact has them (item/fluid/recipe) and to their name
+    // where it doesn't (Factorio's virtual signals aren't in the sheet).
+    const tokenSpan = (token: EntityInfoToken): HTMLElement => {
+        switch (token.kind) {
+            case 'text': {
+                const el = document.createElement('span')
+                el.textContent = token.text
+                return el
+            }
+            case 'signal':
+                return iconSpan('eis-icon', token.icon, token.label)
+            case 'count': {
+                const wrap = document.createElement('span')
+                wrap.className = 'eis-stack'
+                const n = document.createElement('span')
+                n.textContent = String(token.count)
+                wrap.append(iconSpan('eis-icon', token.icon, token.label), n)
+                return wrap
+            }
+            case 'network': {
+                // A red/green network-id badge, like the game's.
+                const el = document.createElement('span')
+                el.className = `eis-net eis-net-${token.color}`
+                el.textContent = String(token.id)
+                return el
+            }
+        }
+    }
+
+    const circuitRow = (row: EntityInfoRow): HTMLElement => {
+        const el = document.createElement('div')
+        el.className = 'eis-row'
+        for (const token of row) el.appendChild(tokenSpan(token))
+        return el
+    }
+
     const render = (data: EntityInfoData | null): void => {
-        if (!data || inputMode.mode !== 'mobile') {
+        if (!data) {
             sheet.classList.remove('visible')
             return
         }
@@ -75,6 +118,24 @@ export function initEntityInfoSheet(): void {
             el.className = 'eis-line'
             el.textContent = line
             sheet.appendChild(el)
+        }
+
+        if (data.modules.length > 0) {
+            const row = document.createElement('div')
+            row.className = 'eis-row'
+            const lbl = document.createElement('span')
+            lbl.className = 'eis-dim'
+            lbl.textContent = 'Modules:'
+            row.appendChild(lbl)
+            for (const m of data.modules) {
+                const wrap = document.createElement('span')
+                wrap.className = 'eis-stack'
+                const n = document.createElement('span')
+                n.textContent = `×${m.count}`
+                wrap.append(iconSpan('eis-icon', m.icon, m.label), n)
+                row.appendChild(wrap)
+            }
+            sheet.appendChild(row)
         }
 
         if (data.recipe) {
@@ -98,11 +159,12 @@ export function initEntityInfoSheet(): void {
             )
         }
 
-        for (const line of data.circuit) {
-            const el = document.createElement('div')
-            el.className = 'eis-line eis-dim'
-            el.textContent = line
-            sheet.appendChild(el)
+        if (data.circuit.length > 0) {
+            const heading = document.createElement('div')
+            heading.className = 'eis-dim'
+            heading.textContent = 'Circuit network:'
+            sheet.appendChild(heading)
+            for (const row of data.circuit) sheet.appendChild(circuitRow(row))
         }
 
         sheet.classList.add('visible')
@@ -111,9 +173,4 @@ export function initEntityInfoSheet(): void {
     window.addEventListener('fbe:entityinfo', e =>
         render((e as CustomEvent<EntityInfoData | null>).detail)
     )
-    // A live mobile→desktop switch hands presentation back to the Pixi panel;
-    // don't leave a stale sheet floating over it.
-    inputMode.on('change', () => {
-        if (inputMode.mode !== 'mobile') sheet.classList.remove('visible')
-    })
 }

@@ -99,11 +99,15 @@ export default defineConfig({
             // the configuration the old `maxTouchPoints > 0` detection got wrong:
             // touch-capable hardware that should still boot the mouse UI (B1).
             //
-            // Scoped to its own spec via `testMatch`: the rest of the suite is
-            // already covered by the desktop and mobile projects, and running all
-            // of it a third time would triple a render-bound suite for no signal.
+            // Scoped via `testMatch` to the specs that actually have something
+            // to say about hybrid hardware: the rest of the suite is already
+            // covered by the desktop and mobile projects, and running all of it
+            // a third time would triple a render-bound suite for no signal.
+            // `domReadouts` is here because #101 Slice 5's whole claim is that
+            // the readouts follow the viewport, not the presence of a
+            // touchscreen — which only this project can falsify.
             name: 'hybrid-chromium',
-            testMatch: /hybridInput\.spec\.ts/,
+            testMatch: /(hybridInput|domReadouts)\.spec\.ts/,
             use: {
                 ...devices['Desktop Chrome'],
                 viewport: { width: 1280, height: 720 },

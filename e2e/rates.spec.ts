@@ -2,14 +2,16 @@ import { test, expect, type Page } from '@playwright/test'
 import type { EditorTestState } from '@fbe/editor'
 
 /**
- * Blueprint-wide production rates panel (RateCalculator-style readout; see
+ * Blueprint-wide production rates readout (RateCalculator-style; see
  * docs/rate-calculator.md and packages/editor/src/core/craftingRates.ts).
  *
- * The panel is canvas-drawn, so the DOM has nothing to query: `?test` installs
- * window.__FBE_TEST__ whose `ratesPanelLines()` reports the rendered text lines
- * (and `getState().ratesPanelVisible` the visibility). Desktop toggles with the
- * real T keybind; mobile — which has no keyboard — goes through the hook (the
- * action rail's Rates button routes to the same `showRates` action).
+ * Since #101 Slice 5 the readout is **DOM for every input** — `#rates-drawer`,
+ * fed by the editor's render-free `RatesModel` over `fbe:rates` — so its
+ * contents are asserted straight off the element rather than through the canvas
+ * probes the retired Pixi panel needed. `getState().ratesPanelVisible` is
+ * DOM-backed truth for the same reason. Desktop toggles with the real T
+ * keybind; mobile — which has no keyboard — goes through the hook (the action
+ * rail's Rates button routes to the same `showRates` action).
  */
 
 // The clearSlots blueprint: an assembling-machine-2 with a recipe + 2 speed
@@ -35,8 +37,6 @@ async function waitForAppReady(page: Page): Promise<void> {
 
 interface RatesHook {
     toggleRatesPanel: () => void
-    ratesPanelLines: () => string[]
-    ratesPanelClosePos: () => { x: number; y: number } | null
 }
 
 test.describe('rates panel', () => {
@@ -63,38 +63,26 @@ test.describe('rates panel', () => {
         // The blueprint holds exactly one rateable machine (the beacon and the
         // splitter don't count), and its recipe yields at least one product row
         // between the section headers and the footer.
-        const lines = await page.evaluate(() =>
-            (window as unknown as { __FBE_TEST__: RatesHook }).__FBE_TEST__.ratesPanelLines()
-        )
-        expect(lines.some(l => l.includes('1 machine counted'))).toBe(true)
-        expect(lines.some(l => l === 'Ingredients')).toBe(true)
-        expect(lines.some(l => /\/s/.test(l))).toBe(true)
+        const drawer = page.locator('#rates-drawer')
+        await expect(drawer).toBeVisible()
+        await expect(drawer).toContainText('1 machine counted')
+        await expect(drawer).toContainText('Ingredients')
+        await expect(drawer).toContainText(/\/s/)
         // Machine counts render as a bare ×N next to the (dominant) machine's
         // icon — "× 1" glued to the rate read as a rate multiplier.
-        expect(lines.some(l => /^×\d+$/.test(l))).toBe(true)
+        await expect(drawer.locator('.rd-machines').first()).toContainText(/×\d+/)
 
-        // Dismiss with the readout's own ✕ (the only route that needs neither a
-        // keyboard nor re-finding the toggle in the rail's ⋯ overflow). The
-        // presentation differs per mode (#89 Phase 2): mobile shows the DOM
-        // drawer (tap its ✕ directly, and assert it rendered the same footer
-        // the canvas rows carry); desktop shows the canvas panel (click its ✕
-        // via the hook coordinates — which also pins the right-edge anchor).
-        if (isMobileProject()) {
-            const drawer = page.locator('#rates-drawer')
-            await expect(drawer).toBeVisible()
-            await expect(drawer).toContainText('1 machine counted')
-            await drawer.locator('.rates-close').tap()
-        } else {
-            await expect(page.locator('#rates-drawer')).toBeHidden()
-            const closePos = await page.evaluate(() =>
-                (window as unknown as { __FBE_TEST__: RatesHook }).__FBE_TEST__.ratesPanelClosePos()
-            )
-            expect(closePos).not.toBeNull()
-            const viewport = page.viewportSize()
-            expect(closePos.x).toBeGreaterThan(viewport.width / 2)
-            expect(closePos.y).toBeGreaterThan(100)
-            await page.mouse.click(closePos.x, closePos.y)
-        }
+        // The drawer anchors to the **right edge** in every layout (top-right
+        // in the readout stack when wide, bottom- or top-right when compact) —
+        // its width varies with the layout, its right margin doesn't.
+        const box = await drawer.boundingBox()
+        const viewport = page.viewportSize()!
+        expect(viewport.width - (box!.x + box!.width)).toBeLessThanOrEqual(12)
+
+        // Dismiss with the readout's own ✕ — the only route that needs neither
+        // a keyboard nor re-finding the toggle in the rail's ⋯ overflow.
+        const close = drawer.locator('.rates-close')
+        await (isMobileProject() ? close.tap() : close.click())
         await expect.poll(async () => (await readTestState(page)).ratesPanelVisible).toBe(false)
     })
 })
