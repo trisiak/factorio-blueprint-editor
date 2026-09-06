@@ -32,9 +32,10 @@ export function initSettingsPane(
 } {
     // On touch devices the pane is more intrusive (bigger touch targets, full
     // width) so default it closed unless the user has made an explicit choice.
+    // Keyed on the `coarse` signal rather than the derived mode — it is the hit-
+    // target question, which is exactly what that signal answers (#101 §2).
     const persistedClosed = localStorage.getItem('dat.gui.closed')
-    const startClosed =
-        persistedClosed === null ? inputMode.mode === 'mobile' : persistedClosed === 'true'
+    const startClosed = persistedClosed === null ? inputMode.coarse : persistedClosed === 'true'
 
     const gui = new GUI({
         autoPlace: false,
@@ -50,20 +51,40 @@ export function initSettingsPane(
     // Anchor the pane just under the top-left button stack (it's toggled by the
     // Settings button there) instead of dat.gui's default bottom-left, where its
     // open/close bar overlapped the quickbar.
+    //
+    // Since the action rail became universal (#101 Slice 4) the column continues
+    // *below* that stack in every layout, so on a fine pointer the pane also
+    // steps to the right of the rail — otherwise a 320 px pane, open by default
+    // on desktop, would sit on top of the actions it shares an edge with. On a
+    // coarse pointer it stays a deliberate full-width overlay at left: 0 (it
+    // outranks the rail at z5 there, as before) — the screen is too narrow to
+    // put anything beside it.
     const buttonsEl = document.getElementById('buttons')
+    const railEl = document.getElementById('action-toolbar')
     const GAP = 4
     const positionPane = (): void => {
         const top = (buttonsEl ? Math.round(buttonsEl.getBoundingClientRect().bottom) : 80) + GAP
+        const railWidth =
+            railEl && railEl.classList.contains('visible')
+                ? Math.round(railEl.getBoundingClientRect().width)
+                : 0
         gui.domElement.style.top = `${top}px`
+        gui.domElement.style.left = inputMode.coarse ? '0px' : `${railWidth}px`
         gui.domElement.style.maxHeight = `${window.innerHeight - top}px`
     }
     positionPane()
     window.addEventListener('resize', positionPane)
+    // The signals move both anchors: `coarse` swaps the overlay/beside-the-rail
+    // placement and resizes the rail's cells (hence its width).
+    inputMode.on('signals', positionPane)
     // The stack's height changes (compact buttons on mobile, async icon loads),
     // and those reflows don't fire `resize`. A ResizeObserver re-anchors the pane
-    // whenever the stack actually changes size, free of init-order races.
-    if (buttonsEl && 'ResizeObserver' in window) {
-        new ResizeObserver(positionPane).observe(buttonsEl)
+    // whenever the stack — or the rail beside it — actually changes size, free of
+    // init-order races.
+    if ('ResizeObserver' in window) {
+        const observer = new ResizeObserver(positionPane)
+        if (buttonsEl) observer.observe(buttonsEl)
+        if (railEl) observer.observe(railEl)
     }
 
     window.addEventListener('visibilitychange', () =>
