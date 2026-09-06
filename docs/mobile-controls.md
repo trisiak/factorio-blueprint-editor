@@ -183,6 +183,29 @@ that drive chrome and sizing.
   rail _and_ quickbar. `EditorTestState` gained `safeArea` and lost `wires`.
   _(The committed desktop storyboard strips are stale until someone regenerates
   them with `STORYBOARD=1`.)_
+- ✅ **DOM status readouts for every input (#101 Slice 5a)** — the entity-info
+  and production-rates readouts were the last split affordance: Pixi panels on
+  desktop, DOM sheets on touch, one presentation per `inputMode.mode`. Both Pixi
+  panels are **retired**. The editor keeps only what computes —
+  `UI/entityInfo.ts`'s `buildEntityInfo` (`fbe:entityinfo`) and
+  `UI/ratesModel.ts`'s `RatesModel` (`showRates`/`T`, the live recompute
+  subscriptions, `onBlueprintSwapped`, `fbe:rates`) — and the website renders,
+  with **placement by `compact` + orientation, never by mode**: a shared
+  right-edge column (`readoutStack.ts` — info above, rates below, as the canvas
+  panels stacked) on a wide viewport, and on `compact` the column dissolves
+  (`display: contents`) back to the touch placements (portrait top band /
+  bottom-right drawer). The sheet also gained what only the canvas had: module
+  icons and an **icon-rich circuit summary** — `EntityInfoToken` rows (signal /
+  count / red-green network badge) resolved through the `packIcons.ts` seam,
+  falling back to the signal's name for Factorio's _virtual_ signals, which the
+  browser icon artifact doesn't carry (item/fluid/recipe only). The layering
+  contract is unchanged and now universal (`body.fbe-dialog-open` hides both
+  while a Pixi dialog is open). `?test`: `infoPanelVisible`/`ratesPanelVisible`
+  became DOM-backed truth and the canvas stand-ins (`infoPanelBounds`,
+  `ratesPanelLines`, `ratesPanelClosePos`) are gone; e2e `panels.spec.ts` /
+  `rates.spec.ts` flipped to "DOM for everyone", plus a new `domReadouts.spec.ts`
+  (hover fills the sheet, `T` toggles the drawer, a dialog eclipses both, a
+  forced `compact` moves them) on desktop **and** hybrid.
 - ✅ **Item-selector overhaul** (`InventoryDialog`, the shared item/recipe/module
   picker) — now touch-usable: **scrollable** group-tabs (◀▶) and item grid (▲▼),
   masked with viewport-gated hit-testing; a **Recents tab** (first/active) with
