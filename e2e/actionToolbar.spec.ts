@@ -133,21 +133,21 @@ test.describe('action toolbar', () => {
             expect(state.safeArea.x).toBeGreaterThanOrEqual(rail.width)
             expect(state.safeArea.width).toBe(page.viewportSize().width - state.safeArea.x)
 
-            // ...so the Pixi panels anchored within it clear the rail: the
-            // quickbar (still Pixi until Slice 5) and the entity-info panel.
+            // ...so the Pixi quickbar anchored within it clears the rail.
             expect(state.quickbar.visible).toBe(true)
             expect(state.quickbar.bounds.x).toBeGreaterThanOrEqual(state.safeArea.x)
 
-            const info = await page.evaluate(() => {
+            // The entity-info readout is DOM since #101 Slice 5 (the Pixi panel
+            // and its `infoPanelBounds` probe are retired), so the same
+            // keep-out is asserted on the element: it anchors to the right edge
+            // and never reaches back into the rail's column.
+            await page.evaluate(() => {
                 const w = window as unknown as {
-                    __FBE_TEST__: {
-                        showEntityInfo: (n: string) => boolean
-                        infoPanelBounds: () => { x: number; width: number } | null
-                    }
+                    __FBE_TEST__: { showEntityInfo: (n: string) => boolean }
                 }
                 w.__FBE_TEST__.showEntityInfo('wooden-chest')
-                return w.__FBE_TEST__.infoPanelBounds()
             })
+            const info = await page.locator('#entity-info-sheet').boundingBox()
             expect(info).not.toBeNull()
             expect(info.x).toBeGreaterThanOrEqual(state.safeArea.x)
         })

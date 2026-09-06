@@ -266,25 +266,31 @@ test.describe('top band (#89 Phase 1)', () => {
         expect(shown).toBe(true)
         const sheet = page.locator('#entity-info-sheet')
 
-        if (!isMobileProject()) {
-            // Desktop: the Pixi panel presents (top-right of the safe area,
-            // which is the whole screen here); the DOM sheet stays out of it.
-            expect((await readTestState(page)).infoPanelVisible).toBe(true)
-            await expect(sheet).toBeHidden()
-            return
-        }
-
-        // Mobile: the DOM sheet presents (#89 Phase 2) — the Pixi panel is
-        // retired here. In portrait the sheet is a full-width top band: it
-        // must clear the fixed top chrome (the pill) *and* stay out of the
-        // bottom reachable band, where the user's thumbs (and the contextual
-        // EDIT bar) live — the placement rationale, as assertions.
-        expect((await readTestState(page)).infoPanelVisible).toBe(false)
+        // The DOM sheet is **the** entity-info presentation, on every input
+        // (#101 Slice 5 — the Pixi panel it used to share the job with on
+        // desktop is retired). `infoPanelVisible` is DOM-backed truth now, so
+        // it agrees with the element in both projects.
+        expect((await readTestState(page)).infoPanelVisible).toBe(true)
         await expect(sheet).toBeVisible()
         await expect(sheet).toContainText('Wooden chest')
         const sb = await sheet.boundingBox()
         const viewport = page.viewportSize()!
+
+        // Either way it must clear the fixed top chrome (the pill) — the top
+        // band's whole point.
         expect(sb!.y).toBeGreaterThanOrEqual(pill!.y + pill!.height)
+
+        if (!isMobileProject()) {
+            // Wide: a right-edge drawer in the readout stack, the same corner
+            // the canvas panel anchored to.
+            expect(sb!.x).toBeGreaterThan(viewport.width / 2)
+            expect(sb!.x + sb!.width).toBeLessThanOrEqual(viewport.width)
+            return
+        }
+
+        // Compact portrait: a full-width band at the top, staying out of the
+        // bottom reachable band where the user's thumbs (and the contextual
+        // EDIT bar) live — the placement rationale, as assertions.
         expect(sb!.y + sb!.height).toBeLessThanOrEqual(viewport.height - 80)
     })
 })
@@ -297,11 +303,11 @@ const ASSEMBLER_BP =
 
 test.describe('modal layering (#89)', () => {
     test('Pixi dialogs eclipse the DOM readouts; both restore on close', async ({ page }) => {
-        // Mobile-only: desktop's readouts are Pixi siblings of the dialogs, so
-        // UIContainer's child order already arbitrates — the DOM sheet/drawer
-        // (and thus the cross-technology stacking problem) only exist on touch.
-        test.skip(!isMobileProject(), 'mobile-only: the DOM readouts only present on touch')
-
+        // Runs on every project since #101 Slice 5: the readouts are DOM for
+        // all inputs, so the cross-technology stacking problem this contract
+        // solves (DOM always composites above the canvas, so a Pixi dialog
+        // can't paint over a readout — the readouts have to yield) is no
+        // longer a touch-only concern.
         await page.goto(`/?test&source=${encodeURIComponent(ASSEMBLER_BP)}`)
         await waitForAppReady(page)
         await expect
