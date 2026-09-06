@@ -43,7 +43,10 @@ test.describe('desktop build / mine', () => {
         await page.goto('/?test')
         await waitForLoaded(page)
 
-        const at = { x: 320, y: 360 } // open canvas, clear of corner/side UI
+        // Open canvas, clear of the side UI: the left column (rail) and the
+        // settings pane anchored beside it, which reaches ~356px on desktop now
+        // that it steps right of the rail (#101 Slice 4); the quickbar is lower.
+        const at = { x: 500, y: 360 }
 
         await page.locator('#editor').focus()
         await page.mouse.move(at.x, at.y) // pointer inside so the ghost shows
