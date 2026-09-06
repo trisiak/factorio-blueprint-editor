@@ -7,7 +7,6 @@ import { EntityInfoPanel, buildEntityInfo } from './EntityInfoPanel'
 import { InventoryDialog, SlotClear } from './InventoryDialog'
 import { SignalPicker, SignalChoice } from './SignalPicker'
 import { NumericKeypad } from './NumericKeypad'
-import { WiresPanel } from './WiresPanel'
 import { RatesPanel } from './RatesPanel'
 import { Editor } from './editors/Editor'
 import { createEditor } from './editors/factory'
@@ -15,7 +14,6 @@ import { createEditor } from './editors/factory'
 export class UIContainer extends Container {
     private debugContainer: DebugContainer
     public quickbarPanel: QuickbarPanel
-    public wiresPanel: WiresPanel
     private entityInfoPanel: EntityInfoPanel
     private ratesPanel: RatesPanel
     private dialogsContainer: Container
@@ -26,7 +24,6 @@ export class UIContainer extends Container {
 
         this.debugContainer = new DebugContainer()
         this.quickbarPanel = new QuickbarPanel(2)
-        this.wiresPanel = new WiresPanel()
         this.entityInfoPanel = new EntityInfoPanel()
         this.ratesPanel = new RatesPanel()
         this.dialogsContainer = new Container()
@@ -35,7 +32,6 @@ export class UIContainer extends Container {
         this.addChild(
             this.debugContainer,
             this.quickbarPanel,
-            this.wiresPanel,
             this.entityInfoPanel,
             this.ratesPanel,
             this.dialogsContainer,
