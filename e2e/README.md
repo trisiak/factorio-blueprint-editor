@@ -213,10 +213,10 @@ DOM. Loading the page with **`?test`** installs `window.__FBE_TEST__`, whose
 - `quickbar` / `wires` bounds + visibility (and the quickbar's fit scale)
 - `blueprint.entityCount` — what got placed
 - `paint` — the held ghost's `active`/`visible`/`tile`/`direction`, plus
-  `sourceCenter` (a marquee Copy/Cut previews the ghost *at the source*, so
+  `sourceCenter` (a marquee Copy/Cut previews the ghost _at the source_, so
   `tile === sourceCenter` is how a spec asserts it stayed put)
 - `marquee` — the held selection's `count`/`tileCount`/`origin`/`direction`; and
-  `entityPositions()` alongside, for asserting a *move* (every entity shifted by
+  `entityPositions()` alongside, for asserting a _move_ (every entity shifted by
   the same tile delta) rather than inferring it
 
 It's opt-in, so it's absent in normal use. See
