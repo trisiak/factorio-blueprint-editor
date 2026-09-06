@@ -58,10 +58,13 @@ that drive chrome and sizing.
   settings pane (`packages/website/src/settingsPane.ts`).
 - **Compatibility** — `inputMode.mode` survives as a _derived_ value (forced
   preset wins, else `coarse ? 'mobile' : 'desktop'`) and still emits `change`, so
-  every consumer that hasn't migrated yet (the website clusters, the Pixi panels,
-  `body.mobile`) keeps today's behaviour. It goes away when the last consumer
-  moves onto the signals (#101, later slices). `armMarquee` left that list in
-  Slice 2 — it no longer gates on the mode at all.
+  every consumer that hasn't migrated yet (the Pixi panels, `body.mobile`) keeps
+  today's behaviour. It goes away when the last consumer moves onto the signals
+  (#101, later slices). `armMarquee` left that list in Slice 2 — it no longer
+  gates on the mode at all — and the **contextual clusters** left it in Slice 3:
+  they read `coarse` / `keys` / `touchRecent` and the editor mode, nothing else.
+  What still reads `.mode` in `actionToolbar.ts` is the _rail_'s own visibility,
+  which Slice 4 makes universal.
 - **Tests** — pure decision logic (migration, derived mode, the signal reducers)
   is unit-tested in `packages/editor/src/common/input.test.ts`; the end-to-end
   behaviour has its own Playwright project, `hybrid-chromium` (desktop viewport +
@@ -140,6 +143,48 @@ that drive chrome and sizing.
       `entityPositions()`.
       (`packages/editor/src/containers/BlueprintContainer.ts`,
       `packages/editor/src/{Editor,actions}.ts`, `packages/website/src/index.ts`)
+- ✅ **Contextual clusters are editor-state-driven (#101 Slice 3)** — the three
+  bottom-band clusters were gated `mobile && mode === EditorMode.X`. The mode
+  half was the real condition; the device half was an accident of their having
+  been built for touch. The `mobile &&` is gone, and with it the last
+  `inputMode.mode` read outside the rail's own visibility.
+    - **SELECT cluster** — shown whenever a selection is _held_, for everyone
+      (a mouse holds one since Slice 2). One component, two **placements**:
+      `coarse` keeps the bottom band (thumb reach, unchanged), a fine pointer
+      gets a compact **floating toolbar anchored to the selection** — below it,
+      left edges aligned, flipped above when the viewport's bottom is in the way
+      and clamped on screen. It follows nudges, drag-moves, in-place rotates and
+      the camera, re-anchored from a new `Editor.onSelectionChange` +
+      `Editor.marqueeScreenBounds` (screen-space AABB of what's highlighted,
+      derived through the viewport transform). Its buttons carry **keybind
+      badges** (`Ctrl+C`, `Ctrl+X`, `Del`, `R`, `Esc`, plus `aria-keyshortcuts`
+      on the arrows) read live from the action registry, so a rebind in Settings
+      shows up. **Rotate** joined the row (gated to a single-entity selection,
+      like the rail's copy — group rotation is still #52): the rail is touch-only
+      until Slice 4, so on a fine pointer this row is otherwise the only
+      on-screen way to turn what you selected.
+    - **PAINT d-pad** and **EDIT bar** stay touch affordances, but expressed as
+      signals: shown when `touchRecent` (or there is no keyboard at all), so a
+      mouse user with a keyboard — who has hover, the wheel and the arrow keys —
+      never sees them, and they appear the moment the screen is touched and leave
+      on the next mouse move, driven by the signal events rather than a boot-time
+      read. `coarse` is folded into that gate as well, because on touch-first
+      hardware the cluster is the _only_ driver: a paired Bluetooth keyboard or a
+      stray mouse event must not take the buttons away mid-gesture.
+    - Both SELECT parts now live in a `#select-float` wrapper so the floating
+      placement has one box to measure and clamp; without `.floating` it is
+      `display: contents` and the children stay viewport-fixed on their existing
+      bottom-band rules — same ids, same CSS, so the touch layout is untouched.
+    - e2e: `e2e/selectClusters.spec.ts` — desktop (anchored placement, geometry
+      vs. `marquee.screenBounds`, hints, every button acting with the mouse,
+      follows nudge/pan/zoom, Cancel + Escape, the touch-only clusters staying
+      away), hybrid (tap summons the PAINT d-pad, a mouse move dismisses it; tap
+      vs. hover for the EDIT bar; a coarse override moves the SELECT toolbar to
+      the band) and mobile (the bottom-band ratchet). `hybrid-chromium`'s
+      `testMatch` grew to include it. New `?test` field: `marquee.screenBounds`.
+      (`packages/website/src/{actionToolbar.ts,index.styl}`,
+      `packages/editor/src/containers/BlueprintContainer.ts`,
+      `packages/editor/src/{Editor.ts,common/testHook.ts}`)
 - ✅ **Responsive overlays** — the INFO/shortcuts panel no longer overflows in
   portrait (`width: min(640px, 90vw)`, scrolls instead of clipping) and is now
   openable/closable without a keyboard (tap the corner panel; on-screen ✕). The
