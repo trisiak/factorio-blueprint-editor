@@ -1061,12 +1061,25 @@ function draw_assembling_machine(
                     // or a single sprite object (e.g. foundry)
                     const pipePic = fb.pipe_picture[util.getDirName(dir)] || fb.pipe_picture
                     if (!pipePic || !pipePic.filename) continue
-                    out.push(
-                        addToShift(
-                            util.rotatePointBasedOnDir([0, -2], dir),
-                            util.duplicate(pipePic)
-                        )
-                    )
+                    // Anchor the stub on the tile the fluid box actually
+                    // connects through — `conn.position` rotated into entity
+                    // space, one tile outward — the same anchor `generateCovers`
+                    // computes for the covers that cap these stubs. The old
+                    // hardcoded [0, -2] is only correct for a 3x3 machine whose
+                    // single connection sits at [0, ∓1] (vanilla's
+                    // assembling-machine-2/3, which this keeps pixel-identical);
+                    // on anything larger every stub collapsed onto four points
+                    // *inside* the footprint, drawing pipes across the
+                    // building's own sprite — SE's 5x5 industrial-furnace and
+                    // 9x9 space labs, SA's biochamber / electromagnetic-plant /
+                    // cryogenic-plant.
+                    const offset = conn.position
+                        ? util.rotatePointBasedOnDir(conn.position, data.dir)
+                        : util.Point(conn.positions[data.dir / 4])
+                    const outward = util.rotatePointBasedOnDir([0, -1], dir)
+                    offset.x += outward.x
+                    offset.y += outward.y
+                    out.push(addToShift(offset, util.duplicate(pipePic)))
                 }
             }
 
@@ -1105,6 +1118,19 @@ function draw_beacon(e: BeaconPrototype): (data: IDrawData) => readonly SpriteDa
                         let variationIndex = module.tier - 1
                         if (slot.has_empty_slot) {
                             variationIndex += 1
+                        }
+                        // The strip only holds `variation_count` frames — the
+                        // vanilla beacon art carries 4 on the slot plate (empty
+                        // + tiers 1-3) and 3 on the tint masks. Modded tiers run
+                        // well past that (SE ships speed/efficiency modules up
+                        // to tier 9), and an unclamped index sampled a rect off
+                        // the right edge of the file, so the embedded chip that
+                        // signals which module is in the beacon came out blank
+                        // (or, on a slim graphics variant, the missing-texture
+                        // checkerboard). Reuse the last frame instead.
+                        const variationCount = (img as { variation_count?: number }).variation_count
+                        if (variationCount) {
+                            variationIndex = Math.min(variationIndex, variationCount - 1)
                         }
                         setPropertyUsing(img, 'x', 'width', variationIndex)
 
