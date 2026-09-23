@@ -139,19 +139,15 @@ test('blueprint swaps do not leak GPU textures', async ({ page }) => {
         test.info().project.name !== 'desktop-chromium',
         'library DOM flows run on the desktop project only'
     )
+    // Eleven library round-trips on CI's software-GL Chromium overrun the 60 s
+    // default: each open costs ~5-7 s there (the panel click alone waits 2-4 s
+    // for the canvas-heavy page to settle), so the loop reliably ran out of
+    // budget on its last open with nothing actually stuck. Triple it rather
+    // than cut swaps — the cycle count is what makes a slow leak visible.
+    test.slow()
 
-    // TEMP diagnostics (#101 stack × #117): where does the 60s budget go?
-    const t0 = Date.now()
-    const mark = (what: string): void => console.log(`[gpu-leak] ${Date.now() - t0}ms ${what}`)
-    page.on('pageerror', e => console.log(`[gpu-leak] pageerror ${String(e)}`))
-    page.on('console', m => {
-        if (m.type() === 'error' || m.type() === 'warning') {
-            console.log(`[gpu-leak] console.${m.type()} ${m.text()}`)
-        }
-    })
     await page.goto('/?test')
     await waitForReady(page)
-    mark('ready')
 
     const panel = page.locator('#library-panel')
     const textureCount = (): Promise<number> =>
@@ -177,7 +173,6 @@ test('blueprint swaps do not leak GPU textures', async ({ page }) => {
     // Imports land as leaves under an "Imported" folder row; pick the leaves by
     // name (the dense fixture is labelled "…The AutoMall.", the unlabelled one
     // gets the "Imported blueprint" default).
-    mark('imported')
     const denseRow = panel.locator('.library-row', { hasText: 'AutoMall' })
     const simpleRow = panel.locator('.library-row', { hasText: 'Imported blueprint' })
     await expect(denseRow).toHaveCount(1)
@@ -187,18 +182,14 @@ test('blueprint swaps do not leak GPU textures', async ({ page }) => {
     // fixtures differ in size, so each open lands on a distinct value. Opening a
     // project closes the panel, so re-open it before each click.
     const open = async (row: typeof denseRow, expectedEntities: number): Promise<void> => {
-        mark(`open ${expectedEntities}: panel class "${await panel.getAttribute('class')}"`)
         if (!/active/.test((await panel.getAttribute('class')) ?? '')) {
             await page.locator('#library-button').click()
             await expect(panel).toHaveClass(/active/)
         }
-        mark(`open ${expectedEntities}: panel open`)
         // After a project has been opened once it's also listed under Recents —
         // both rows point at the same node, so any Open button will do.
         await row.getByRole('button', { name: 'Open', exact: true }).first().click()
-        mark(`open ${expectedEntities}: clicked Open`)
         await expect.poll(entityCount).toBe(expectedEntities)
-        mark(`open ${expectedEntities}: loaded`)
         await page.waitForTimeout(300)
     }
 
