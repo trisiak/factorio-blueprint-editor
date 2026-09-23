@@ -118,7 +118,9 @@ async function capture(page: Page, hasTouch: boolean): Promise<Shot[]> {
     await shot('settings open')
     await page.locator('#settings-button').click() // close again
 
-    // 3) an assembler with a complex recipe selected → entity info panel
+    // 3) an assembler with a complex recipe selected → the entity-info readout
+    //    (the DOM sheet, on every platform since #101 Slice 5: a right-edge
+    //    drawer on a wide viewport, the top band on a compact portrait one)
     await page.evaluate(name => (window as WinWithHook).__FBE_TEST__!.showEntityInfo(name), HERO)
     await shot('entity info')
     await page.evaluate(() => (window as WinWithHook).__FBE_TEST__!.showEntityInfo(null))
@@ -141,9 +143,12 @@ async function capture(page: Page, hasTouch: boolean): Promise<Shot[]> {
     await shot('entity editor')
     await page.evaluate(() => (window as WinWithHook).__FBE_TEST__!.closeDialogs())
 
-    // 6) realistic worst case: the editor open WITH its info panel. These co-occur
-    //    in normal use (selecting an entity shows the info panel, opening its
-    //    editor doesn't dismiss it), so this is the true overlap stress state.
+    // 6) realistic worst case: the editor open WITH the info readout. These
+    //    co-occur in normal use (selecting an entity shows the readout, opening
+    //    its editor doesn't dismiss it), so this is the true overlap stress
+    //    state — and, since #101 Slice 5, one every platform reaches: the
+    //    layering contract (`body.fbe-dialog-open`) is what resolves it now,
+    //    rather than Pixi child order on desktop.
     await page.evaluate(name => {
         const h = (window as WinWithHook).__FBE_TEST__!
         h.showEntityInfo(name)
@@ -156,8 +161,8 @@ async function capture(page: Page, hasTouch: boolean): Promise<Shot[]> {
         h.showEntityInfo(null)
     })
 
-    // 7) the production-rates panel (T / rail "Rates") — pinned top-right below
-    //    the entity-info panel's anchor, another fixed Pixi surface to place.
+    // 7) the production-rates readout (T / rail "Rates") — the DOM drawer,
+    //    stacked below the entity-info sheet on the right edge when wide.
     await page.evaluate(() => (window as WinWithHook).__FBE_TEST__!.toggleRatesPanel())
     await shot('rates panel')
     await page.evaluate(() => (window as WinWithHook).__FBE_TEST__!.toggleRatesPanel())
