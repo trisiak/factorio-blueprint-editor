@@ -147,75 +147,62 @@ export class EntityContainer {
         })
     }
 
+    /**
+     * Which entities have to be redrawn when another one is placed, moved or
+     * removed next to them — belts re-corner and re-sideload, pipes/heat pipes
+     * re-connect, walls re-join.
+     *
+     * Groups are keyed by prototype **type** (`types`) or by the presence of a
+     * prototype **field** (`has`), never by entity name: a name list only ever
+     * covers the pack it was written against, so on the Space Exploration pack
+     * the nine `se-…` belts/undergrounds/splitters got no update group at all
+     * and their neighbours were left showing a stale corner or underground
+     * structure. Dispatching by type is also what the game itself does.
+     */
     private static generateUpdateGroups(): Map<string, Set<string>> {
-        const mappigs = [
+        const beltTypes = [
+            'transport-belt',
+            'splitter',
+            'underground-belt',
+            'loader',
+            'loader-1x1',
+            'lane-splitter',
+            'linked-belt',
+        ]
+        const mappigs: { types?: string[]; has?: string[]; updates: string[] }[] = [
             {
-                is: [
-                    'transport-belt',
-                    'fast-transport-belt',
-                    'express-transport-belt',
-                    'turbo-transport-belt',
-                    'splitter',
-                    'fast-splitter',
-                    'express-splitter',
-                    'turbo-splitter',
-                    'underground-belt',
-                    'fast-underground-belt',
-                    'express-underground-belt',
-                    'turbo-underground-belt',
-                    'loader',
-                    'fast-loader',
-                    'express-loader',
-                    'turbo-loader',
-                    'lane-splitter',
-                ],
-                updates: [
-                    'transport-belt',
-                    'fast-transport-belt',
-                    'express-transport-belt',
-                    'turbo-transport-belt',
-                    'splitter',
-                    'fast-splitter',
-                    'express-splitter',
-                    'turbo-splitter',
-                    'underground-belt',
-                    'fast-underground-belt',
-                    'express-underground-belt',
-                    'turbo-underground-belt',
-                    'loader',
-                    'fast-loader',
-                    'express-loader',
-                    'turbo-loader',
-                    'lane-splitter',
-                ],
+                types: beltTypes,
+                updates: beltTypes,
             },
             {
-                is: ['heat-pipe', 'nuclear-reactor', 'heat-exchanger', 'heat-interface'],
-                updates: ['heat-pipe', 'nuclear-reactor', 'heat-exchanger', 'heat-interface'],
+                types: ['heat-pipe', 'reactor', 'boiler', 'heat-interface'],
+                updates: ['heat-pipe', 'reactor', 'boiler', 'heat-interface'],
             },
             {
                 has: ['fluid_box', 'output_fluid_box', 'fluid_boxes'],
                 updates: ['fluid_box', 'output_fluid_box', 'fluid_boxes'],
             },
             {
-                is: ['stone-wall', 'gate', 'legacy-straight-rail', 'straight-rail'],
-                updates: ['stone-wall', 'gate', 'legacy-straight-rail', 'straight-rail'],
+                types: ['wall', 'gate', 'legacy-straight-rail', 'straight-rail'],
+                updates: ['wall', 'gate', 'legacy-straight-rail', 'straight-rail'],
             },
         ]
 
+        // Expand each group into the concrete names the current data pack ships.
+        // Both sides of a group are matched the same way, so `updates` reads as
+        // types or as field names depending on how the group was declared.
+        const entities = Object.values(FD.entities)
+        const byType = (types: string[]): string[] =>
+            entities.filter(e => types.includes(e.type)).map(e => e.name)
+        const byField = (fields: string[]): string[] =>
+            entities.filter(e => Object.keys(e).some(k => fields.includes(k))).map(e => e.name)
+
         return mappigs
-            .map(uG => {
-                if (!uG.has) return uG
-                const entities = Object.values(FD.entities)
-                return {
-                    is: entities
-                        .filter(e => Object.keys(e).find(k => uG.has.includes(k)))
-                        .map(e => e.name),
-                    updates: entities
-                        .filter(e => Object.keys(e).find(k => uG.updates.includes(k)))
-                        .map(e => e.name),
-                }
-            })
+            .map(uG =>
+                uG.types
+                    ? { is: byType(uG.types), updates: byType(uG.updates) }
+                    : { is: byField(uG.has), updates: byField(uG.updates) }
+            )
             .reduce<Map<string, Set<string>>>((map, cV) => {
                 for (const k of cV.is) {
                     if (map.has(k)) {

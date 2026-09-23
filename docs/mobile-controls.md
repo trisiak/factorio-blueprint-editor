@@ -2,11 +2,24 @@
 
 > **Companion doc:** [`mobile-layout-inventory.md`](./mobile-layout-inventory.md)
 > (the screen-space map). **Open issues:** #52 (reposition a selection without
-> breaking wires — the broader problem behind the in-place nudge).
+> breaking wires — the broader problem behind the in-place nudge); **#101**
+> (desktop/mobile unification — brings the held-selection model below to the
+> mouse/keyboard driver and audits what the touch arc changed on desktop; the
+> "desktop unchanged" notes in this doc are reviewed there).
 > This doc is the source of truth for _what's done_ on the touch arc (it leads
 > the issue tracker) — when a slice lands, close/tick the matching issue in the
 > same change so they don't contradict each other. See CLAUDE.md "Keep issues
 > in sync with the work".
+>
+> **Desktop notes (#101 · A14 — Firefox modifier desync):** every pointer press
+> now re-syncs the action registry's modifier state from the event's own
+> `ctrlKey/shiftKey/altKey` (`packages/editor/src/actions.ts`), so a focus loss
+> — which triggers `releaseAll()` — can never leave a physically-held modifier
+> unarmed. Firefox additionally can't have `Shift+RMB` at all (it opens its own
+> context menu without dispatching the event), so **Copy entity settings**
+> defaults to `Ctrl+Shift+Click` there (`common/browser.ts`), announced by a
+> one-time toast; users can restore `Shift+Right-click` via about:config's
+> `dom.event.contextmenu.shift_suppresses_event=false` or a custom keybind.
 
 Tracking doc for the touch-support arc: what's done, what's not, and where the
 pieces live. Intentionally light — update the checkboxes as work lands.
@@ -411,6 +424,50 @@ that drive chrome and sizing.
       contract"). Ratchet: "modal layering" in `panels.spec.ts`. The fallback
       if this ever needs iteration is migrating dialogs to DOM wholesale, not
       more coexistence rules.
+    - ✅ **DOM dialogs — shell + main item selector (#98 Slices 0–1)**: the
+      "pull the plug" arc begins. `website/src/dialogs/` gains the modal
+      shell (`shell.ts`: backdrop, ✕, Escape, auto-close on mode switch) and
+      `dialogLayer.ts` (owns `body.fbe-dialog-open`, ORing the Pixi
+      `fbe:dialogs` count with open DOM dialogs, so the contract holds
+      through the migration). First tenant: the **main inventory** —
+      E / rail "Items" on mobile opens the DOM `inventorySelector.ts`
+      (group tabs, native scrolling, a real **search box** — the first
+      selector text input touch users get, retiring that #56 case for this
+      dialog — ★ Recents with the Recent/Quickbar/On-blueprint sections,
+      tap-to-preview → ✓ Confirm, Pin/Unpin). It renders from the new
+      render-free `core/itemCatalog.ts` (unit-tested; the same walk the Pixi
+      dialog does inline) and commits through `editor.spawnPaintItem`.
+      Desktop keeps the Pixi dialog; so do the editor-embedded pickers
+      (recipe/module/filter slots) until their editors migrate. Seam:
+      `UIContainer.openMainInventory` → `fbe:openinventory`. Ratchets in
+      `inventorySelector.spec.ts` (per-mode presentation, search→select→
+      paint, backdrop/E close, readouts yield + restore).
+    - ✅ **DOM entity editor — crafting machines (#98 Slice 2)**: the
+      recipe+modules form (the editor behind the recipe-changing bug)
+      presents as the DOM `dialogs/entityEditor.ts` on mobile — both the
+      `machine` kind (assembling machines) and the generic `temp` kind
+      (furnaces, refineries, chem plants, and every modded/expansion machine
+      the name switch doesn't know — the first live-testing gap: SE's space
+      assembler opened nothing). The recipe row gates on the new shared
+      `Entity.hasRecipeSlot` (furnaces/rocket silos auto-pick — modules
+      only), now also used by editor routing and the Pixi TempEditor. Routed
+      per kind from `UIContainer.openEntityEditor` → `fbe:openentityeditor`
+      (the event
+      carries the live `Entity`; the DOM editor reads its accessors, writes
+      its History-wrapped setters, and follows its change events — undo/redo
+      reflect live, destroy closes it). Slots keep the established touch
+      grammar: tap opens the **filtered DOM picker** (the shared
+      `itemPicker.ts` — recipes confirm-gated, modules commit-on-tap, ✕
+      Clear/Cancel escape hatch), long-press clears, hint line included; the
+      picker stacks over the editor (Escape peels the top dialog only —
+      `dialogLayer.isTopDomDialog`). A mobile→desktop switch closes the DOM
+      editor (presentation follows mode). Preview decision (v1): **no live
+      sprite preview** — the header carries the entity's pack-sheet icon;
+      revisit with render-to-texture if missed. The `?test` hook is
+      DOM-aware (slot/✕/✓ probes report DOM coords in the same shape), so the
+      whole `clearSlots.spec.ts` gesture matrix runs against the DOM editor
+      unchanged; new per-mode + recipe-end-to-end ratchets in
+      `entityEditor.spec.ts`. Other kinds keep Pixi until their slices.
     - ⬜ **Phase 4 — e2e bounds-disjointness ratchets**
 - 🚧 **Touch placement: preview + confirm (Slice 1 done)** — desktop previews a
   placement by hovering (ghost shows orientation/validity before you click);
@@ -579,6 +636,59 @@ that drive chrome and sizing.
   `actionToolbar.ts` (Select tiles button, `when`-gated SELECT d-pad).
   Covered by the marquee half of `e2e/touchTiles.spec.ts` via
   `marquee.tileCount` on the `?test` hook.
+
+## Desktop notes (#101 Slice 0)
+
+The touch arc landed a handful of its changes on shared code paths, so desktop
+inherited them without ever being designed for. #101 ("one editor model, two
+input drivers") is the tracking issue and holds the full review tables; this
+section records only what Slice 0 actually changed here — the doc and the issue
+should agree, so update both together.
+
+- ✅ **A7 — the numeric keypad takes keyboard input.** `NumericField` replaced
+  upstream's slider+text input, and the canvas `NumericKeypad` was click-only:
+  a 10-digit constant cost 10 clicks. While a keypad is open it is now modal
+  text entry — digits (main row, and the numpad by `code` so NumLock doesn't
+  matter), `Backspace`, `Delete` (= the `C` key), `-` where the field allows
+  negatives, `Enter` (= `✓ OK`), `Escape`. Digits **append** to the buffer, the
+  same as pressing the on-screen keys. Routed through `Editor.ts`'s window
+  `keydown` _before_ `ActionRegistry`, so the topmost open keypad swallows its
+  keys and they don't also fire editor actions (`Escape` closing windows, `KeyS`
+  panning); anything it ignores falls through unchanged. The transition is a
+  pure function in `packages/editor/src/UI/keypadInput.ts` (vitest:
+  `keypadInput.test.ts`), and `allowNegative` is threaded from the field —
+  request counts and the 0-255 station priority set it false, which also drops
+  their `±` key. Retired for good when Slice 6 puts DOM dialogs on desktop.
+- ✅ **A9 — "Press I for info" is back on desktop.** Dropped when the mobile
+  rail folded the top-left chrome (187915e7); `I` still worked but nothing said
+  so. Restored in `packages/website/index.html` as `#corner-panel .info-hint`
+  and hidden for `body.mobile` in `index.styl` — no `I` to press on touch, and
+  the rail needs the height. The panel stays clickable either way.
+- ✅ **A10 — the scratchpad restore is silent.** "Restored your scratchpad" on
+  every load announced the _default_ state. `loadBp` now accepts `null` for "no
+  toast"; a named project ("Opened …"), a `?source` import and all error paths
+  still toast.
+- ✅ **A13 — no red `textures.json` 404 on full packs.** Only a graphics variant
+  ships the sidecar, so `loadTextureTransforms` asks the (cached) pack manifest
+  first — `packMayHaveTextureTransforms` in `core/packManifest.ts`, unit-tested.
+  An unlisted pack or a manifest-less deploy still probes, as before.
+- ✅ **Factoriobin as a `?source` host** (upstream #272 / `12bbcef0`, ported).
+  The per-host page-URL → raw-content-URL table moved out of `bpString.ts` into
+  a pure `core/blueprintSource.ts` (`blueprintSourceRequest`) with unit tests.
+  Same caveat as every URL import: it goes through `/corsproxy`, which is a
+  Cloudflare Pages Function and does **not** exist on the GitHub Pages deploy.
+- ✅ **Desktop e2e ratchets** — `e2e/desktopEditing.spec.ts` (desktop project
+  only, alongside the older `desktopBuild.spec.ts` build/mine net): hover → info
+  panel; `Ctrl+LMB` drag → a blueprint ghost that follows the mouse; `→` nudges
+  it a tile; a click places all 8 entities clear of the originals; `Escape`
+  drops the cursor; `Ctrl+Z` undoes; `Ctrl+RMB` drag deletes the box; `Enter`
+  with nothing held is a no-op; a single click on an entity opens its editor;
+  `E` → inventory → one click commits to the cursor; `T` toggles the rates
+  panel; and every test asserts the page threw nothing.
+- Still open in #101 and deliberately untouched here: A5 (the always-on circuit
+  hover highlight), A6 (the inventory's Recents default tab), and Slices 1-6 —
+  the hybrid input signals, held selection from mouse + keyboard, and the DOM
+  chrome convergence.
 
 ## Notes / tradeoffs
 

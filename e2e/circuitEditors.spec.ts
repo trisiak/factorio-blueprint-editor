@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { isTouchProject } from './projects'
 
 /**
  * The circuit-editors expansion: lamp / roboport / display-panel / provider
@@ -15,8 +16,6 @@ import { test, expect, type Page } from '@playwright/test'
  * `core/deciderClauses.test.ts` and friends — this file proves the same holds
  * end-to-end through real input.)
  */
-
-const isMobileProject = (): boolean => test.info().project.name === 'mobile-chromium'
 
 // small-lamp, roboport, display-panel, provider + requester chests,
 // fast-inserter, and a decider with 3 conditions (one AND-chained, one
@@ -79,7 +78,7 @@ async function tapControl(page: Page, control: string): Promise<void> {
     )
     expect(pos, `control "${control}" should be locatable in the open editor`).not.toBeNull()
     const o = await canvasOrigin(page)
-    if (isMobileProject()) await page.touchscreen.tap(o.x + pos.x, o.y + pos.y)
+    if (isTouchProject()) await page.touchscreen.tap(o.x + pos.x, o.y + pos.y)
     else await page.mouse.click(o.x + pos.x, o.y + pos.y)
 }
 
@@ -268,7 +267,7 @@ test.describe('display panel', () => {
         const input = page.locator('input[maxlength="500"]')
         await expect(input).toBeVisible()
         const box = await input.boundingBox()
-        if (isMobileProject())
+        if (isTouchProject())
             await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2)
         else await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
         await expect(input).toBeFocused()

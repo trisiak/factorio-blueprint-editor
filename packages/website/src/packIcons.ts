@@ -61,6 +61,17 @@ export async function loadPackIcons(): Promise<void> {
  * element untouched — while the manifest isn't loaded or the id is unknown, so
  * callers can mark elements up front and rely on the glyph fallback.
  */
+/**
+ * Render the icon for a bare prototype `name`, trying `item/` → `recipe/` →
+ * `fluid/` — the pickers' choices are mixed prototypes (a recipe with no
+ * like-named item, e.g. `basic-oil-processing`, only exists under `recipe/`),
+ * mirroring how the canvas `CreateIcon` resolves a name. Same false-on-miss
+ * contract as applyPackIcon.
+ */
+export function applyAnyPackIcon(el: HTMLElement, name: string, size = 24): boolean {
+    return ['item', 'recipe', 'fluid'].some(prefix => applyPackIcon(el, `${prefix}/${name}`, size))
+}
+
 export function applyPackIcon(el: HTMLElement, iconId: string, size = 24): boolean {
     if (!manifest) return false
     const pos = manifest.icons[iconId]

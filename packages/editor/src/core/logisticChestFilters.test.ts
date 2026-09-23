@@ -54,7 +54,20 @@ describe.skipIf(!have)('logistic chest filters', () => {
         e.filters = [{ index: 1, name: 'iron-plate', count: 100 }]
 
         expect(raw(e).sections).toEqual([
-            { index: 1, filters: [{ index: 1, name: 'iron-plate', count: 100 }] },
+            {
+                index: 1,
+                filters: [
+                    // quality/comparator are written the way the game writes them
+                    // — see `qualitySpec` in core/itemFilters.ts.
+                    {
+                        index: 1,
+                        name: 'iron-plate',
+                        count: 100,
+                        quality: 'normal',
+                        comparator: '=',
+                    },
+                ],
+            },
         ])
         expect(e.filters.map(f => f.name)).toEqual(['iron-plate'])
     })
@@ -69,6 +82,8 @@ describe.skipIf(!have)('logistic chest filters', () => {
             index: 1,
             name: 'iron-plate',
             count: 1,
+            quality: 'normal',
+            comparator: '=',
         })
     })
 
