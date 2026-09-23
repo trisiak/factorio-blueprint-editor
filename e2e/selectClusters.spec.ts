@@ -288,13 +288,19 @@ test.describe('SELECT cluster on a fine pointer (floating, anchored)', () => {
 
         // Pan with the keyboard (a mouse drag would land inside the selection
         // and move it instead — that is Slice 2's drag-to-move).
+        // WASD pans per rendered frame, so hold the key until the toolbar has
+        // moved rather than for a fixed time: on a slow renderer (CI's
+        // software-GL Firefox) a 300 ms tap can fall between two frames and pan
+        // nothing at all.
         await page.keyboard.down('KeyD')
-        await page.waitForTimeout(300)
-        await page.keyboard.up('KeyD')
         await expect.poll(async () => (await boxOf(float(page))).x).not.toBe(before.x)
-        // ...and it is still glued to the selection's box afterwards.
-        const panned = await selectionBounds(page)
-        expect(Math.abs((await boxOf(float(page))).x - panned.x)).toBeLessThanOrEqual(16)
+        await page.keyboard.up('KeyD')
+        // ...and it is still glued to the selection's box once the camera stops.
+        // Polled: the toolbar re-anchors on the next animation frame, so a read
+        // taken mid-pan can trail the selection by a frame's worth of scroll.
+        const gap = async (): Promise<number> =>
+            Math.abs((await boxOf(float(page))).x - (await selectionBounds(page)).x)
+        await expect.poll(gap).toBeLessThanOrEqual(16)
 
         // Zoom too, with the pointer over open canvas rather than over the
         // toolbar (the wheel handler is on the canvas). Zooming *out* keeps the
@@ -305,8 +311,7 @@ test.describe('SELECT cluster on a fine pointer (floating, anchored)', () => {
         await expect
             .poll(async () => (await selectionBounds(page)).width)
             .toBeLessThan(zoomedFrom.width)
-        const zoomed = await selectionBounds(page)
-        expect(Math.abs((await boxOf(float(page))).x - zoomed.x)).toBeLessThanOrEqual(16)
+        await expect.poll(gap).toBeLessThanOrEqual(16)
     })
 
     test('a drag-to-move still works with the toolbar following underneath', async ({ page }) => {

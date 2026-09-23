@@ -188,34 +188,14 @@ test.describe('desktop editing', () => {
         await expect.poll(async () => (await getState(page)).paint.kind).toBe('blueprint')
 
         // Clear of the originals, so nothing is dropped for colliding: all 8 land.
+        // Wait for the ghost to actually reach AWAY before clicking: on a slow
+        // renderer (CI's software-GL Firefox) the pointermoves land a frame or
+        // more late, and a click while the ghost still overlaps the originals
+        // places nothing at all.
+        const from = (await getState(page)).paint.tile
         await page.mouse.move(AWAY.x, AWAY.y, { steps: 8 })
-        // TEMP diagnostics (#101): why does the click place nothing on Firefox?
-        const probe = (label: string): Promise<void> =>
-            page
-                .evaluate(
-                    ([x, y]) => {
-                        const el = document.elementFromPoint(x, y)
-                        const f = document.getElementById('select-float')
-                        const w = window as any
-                        return JSON.stringify({
-                            at: el ? `${el.tagName}#${el.id}.${el.className}` : null,
-                            float: f
-                                ? `${f.className} ${JSON.stringify(f.getBoundingClientRect())}`
-                                : null,
-                            toasts: [...document.querySelectorAll('.toasts-toast')].map(
-                                t => t.textContent
-                            ),
-                            state: w.__FBE_TEST__.getState(),
-                        })
-                    },
-                    [AWAY.x, AWAY.y]
-                )
-                .then(s => console.log(`[copy-diag] ${label} ${s}`))
-        await probe('before click')
+        await expect.poll(async () => (await getState(page)).paint.tile?.x).not.toBe(from?.x)
         await page.mouse.click(AWAY.x, AWAY.y)
-        await probe('after click')
-        await page.waitForTimeout(500)
-        await probe('after 500ms')
         await expect.poll(() => entityCount(page)).toBe(original * 2)
 
         await page.keyboard.press('Control+KeyZ')
