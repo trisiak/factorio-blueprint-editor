@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { dragOneFinger } from './touchGestures'
+import { isChromiumProject, isTouchProject } from './projects'
 
 // Tile-brush controls on touch: the PAINT d-pad's corners carry Size − / +
 // (the keyboard's [ / ] ratchet — the brush was stuck at 2×2 on mobile) and
@@ -73,9 +74,11 @@ const TILE_B = { x: 340, y: 620 }
 const dpad = (page: Page, title: string) => page.locator(`#paint-dpad button[title="${title}"]`)
 
 test.describe('touch tile brush (size + erase)', () => {
+    // Touch + Chromium, not just touch: the gestures are synthesized with raw CDP
+    // (`Input.dispatchTouchEvent`), which only Chromium exposes.
     test.beforeEach(() => {
         test.skip(
-            test.info().project.name !== 'mobile-chromium',
+            !isTouchProject() || !isChromiumProject(),
             'the tile d-pad controls exist on the mobile project only'
         )
     })
@@ -212,9 +215,11 @@ const BOX_BOTH_FROM = { x: 120, y: 420 }
 const BOX_BOTH_TO = { x: 400, y: 700 }
 
 test.describe('touch marquee: tiles in selections', () => {
+    // Touch + Chromium, not just touch: the gestures are synthesized with raw CDP
+    // (`Input.dispatchTouchEvent`), which only Chromium exposes.
     test.beforeEach(() => {
         test.skip(
-            test.info().project.name !== 'mobile-chromium',
+            !isTouchProject() || !isChromiumProject(),
             'the marquee is a mobile-only touch gesture'
         )
     })

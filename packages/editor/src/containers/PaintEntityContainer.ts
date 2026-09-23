@@ -118,11 +118,14 @@ export class PaintEntityContainer extends PaintContainer {
 
     private updateUndergroundLine(): void {
         this.destroyUndergroundLine()
+        // By type, not by name: `se-space-pipe-to-ground` is a pipe-to-ground too,
+        // and testing the vanilla name left the modded one without a pair line.
+        const isPipeToGround = FD.entities[this.name].type === 'pipe-to-ground'
         this.undergroundLine = this.bpc.overlayContainer.createUndergroundLine(
             this.name,
             this.getGridPosition(),
             this.directionType === 'input' ? this.direction : (this.direction + 8) % 16,
-            this.name === 'pipe-to-ground' ? (this.direction + 8) % 16 : this.direction
+            isPipeToGround ? (this.direction + 8) % 16 : this.direction
         )
     }
 
@@ -252,7 +255,10 @@ export class PaintEntityContainer extends PaintContainer {
                 true
             )
 
-            if (fd.type === 'underground-belt' || this.name === 'pipe-to-ground') {
+            // Flip the held ghost so the next placement is the other end of the
+            // pair — again by type, so modded undergrounds/pipes chain the same
+            // way the vanilla ones do.
+            if (fd.type === 'underground-belt' || fd.type === 'pipe-to-ground') {
                 this.direction = (direction + 8) % 16
                 this.redraw()
                 this.destroyUndergroundLine()

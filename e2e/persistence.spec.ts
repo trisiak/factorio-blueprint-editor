@@ -42,10 +42,13 @@ const indicator = (page: Page) => page.locator('#active-project')
 test.describe('blueprint persistence (library-backed)', () => {
     test('migrates a legacy single-slot autosave into the scratchpad', async ({ page }) => {
         await seedLegacyAutosave(page, CHEST)
-        await page.goto('/')
+        await page.goto('/?test')
+        await waitForReady(page)
 
-        // The legacy blueprint comes back as the scratchpad's content...
-        await expect(page.getByText(/Restored your scratchpad/i)).toBeVisible({ timeout: 60_000 })
+        // The legacy blueprint comes back as the scratchpad's content — and it
+        // does so *silently*: restoring the scratchpad is the default state, so
+        // it no longer toasts (#101 A10), hence the canvas-state assertion.
+        await expect.poll(() => entityCount(page), { timeout: 60_000 }).toBe(1)
         // ...and the migration consumes the old localStorage slot.
         await expect.poll(() => legacySlot(page)).toBeNull()
     })

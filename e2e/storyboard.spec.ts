@@ -237,9 +237,13 @@ test.describe('layout storyboard (visual sandbox)', () => {
         // from the normal suite. Run it explicitly to (re)generate storyboards:
         //   STORYBOARD=1 npx playwright test storyboard.spec.ts
         test.skip(!process.env.STORYBOARD, 'set STORYBOARD=1 to (re)generate storyboards')
+        // Deliberately pinned to one *named* project rather than "any desktop
+        // project": this generates the committed reference images, so it must run
+        // exactly once and always on the same renderer — a second pass on Firefox
+        // would overwrite them with subtly different text/AA output.
         test.skip(
             testInfo.project.name !== 'desktop-chromium',
-            'runs once; manages its own per-platform contexts'
+            'runs once, on Chromium; manages its own per-platform contexts'
         )
         test.setTimeout(240_000)
 

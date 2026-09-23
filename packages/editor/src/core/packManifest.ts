@@ -97,3 +97,19 @@ export function graphicsOptions(
     }
     return out
 }
+
+/**
+ * Whether the pack `id` can ship a `textures.json` sidecar — i.e. whether it is
+ * worth fetching one (#101 A13). Only a **graphics variant** carries transforms
+ * (`variantOf`/`graphics`), so probing a full pack only ever produced a red 404
+ * in the console on every load. A pack the manifest doesn't list — and the
+ * manifest-less case (empty list: an unreachable/absent `packs.json`, e.g. a
+ * local exporter dump) — keeps the old unconditional probe, so a deploy without
+ * a manifest still resolves its transforms.
+ */
+export function packMayHaveTextureTransforms(manifest: PackManifestEntry[], id: string): boolean {
+    if (manifest.length === 0) return true
+    const entry = manifest.find(p => p.id === id)
+    if (!entry) return true
+    return entry.variantOf !== undefined || entry.graphics !== undefined
+}

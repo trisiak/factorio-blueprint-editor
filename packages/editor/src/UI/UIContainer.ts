@@ -1,5 +1,6 @@
 import { Container } from 'pixi.js'
 import { Entity } from '../core/Entity'
+import G from '../common/globals'
 import { inputMode } from '../common/input'
 import { DebugContainer } from './DebugContainer'
 import { QuickbarPanel } from './QuickbarPanel'
@@ -9,7 +10,7 @@ import { SignalPicker, SignalChoice } from './SignalPicker'
 import { NumericKeypad } from './NumericKeypad'
 import { RatesPanel } from './RatesPanel'
 import { Editor } from './editors/Editor'
-import { createEditor } from './editors/factory'
+import { createEditor, editorKindFor, EditorKind } from './editors/factory'
 
 export class UIContainer extends Container {
     private debugContainer: DebugContainer
@@ -106,6 +107,16 @@ export class UIContainer extends Container {
         this.debugContainer.visible = visible
     }
 
+    /**
+     * Entity kinds whose DOM editor has shipped (#98 Slice 2 →): on mobile
+     * these route to the website's DOM editor instead of the Pixi one. Grows
+     * kind by kind as the migration slices land. 'temp' is the generic
+     * crafting-machine form (furnaces, refineries, chem plants, and every
+     * modded/expansion machine the name switch doesn't know) — same
+     * recipe+modules shape as 'machine', gated by `Entity.hasRecipeSlot`.
+     */
+    private static readonly DOM_EDITOR_KINDS: ReadonlySet<EditorKind> = new Set(['machine', 'temp'])
+
     /** @returns The created editor, or undefined if the entity has none. */
     public createEditor(entity: Entity): Editor | undefined {
         const editor = createEditor(entity)
@@ -113,6 +124,24 @@ export class UIContainer extends Container {
             this.dialogsContainer.addChild(editor)
         }
         return editor
+    }
+
+    /**
+     * Open `entity`'s editor — THE entry point (the EDIT bar / double-click /
+     * the `?test` probe), one presentation per input mode (#98): kinds whose
+     * DOM editor has shipped present in DOM on mobile (handed off over
+     * `fbe:openentityeditor`, carrying the live Entity — same JS runtime);
+     * everything else, and all of desktop, keeps the Pixi editor.
+     * @returns Whether an editor opened (false = the entity has none).
+     */
+    public openEntityEditor(entity: Entity): boolean {
+        const kind = editorKindFor(entity)
+        if (kind === undefined) return false
+        if (inputMode.mode === 'mobile' && UIContainer.DOM_EDITOR_KINDS.has(kind)) {
+            window.dispatchEvent(new CustomEvent('fbe:openentityeditor', { detail: { entity } }))
+            return true
+        }
+        return this.createEditor(entity) !== undefined
     }
 
     /**
@@ -133,6 +162,30 @@ export class UIContainer extends Container {
         return inv
     }
 
+    /**
+     * Open the *main* item selector — the E-key / rail "Items" surface, whose
+     * pick lands on the cursor as a paint ghost. One entry, one presentation
+     * per input mode (#98): desktop keeps the Pixi InventoryDialog; mobile
+     * hands off to the website's DOM selector over `fbe:openinventory` (the
+     * same bridge pattern as `fbe:entityinfo`), passing an optional item to
+     * open pre-previewed (the storyboard/test path). The editor-embedded
+     * pickers (recipe/module/filter slots) still call createInventory directly
+     * — they migrate with their editors, not before.
+     */
+    public openMainInventory(preview?: string): void {
+        if (inputMode.mode === 'mobile') {
+            window.dispatchEvent(new CustomEvent('fbe:openinventory', { detail: { preview } }))
+            return
+        }
+        const inv = this.createInventory(
+            'Inventory',
+            undefined,
+            G.BPC.spawnPaintContainer.bind(G.BPC),
+            'items'
+        )
+        if (preview) inv.beginPreview(preview)
+    }
+
     public createSignalPicker(
         title: string,
         onConfirm: (choice: SignalChoice) => void,
@@ -147,9 +200,10 @@ export class UIContainer extends Container {
     public createNumericKeypad(
         title: string,
         initial: number | undefined,
-        onConfirm: (value: number) => void
+        onConfirm: (value: number) => void,
+        allowNegative = true
     ): NumericKeypad {
-        const pad = new NumericKeypad(title, initial, onConfirm)
+        const pad = new NumericKeypad(title, initial, onConfirm, allowNegative)
         this.dialogsContainer.addChild(pad)
         return pad
     }

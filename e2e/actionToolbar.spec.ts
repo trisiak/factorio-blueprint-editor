@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { isDesktopProject, isTouchProject } from './projects'
 
 // The on-screen action toolbar (packages/website/src/actionToolbar.ts) mirrors
 // the editor's action registry into DOM buttons. Since #101 Slice 4 it is the
@@ -88,8 +89,8 @@ test.describe('action toolbar', () => {
     test.describe('desktop', () => {
         test.beforeEach(() => {
             test.skip(
-                test.info().project.name !== 'desktop-chromium',
-                'the slim/keyboard presentation is what the desktop project boots'
+                !isDesktopProject(),
+                'the slim/keyboard presentation is what the desktop projects boot'
             )
         })
 
@@ -208,10 +209,7 @@ test.describe('action toolbar', () => {
     test.describe('mobile', () => {
         // Pixel 7 => isMobile + hasTouch, so the input mode auto-detects `mobile`.
         test.beforeEach(() => {
-            test.skip(
-                test.info().project.name !== 'mobile-chromium',
-                'the toolbar only shows in the mobile input mode'
-            )
+            test.skip(!isTouchProject(), 'the toolbar only shows in the mobile input mode')
         })
 
         test('shows the global actions and hides mode-specific ones while idle', async ({
