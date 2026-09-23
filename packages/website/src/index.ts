@@ -19,6 +19,7 @@ import EDITOR, {
     getCanonicalDataPack,
     canonicalPacks,
     inputMode,
+    isFirefox,
 } from '@fbe/editor'
 import type { PackManifestEntry } from '@fbe/editor'
 import { initToasts } from './toasts'
@@ -29,6 +30,9 @@ import { loadPackIcons } from './packIcons'
 import { initEntityInfoSheet } from './entityInfoSheet'
 import { initQuickbar } from './quickbar'
 import { initRatesDrawer } from './ratesDrawer'
+import { initDialogLayer } from './dialogs/dialogLayer'
+import { initInventorySelector } from './dialogs/inventorySelector'
+import { initEntityEditor } from './dialogs/entityEditor'
 import { loadSavedBlueprint, clearSavedBlueprint } from './blueprintStorage'
 import { LibraryController } from './library/controller'
 import { createLibraryStore } from './library/store'
@@ -176,6 +180,30 @@ if (isMobile.any && localStorage.getItem('fbe:touchToastSeen') !== 'true') {
         timeout: 8000,
     })
 }
+// Firefox never lets the page see a Shift+right-click: it opens its own context
+// menu and doesn't dispatch the event at all, so the document-wide
+// `contextmenu` preventDefault above can't suppress it (Bugzilla 897379). The
+// editor therefore defaults "Copy entity settings" to Ctrl+Shift+Click there
+// (see `common/browser.ts` / #101) — say so once, and point at both escape
+// hatches (the about:config opt-out, or a custom keybind). Once only: like the
+// touch toast, re-showing it on every reload would just be noise.
+if (
+    !isMobile.any &&
+    isFirefox() &&
+    localStorage.getItem('fbe:firefoxShiftRmbHintSeen') !== 'true'
+) {
+    localStorage.setItem('fbe:firefoxShiftRmbHintSeen', 'true')
+    createToast({
+        text:
+            'Firefox opens its own menu on Shift+right-click, so <b>Copy entity settings</b> ' +
+            'is <b>Ctrl+Shift+Click</b> here.<br>' +
+            'To use Shift+Right-click instead, set ' +
+            '<b>dom.event.contextmenu.shift_suppresses_event</b> to <b>false</b> in about:config — ' +
+            'or rebind it under Settings → Keybinds.',
+        type: 'info',
+        timeout: 15000,
+    })
+}
 
 if (typeof WebAssembly !== 'object' && typeof WebAssembly.instantiate !== 'function') {
     createToast({
@@ -226,14 +254,17 @@ editor
         // above, so the first paint already shows them.
         initQuickbar(editor)
         // Layering contract: DOM always composites above the canvas, so a Pixi
-        // dialog (entity editor, inventory) can never paint over the readouts —
-        // instead they yield while any dialog is open. The editor mirrors its
-        // open-dialog count over `fbe:dialogs`; the body class hides the sheet
-        // and drawer via CSS, and their state restores itself on close (the
-        // selection and the rates toggle live in the editor, untouched).
-        window.addEventListener('fbe:dialogs', e => {
-            document.body.classList.toggle('fbe-dialog-open', (e as CustomEvent<number>).detail > 0)
-        })
+        // dialog can never paint over the readouts — instead they yield while
+        // any dialog (Pixi or DOM, #98) is open. The dialog layer owns the
+        // `fbe-dialog-open` body class both dialog kinds feed; readout state
+        // lives in the editor and restores itself on close.
+        initDialogLayer()
+        // The DOM item selector (#98 Slice 1) — the mobile presentation of the
+        // main inventory; the editor opens it over `fbe:openinventory`.
+        initInventorySelector(editor)
+        // The DOM entity editor (#98 Slice 2) — the mobile presentation of the
+        // migrated editor kinds (machines so far), over `fbe:openentityeditor`.
+        initEntityEditor(editor)
 
         // Opt-in e2e probe for on-canvas state that the DOM can't expose.
         if (new URLSearchParams(window.location.search).has('test')) {
@@ -452,9 +483,11 @@ async function loadInitialBlueprint(): Promise<void> {
             console.error('Failed to open the active blueprint', error)
             return undefined
         })
-        const message = library.isScratchpad(active.id)
-            ? 'Restored your scratchpad'
-            : `Opened "${active.name}"`
+        // The scratchpad IS the default state, so restoring it is not news —
+        // toasting on every single load was just noise (#101 A10). A named
+        // project still announces itself (you asked for that one), as do a
+        // `?source` import and every error path.
+        const message = library.isScratchpad(active.id) ? null : `Opened "${active.name}"`
         await loadBp(bpOrBook || new Blueprint(), message)
         // The "modified" (uncommitted-since-last-version) state is persisted, not
         // transient — reflect it on the indicator straight from the stored content.
@@ -467,7 +500,8 @@ async function loadInitialBlueprint(): Promise<void> {
 
 async function loadBp(
     bpOrBook: Blueprint | Book,
-    successMessage = 'Blueprint string loaded successfully'
+    /** Success toast to show, or `null` to load silently (see #101 A10). */
+    successMessage: string | null = 'Blueprint string loaded successfully'
 ): Promise<void> {
     if (bpOrBook instanceof Book) {
         book = bpOrBook
@@ -502,7 +536,7 @@ async function loadBp(
     loadingScreen.hide()
 
     const bpIsEmpty = bpOrBook instanceof Blueprint && bpOrBook.isEmpty()
-    if (!bpIsEmpty) {
+    if (!bpIsEmpty && successMessage !== null) {
         createToast({ text: successMessage, type: 'success' })
     }
 }
