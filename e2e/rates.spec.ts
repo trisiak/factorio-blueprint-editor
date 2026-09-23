@@ -81,7 +81,7 @@ test.describe('rates panel', () => {
         // Dismiss with the readout's own ✕ — the only route that needs neither
         // a keyboard nor re-finding the toggle in the rail's ⋯ overflow.
         const close = drawer.locator('.rates-close')
-        await (isMobileProject() ? close.tap() : close.click())
+        await (isTouchProject() ? close.tap() : close.click())
         await expect.poll(async () => (await readTestState(page)).ratesPanelVisible).toBe(false)
     })
 })
