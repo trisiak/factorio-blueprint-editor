@@ -14,8 +14,8 @@
         <title>Factorio Blueprint Editor</title>
 
         <link rel="icon" href="/factorio-blueprint-editor/pr-preview/pr-108/favicon.png" />
-      <script type="module" crossorigin src="/factorio-blueprint-editor/pr-preview/pr-108/assets/index-DFFWWiLu.js"></script>
-      <link rel="stylesheet" crossorigin href="/factorio-blueprint-editor/pr-preview/pr-108/assets/index-CmPT1Hbl.css">
+      <script type="module" crossorigin src="/factorio-blueprint-editor/pr-preview/pr-108/assets/index-B4MFCBn5.js"></script>
+      <link rel="stylesheet" crossorigin href="/factorio-blueprint-editor/pr-preview/pr-108/assets/index-DW03XHOs.css">
     </head>
 
     <body>
@@ -25,22 +25,44 @@
         </div>
         <div id="corner-panel">
             <img src="/factorio-blueprint-editor/pr-preview/pr-108/logo-small.svg" alt />
+            <!-- Desktop-only discoverability hint (#101 A9): the panel is the
+                 INFO toggle and `I` opens it, but nothing said so. Touch
+                 layouts still hide it (body.mobile) — the rail is the entry
+                 point there and the height is precious. -->
+            <span class="info-hint">Press I for info</span>
         </div>
         <div id="buttons">
+            <!-- The corner buttons fold into one row of icon squares at the head
+                 of the action rail's column (#101 Slice 4), so their captions are
+                 hidden by CSS — `title`/`aria-label` carry the name instead. -->
             <a
                 class="github-button"
                 href="https://github.com/Teoxoy/factorio-blueprint-editor"
                 target="_blank"
                 rel="noopener"
+                title="Github"
+                aria-label="Github"
             >
                 <span>Github</span>
                 <img src="/factorio-blueprint-editor/pr-preview/pr-108/github.svg" alt />
             </a>
-            <button class="settings-button" id="settings-button" type="button">
+            <button
+                class="settings-button"
+                id="settings-button"
+                type="button"
+                title="Settings"
+                aria-label="Settings"
+            >
                 <span>Settings</span>
                 <img src="/factorio-blueprint-editor/pr-preview/pr-108/settings.svg" alt />
             </button>
-            <button class="library-button" id="library-button" type="button">
+            <button
+                class="library-button"
+                id="library-button"
+                type="button"
+                title="Library"
+                aria-label="Library"
+            >
                 <span class="lib-icon">📚</span>
                 <span>Library</span>
             </button>
