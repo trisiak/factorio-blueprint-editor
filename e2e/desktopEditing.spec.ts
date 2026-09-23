@@ -188,7 +188,13 @@ test.describe('desktop editing', () => {
         await expect.poll(async () => (await getState(page)).paint.kind).toBe('blueprint')
 
         // Clear of the originals, so nothing is dropped for colliding: all 8 land.
+        // Wait for the ghost to actually reach AWAY before clicking: on a slow
+        // renderer (CI's software-GL Firefox) the pointermoves land a frame or
+        // more late, and a click while the ghost still overlaps the originals
+        // places nothing at all.
+        const from = (await getState(page)).paint.tile
         await page.mouse.move(AWAY.x, AWAY.y, { steps: 8 })
+        await expect.poll(async () => (await getState(page)).paint.tile?.x).not.toBe(from?.x)
         await page.mouse.click(AWAY.x, AWAY.y)
         await expect.poll(() => entityCount(page)).toBe(original * 2)
 

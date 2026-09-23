@@ -26,9 +26,24 @@ import { formatKeyCombo } from './keyCombo'
 // It used to be mobile-only, which left desktop with the old top-left clutter
 // and no on-screen mirror of the registry at all.
 //
-// Below the rail, **contextual** clusters appear in the freed bottom band, one
-// per mode: a PAINT d-pad (nudge + Place), SELECT controls (nudge a held
-// selection in place + Copy/Cut/Delete/Done), and an EDIT bar (Select / Edit).
+// Below the rail, **contextual** clusters appear, one per editor mode: a PAINT
+// d-pad (nudge + Place), SELECT controls (nudge a held selection in place +
+// Copy/Cut/Delete/Rotate/Done), and an EDIT bar (Select / Edit). Since #101
+// Slice 3 they are keyed on **editor state + input signals, never on the
+// device** (see `updateContextual`):
+//
+// | cluster        | shown when                                    | placement                          |
+// |----------------|-----------------------------------------------|------------------------------------|
+// | SELECT         | `EditorMode.SELECT` — everyone                | bottom band on `coarse`, else a floating toolbar anchored to the selection |
+// | PAINT d-pad    | `EditorMode.PAINT` and the touch driver is live | bottom band                        |
+// | EDIT bar       | `EditorMode.EDIT` and the touch driver is live  | bottom band                        |
+//
+// The SELECT cluster is one component with two *placements*: a mouse user gets
+// it next to what they selected (with keybind hints), a finger gets it in the
+// thumb band at the bottom. The PAINT d-pad and the EDIT bar stay touch-only
+// affordances — a mouse has hover, the wheel and the arrow keys for a ghost, and
+// its EDIT is transient hover rather than a tap-select — so they appear the
+// moment the screen is touched and go away again on the next mouse move.
 //
 // Buttons invoke actions by name: a matching entry in `handlers` (an Editor
 // method) wins, else `EDITOR.callAction` keeps the rail in lockstep with the
@@ -62,6 +77,15 @@ interface ToolbarButton {
     modes?: EditorMode[]
     /** Extra show condition beyond mode (e.g. Select needs a non-empty blueprint). */
     when?: (editor: Editor) => boolean
+    /**
+     * Action registry name whose keybind this button mirrors — the source of the
+     * keybind hint shown on the floating SELECT toolbar (#101 Slice 3). Usually
+     * but not always the button's own `action`: the cluster buttons call `Editor`
+     * methods directly (`copyMarquee`), while the *key* that does the same thing
+     * is a registry action registered elsewhere (`copySelection`, in the
+     * website's `registerActions`). Read live, so a rebind in Settings shows up.
+     */
+    keyAction?: string
     /**
      * Permanently parked in the ⋯ overflow, never in the rail — for rare,
      * deliberate actions (blueprint management). Keeps the rail short and
@@ -209,21 +233,83 @@ const PAINT_DPAD: ToolbarButton[] = [
 // Cut / Delete in the action row are the tile operations.
 const nudgeable = (e: Editor): boolean => e.marqueeCount > 0
 const SELECT_DPAD: ToolbarButton[] = [
-    { action: 'nudgeSelUp', glyph: '▲', label: 'Up', row: 1, col: 2, when: nudgeable },
-    { action: 'nudgeSelLeft', glyph: '◀', label: 'Left', row: 2, col: 1, when: nudgeable },
-    { action: 'nudgeSelRight', glyph: '▶', label: 'Right', row: 2, col: 3, when: nudgeable },
-    { action: 'nudgeSelDown', glyph: '▼', label: 'Down', row: 3, col: 2, when: nudgeable },
+    {
+        action: 'nudgeSelUp',
+        glyph: '▲',
+        label: 'Up',
+        row: 1,
+        col: 2,
+        when: nudgeable,
+        keyAction: 'moveEntityUp',
+    },
+    {
+        action: 'nudgeSelLeft',
+        glyph: '◀',
+        label: 'Left',
+        row: 2,
+        col: 1,
+        when: nudgeable,
+        keyAction: 'moveEntityLeft',
+    },
+    {
+        action: 'nudgeSelRight',
+        glyph: '▶',
+        label: 'Right',
+        row: 2,
+        col: 3,
+        when: nudgeable,
+        keyAction: 'moveEntityRight',
+    },
+    {
+        action: 'nudgeSelDown',
+        glyph: '▼',
+        label: 'Down',
+        row: 3,
+        col: 2,
+        when: nudgeable,
+        keyAction: 'moveEntityDown',
+    },
 ]
 
 // SELECT action row: what to do with the held selection. Copy → paste ghost
-// (originals stay); Cut → ghost + remove originals; Delete → remove; Cancel →
-// drop the selection (any in-place nudges already applied persist). Nudging in
-// place via the d-pad is the wire-preserving alternative to cut/paste.
+// (originals stay); Cut → ghost + remove originals; Delete → remove; Rotate →
+// turn a *single* selected entity in place (group rotation about a pivot is
+// still #52, so it gates itself off for a multi-entity box); Cancel → drop the
+// selection (any in-place nudges already applied persist). Nudging in place via
+// the d-pad is the wire-preserving alternative to cut/paste.
+//
+// `keyAction` names the keybind each button mirrors (#101 Slice 3): the SELECT
+// cluster is shown to mouse users too now, and a floating toolbar that also
+// teaches the shortcut is how the on-screen driver and the keyboard driver stay
+// one feature rather than two.
 const SELECT_ACTIONS: ToolbarButton[] = [
-    { action: 'copyMarquee', glyph: '⧉', label: 'Copy' },
-    { action: 'cutMarquee', glyph: '✂', label: 'Cut' },
-    { action: 'deleteMarquee', glyph: '🗑', label: 'Delete', className: 'delete' },
-    { action: 'cancelMarquee', glyph: '✕', label: 'Cancel', className: 'cancel' },
+    { action: 'copyMarquee', glyph: '⧉', label: 'Copy', keyAction: 'copySelection' },
+    { action: 'cutMarquee', glyph: '✂', label: 'Cut', keyAction: 'cutSelection' },
+    {
+        action: 'deleteMarquee',
+        glyph: '🗑',
+        label: 'Delete',
+        className: 'delete',
+        keyAction: 'deleteSelection',
+    },
+    // Rotate is in the rail as well (universal since Slice 4), but it belongs to
+    // the cluster the design table puts it in: next to the selection is where
+    // the eye already is, and the anchored toolbar teaches its `R` beside Copy
+    // and Cut.
+    {
+        action: 'rotate',
+        glyph: '↻',
+        label: 'Rotate',
+        when: e => e.marqueeCount === 1,
+        keyAction: 'rotate',
+    },
+    {
+        action: 'cancelMarquee',
+        glyph: '✕',
+        label: 'Cancel',
+        className: 'cancel',
+        keyAction: 'closeWindow',
+    },
 ]
 
 // EDIT bar: shown when a single entity is selected (EDIT). Select → promote it to
@@ -239,6 +325,10 @@ const EDIT_ACTIONS: ToolbarButton[] = [
 const COARSE_CELL = 44
 const FINE_CELL = 34
 const MARGIN = 2 // sliver between the rail and the canvas
+/** Breathing room between the held selection and the toolbar anchored to it. */
+const ANCHOR_GAP = 8
+/** Keep the anchored toolbar this far inside the viewport when clamping. */
+const ANCHOR_EDGE = 8
 /** Widest the rail may grow, in cells — beyond this the ⋯ overflow takes over. */
 const MAX_COLUMNS = 3
 
@@ -330,6 +420,11 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
             label.textContent = spec.label
             button.appendChild(label)
         }
+        // Keybind badge, filled in by refreshHints(). Always in the DOM; CSS shows
+        // it only where it earns its space — the rail while it carries
+        // `.with-hints`, and the floating SELECT toolbar on a machine that has a
+        // keyboard (`body.keys`). In the bottom band — the thumb-driven
+        // placement — it stays hidden, so touch layout is untouched.
         const hint = document.createElement('span')
         hint.className = 'hint'
         button.appendChild(hint)
@@ -340,15 +435,17 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
      * Refresh the keybind badges from the registry. Read live rather than
      * cached: keybinds are user-editable in the settings pane's Keybinds folder,
      * and this runs on every layout pass (which a settings-driven reflow
-     * triggers anyway), so a rebind shows up without a reload. Buttons whose
-     * action isn't a registry action — the wire toggles, the marquee/selection
-     * handlers — simply have no combo and keep an empty badge.
+     * triggers anyway), so a rebind shows up without a reload. A button that
+     * mirrors a *different* registry action than the one it calls (the SELECT
+     * cluster's `copyMarquee` ↔ the `copySelection` key, see `keyAction`) is
+     * looked up by that; buttons whose action isn't a registry action at all —
+     * the wire toggles — simply have no combo and keep an empty badge.
      */
     const refreshHints = (targets: { spec: ToolbarButton; button: HTMLButtonElement }[]): void => {
         const combos = new Map<string, string>()
         EDITOR.forEachAction(action => combos.set(action.name, action.keyCombo))
         for (const { spec, button } of targets) {
-            const combo = combos.get(spec.action)
+            const combo = combos.get(spec.keyAction ?? spec.action)
             const hint = button.querySelector('.hint')
             if (hint) hint.textContent = combo ? formatKeyCombo(combo) : ''
             if (combo) button.setAttribute('aria-keyshortcuts', combo)
@@ -382,8 +479,9 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
     const makeCluster = (
         id: string,
         specs: ToolbarButton[],
-        withLabel: boolean
-    ): { el: HTMLElement; refresh: () => void } => {
+        withLabel: boolean,
+        parent: HTMLElement = document.body
+    ): { el: HTMLElement; refresh: () => void; refreshHints: () => void } => {
         const el = document.createElement('div')
         el.id = id
         const entries = specs.map(spec => {
@@ -392,33 +490,125 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
             el.appendChild(button)
             return { spec, button }
         })
-        document.body.appendChild(el)
+        parent.appendChild(el)
         const refresh = (): void => {
             for (const { spec, button } of entries) {
                 button.classList.toggle('gated-off', !!spec.when && !spec.when(editor))
             }
         }
-        return { el, refresh }
+        // Stamp the current keybinds onto the buttons that mirror one — the same
+        // badge + `aria-keyshortcuts` pass (and the same `keyCombo.ts` pretty
+        // form) as the rail, so a shortcut reads identically wherever it shows.
+        return { el, refresh, refreshHints: () => refreshHints(entries) }
     }
 
-    // Contextual bottom clusters, one shown at a time by mode (see updateContextual).
+    // The SELECT cluster's two parts (nudge d-pad + action row) live in one
+    // wrapper so the *floating* placement has a single box to measure, position
+    // and clamp. In the bottom-band placement the wrapper is `display: contents`
+    // and the two elements stay viewport-fixed exactly where they always were —
+    // same DOM ids, same CSS, so the touch specs are untouched (#101 Slice 3).
+    const selectFloat = document.createElement('div')
+    selectFloat.id = 'select-float'
+    document.body.appendChild(selectFloat)
+
+    // Contextual clusters, one editor mode at a time (see updateContextual).
     const paintDpad = makeCluster('paint-dpad', PAINT_DPAD, false)
-    const selectDpad = makeCluster('select-dpad', SELECT_DPAD, false)
-    const selectActions = makeCluster('select-actions', SELECT_ACTIONS, true)
+    const selectDpad = makeCluster('select-dpad', SELECT_DPAD, false, selectFloat)
+    const selectActions = makeCluster('select-actions', SELECT_ACTIONS, true, selectFloat)
     const editBar = makeCluster('edit-bar', EDIT_ACTIONS, true)
     const clusters = [paintDpad, selectDpad, selectActions, editBar]
 
+    /**
+     * Anchor the floating SELECT toolbar to the held selection: just below it,
+     * left edges aligned, flipped above when the bottom of the viewport is in
+     * the way and clamped so the whole thing stays on screen. Reads the
+     * selection's screen box from the editor (`marqueeScreenBounds`), so it
+     * tracks pan/zoom/nudge/drag without knowing anything about the world.
+     * No-op in the bottom-band placement, where CSS does the positioning.
+     */
+    const positionSelectFloat = (): void => {
+        if (!selectFloat.classList.contains('floating')) {
+            selectFloat.style.left = ''
+            selectFloat.style.top = ''
+            return
+        }
+        const b = editor.marqueeScreenBounds
+        if (!b) return
+        const w = selectFloat.offsetWidth
+        const h = selectFloat.offsetHeight
+        const below = b.y + b.height + ANCHOR_GAP
+        const above = b.y - h - ANCHOR_GAP
+        let y = below
+        if (below + h > window.innerHeight - ANCHOR_EDGE && above >= ANCHOR_EDGE) y = above
+        const clamp = (v: number, max: number): number =>
+            Math.min(Math.max(v, ANCHOR_EDGE), Math.max(ANCHOR_EDGE, max))
+        selectFloat.style.left = `${Math.round(clamp(b.x, window.innerWidth - ANCHOR_EDGE - w))}px`
+        selectFloat.style.top = `${Math.round(clamp(y, window.innerHeight - ANCHOR_EDGE - h))}px`
+    }
+
+    // The selection's screen box moves once per rendered frame while panning, so
+    // coalesce the re-anchor into an animation frame: one measure per frame, not
+    // one per event.
+    let anchorFrame = 0
+    const scheduleAnchor = (): void => {
+        if (anchorFrame) return
+        anchorFrame = requestAnimationFrame(() => {
+            anchorFrame = 0
+            positionSelectFloat()
+        })
+    }
+
+    /**
+     * Show the clusters that the *editor state* calls for, placed by the input
+     * signals — never by a device mode (#101 Slice 3).
+     *
+     * `touchDriven` is what gates the two touch-only helpers. The rule the design
+     * states is "`touchRecent` or no keyboard": a mouse user with a keyboard has
+     * hover, the wheel and the arrow keys, so the on-screen d-pad only appears
+     * once they actually touch the screen, and goes away on their next mouse
+     * move. `coarse` is folded in as well because on touch-first hardware the
+     * cluster is the *only* driver: pairing a Bluetooth keyboard (`keys`) or a
+     * stray mouse event must not take the buttons away mid-gesture.
+     */
     const updateContextual = (): void => {
-        const mobile = inputMode.mode === 'mobile'
+        const { coarse, keys, touchRecent } = inputMode.signals
+        const touchDriven = coarse || touchRecent || !keys
         const mode = editor.mode
         // Re-gate before showing: spawnPaintContainer re-emits PAINT on every
         // cursor swap, so an entity→tile switch lands here with the right cursor.
         for (const c of clusters) c.refresh()
-        paintDpad.el.classList.toggle('visible', mobile && mode === EditorMode.PAINT)
-        selectDpad.el.classList.toggle('visible', mobile && mode === EditorMode.SELECT)
-        selectActions.el.classList.toggle('visible', mobile && mode === EditorMode.SELECT)
-        editBar.el.classList.toggle('visible', mobile && mode === EditorMode.EDIT)
+        const selecting = mode === EditorMode.SELECT
+        paintDpad.el.classList.toggle('visible', mode === EditorMode.PAINT && touchDriven)
+        // The held selection is device-independent: whoever holds one gets the
+        // controls for it. Only the *placement* differs — bottom band for a
+        // thumb, anchored to the selection for a pointer.
+        selectDpad.el.classList.toggle('visible', selecting)
+        selectActions.el.classList.toggle('visible', selecting)
+        editBar.el.classList.toggle('visible', mode === EditorMode.EDIT && touchDriven)
+        selectFloat.classList.toggle('floating', selecting && !coarse)
+        if (selecting) {
+            selectDpad.refreshHints()
+            selectActions.refreshHints()
+        }
+        positionSelectFloat()
     }
+
+    // While a pointer is pressed anywhere *but* on the toolbar, the toolbar goes
+    // pointer-transparent. A left-drag inside a held selection moves the real
+    // entities (#101 Slice 2) and the anchored toolbar follows them down — if it
+    // slid under the cursor mid-drag it would start swallowing the pointermoves
+    // the canvas is tracking the drag with, and the selection would stop
+    // following the mouse. A press that starts *on* a button is a button press,
+    // so it keeps its events.
+    const dragThrough =
+        (on: boolean) =>
+        (e: PointerEvent): void => {
+            if (on && selectFloat.contains(e.target as Node)) return
+            selectFloat.classList.toggle('drag-through', on)
+        }
+    window.addEventListener('pointerdown', dragThrough(true), true)
+    window.addEventListener('pointerup', dragThrough(false), true)
+    window.addEventListener('pointercancel', dragThrough(false), true)
 
     moreBtn.addEventListener('click', () => overflow.classList.toggle('open'))
     // A tap outside the rail dismisses the overflow sheet.
@@ -532,11 +722,20 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
     layout()
     updateContextual()
     window.addEventListener('resize', layout)
-    // The rail re-lays out on any *signal* change now (`coarse` resizes the
-    // cells, `keys` adds the badges, `compact` changes what still fits), not
-    // just on the derived mode flip the contextual clusters still key off.
+    window.addEventListener('resize', scheduleAnchor)
+    // The rail re-lays out on any *signal* change (`coarse` resizes the cells,
+    // `keys` adds the badges, `compact` changes what still fits), not just on
+    // the derived mode flip.
     inputMode.on('signals', layout)
-    inputMode.on('change', updateContextual)
+    // Every signal flip also re-decides the clusters — `touchRecent` in
+    // particular fires on each pointer event whose kind changed, which is
+    // exactly the "appears the moment they touch the screen, hides on the next
+    // mouse move" behaviour the PAINT d-pad and the EDIT bar are supposed to
+    // have.
+    inputMode.on('signals', updateContextual)
+    // Keep the anchored toolbar glued to the selection as it is nudged, dragged,
+    // rotated, or panned/zoomed under.
+    editor.onSelectionChange(scheduleAnchor)
     // The top-left stack's height changes (mobile collapses it to square icons,
     // icons load async); re-anchor when it actually resizes, like settingsPane.
     const stack = document.getElementById('buttons')
