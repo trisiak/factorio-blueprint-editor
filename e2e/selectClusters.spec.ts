@@ -288,13 +288,18 @@ test.describe('SELECT cluster on a fine pointer (floating, anchored)', () => {
 
         // Pan with the keyboard (a mouse drag would land inside the selection
         // and move it instead — that is Slice 2's drag-to-move).
-        // WASD pans per rendered frame, so hold the key until the toolbar has
-        // moved rather than for a fixed time: on a slow renderer (CI's
-        // software-GL Firefox) a 300 ms tap can fall between two frames and pan
-        // nothing at all.
+        // WASD pans per rendered frame, so hold the key for a few *frames*
+        // rather than a fixed time: on a slow renderer (CI's software-GL
+        // Firefox) a 300 ms tap can fall between two frames and pan nothing,
+        // while holding until the toolbar moves overshoots — the selection
+        // leaves the screen and the toolbar clamps to the edge. Three frames is
+        // a bounded pan either way (the ticker caps a frame's step at 100 ms).
         await page.keyboard.down('KeyD')
-        await expect.poll(async () => (await boxOf(float(page))).x).not.toBe(before.x)
+        await page.evaluate(async () => {
+            for (let i = 0; i < 3; i++) await new Promise(r => requestAnimationFrame(r))
+        })
         await page.keyboard.up('KeyD')
+        await expect.poll(async () => (await boxOf(float(page))).x).not.toBe(before.x)
         // ...and it is still glued to the selection's box once the camera stops.
         // Polled: the toolbar re-anchors on the next animation frame, so a read
         // taken mid-pan can trail the selection by a frame's worth of scroll.
