@@ -139,6 +139,12 @@ test('blueprint swaps do not leak GPU textures', async ({ page }) => {
         test.info().project.name !== 'desktop-chromium',
         'library DOM flows run on the desktop project only'
     )
+    // Eleven library round-trips on CI's software-GL Chromium overrun the 60 s
+    // default: each open costs ~5-7 s there (the panel click alone waits 2-4 s
+    // for the canvas-heavy page to settle), so the loop reliably ran out of
+    // budget on its last open with nothing actually stuck. Triple it rather
+    // than cut swaps — the cycle count is what makes a slow leak visible.
+    test.slow()
 
     await page.goto('/?test')
     await waitForReady(page)
