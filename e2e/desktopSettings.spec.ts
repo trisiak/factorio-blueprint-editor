@@ -70,11 +70,12 @@ async function canvasOrigin(page: Page): Promise<{ x: number; y: number }> {
 const SOURCE = 'assembling-machine-1'
 const TARGET = 'assembling-machine-2'
 
-// Both points are canvas, not DOM: the settings pane's controls overlay the
-// left edge out to ~x=310 (a click there hits its <select>, never the editor),
-// and the quickbar/wires panels sit along the bottom.
-const A = { x: 340, y: 360 }
-const B = { x: 560, y: 360 }
+// Both points are canvas, not DOM: the left column (rail) and the settings pane
+// anchored beside it reach ~356px on desktop since the pane steps right of the
+// rail (#101 Slice 4) — a click there hits its <select>, never the editor — and
+// the quickbar/wires panels sit along the bottom.
+const A = { x: 500, y: 360 }
+const B = { x: 720, y: 360 }
 
 /** Hold quickbar slot `key` and left-click at `at` to build there. */
 async function build(page: Page, key: string, at: { x: number; y: number }): Promise<void> {
