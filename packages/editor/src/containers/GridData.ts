@@ -1,6 +1,11 @@
 import EventEmitter from 'eventemitter3'
 import { EditorMode, BlueprintContainer } from './BlueprintContainer'
-import { inputMode } from '../common/input'
+import { acceptsPointerType, inputMode, isMousePipeline } from '../common/input'
+
+/** An element the user presses (or is inside one), i.e. chrome that acts rather than informs. */
+const isControl = (target: EventTarget | null): boolean =>
+    target instanceof Element &&
+    target.closest('button, a[href], input, select, textarea, [role="button"]') !== null
 
 export interface GridDataEvents {
     destroy: []
@@ -26,16 +31,54 @@ export class GridData extends EventEmitter<GridDataEvents> {
         super()
         this.bpc = bpc
 
-        const onMouseMove = (e: MouseEvent): void => {
-            // On touch the grid cursor is placed explicitly by taps (`moveTo`),
-            // not by pointer movement. If we tracked moves here too, dragging to
-            // pan (or the synthetic mouse events a tap emits) would drag the paint
-            // ghost along with the finger instead of leaving it pinned to its tile.
-            if (inputMode.mode === 'mobile') return
+        // Whether the mouse button currently down was pressed on the play area:
+        // a drag that starts on the canvas is aiming at tiles from end to end,
+        // whatever DOM it crosses on the way. Capture phase, so nothing below
+        // can swallow the press before it is seen.
+        let pressedOnCanvas = false
+        const onPointerDown = (e: PointerEvent): void => {
+            if (!isMousePipeline(e.pointerType)) return
+            pressedOnCanvas = e.target instanceof HTMLCanvasElement
+        }
+
+        const onMouseMove = (e: PointerEvent): void => {
+            // Touch places the grid cursor explicitly, by tap (`moveTo`), not by
+            // pointer movement: tracking touch moves here would drag the paint
+            // ghost along with a finger that only meant to pan, instead of leaving
+            // it pinned to its tile. Decided per *event* (#101 Slice 1), so on a
+            // hybrid the mouse keeps steering the cursor even after a tap — and a
+            // forced preset still filters the pointer out entirely.
+            if (!acceptsPointerType(inputMode.preset, e.pointerType)) return
+            if (!isMousePipeline(e.pointerType)) return
+            // Off the canvas — over the DOM chrome: the action rail, the on-screen
+            // clusters, a toast — a mouse is usually not aiming at a tile, and
+            // letting it re-derive the cursor would yank a ghost that a tap had
+            // just parked away to wherever the button happens to sit. Buttons that
+            // act on the held cursor (nudge, Place, Erase, Select) would then act
+            // on the wrong tile. So a control never moves the cursor, and the rest
+            // of the chrome doesn't while there is a held cursor to protect (a
+            // paint ghost, a held selection). Two things still track everywhere,
+            // as they always did: a drag that began on the canvas (the listener is
+            // on `window`, so a Ctrl-drag box ending over a toast still reaches
+            // its corner, and a selection dragged under its own anchored toolbar
+            // keeps moving), and a plain move onto passive chrome with nothing
+            // held, so leaving a hovered entity for a toast ends the hover
+            // instead of pinning it there.
+            const dragFromCanvas = e.buttons !== 0 && pressedOnCanvas
+            if (!(e.target instanceof HTMLCanvasElement) && !dragFromCanvas) {
+                if (isControl(e.target)) return
+                if (this.bpc.mode === EditorMode.PAINT || this.bpc.mode === EditorMode.SELECT) {
+                    return
+                }
+            }
             this.update(e.clientX, e.clientY)
         }
+        window.addEventListener('pointerdown', onPointerDown, true)
         window.addEventListener('pointermove', onMouseMove)
-        this.on('destroy', () => window.removeEventListener('pointermove', onMouseMove))
+        this.on('destroy', () => {
+            window.removeEventListener('pointerdown', onPointerDown, true)
+            window.removeEventListener('pointermove', onMouseMove)
+        })
     }
 
     /** mouse x */

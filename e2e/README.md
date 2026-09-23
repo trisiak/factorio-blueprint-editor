@@ -107,14 +107,27 @@ regression; run those on a box with more headroom (or lean on CI, which shards).
 
 ## Projects
 
-Three projects; the desktop specs run on both desktop browsers, the touch specs
-on the mobile one:
+Four projects; the desktop specs run on both desktop browsers, the touch specs
+on the mobile one, and the hybrid project runs only the specs it's scoped to:
 
-| Project            | Device          | Capabilities          | Runs                                    |
-| ------------------ | --------------- | --------------------- | --------------------------------------- |
-| `desktop-chromium` | Desktop Chrome  | mouse + keyboard      | the desktop suite                       |
-| `desktop-firefox`  | Desktop Firefox | mouse + keyboard      | the desktop suite (when Firefox exists) |
-| `mobile-chromium`  | Pixel 7         | `isMobile + hasTouch` | the touch suite                         |
+| Project            | Device           | Capabilities                     | Runs                                    |
+| ------------------ | ---------------- | -------------------------------- | --------------------------------------- |
+| `desktop-chromium` | Desktop Chrome   | mouse + keyboard                 | the desktop suite                       |
+| `desktop-firefox`  | Desktop Firefox  | mouse + keyboard                 | the desktop suite (when Firefox exists) |
+| `mobile-chromium`  | Pixel 7          | `isMobile + hasTouch`            | the touch suite                         |
+| `hybrid-chromium`  | Desktop 1280×720 | mouse **and** touch (`hasTouch`) | `hybridInput.spec.ts` only              |
+
+`hybrid-chromium` is the touchscreen-laptop case (#101 Slice 1): mouse and touch
+on the same page, exercising the per-pointer dispatch and the input signals. It's
+scoped with `testMatch` — the rest of the suite is already covered by the other
+projects, and a render-bound suite shouldn't run a third time for no signal.
+Because it sets `hasTouch`, the `e2e/projects.ts` helpers class it as a _touch_
+project, so its specs guard their hybrid-only cases by project name. CI selects
+the chromium projects explicitly (Firefox has its own job), so a new chromium
+project must also be added to `.github/workflows/ci.yml`. Note that Chromium
+reports `(pointer: coarse)` whenever touch emulation is on, so the _fine-pointer_
+half of the hybrid case is produced by stubbing `matchMedia` at boot (see the
+spec) rather than by device emulation.
 
 Run just one:
 
@@ -283,7 +296,8 @@ can't query on-canvas UI (the quickbar, wires panel, paint ghost, …) through t
 DOM. Loading the page with **`?test`** installs `window.__FBE_TEST__`, whose
 `getState()` returns a read-only `EditorTestState` snapshot (CSS px), exposing:
 
-- `inputMode`, `screen` size, `dialogOpen`
+- `inputMode` (the derived compatibility mode), `signals` + `inputPreset` (#101
+  Slice 1), `screen` size, `dialogOpen`, `viewportScale`
 - `quickbar` / `wires` bounds + visibility (and the quickbar's fit scale)
 - `blueprint.entityCount` — what got placed
 - `paint` — the held ghost's `active`/`visible`/`tile`/`direction`

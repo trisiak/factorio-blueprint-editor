@@ -41,10 +41,11 @@ exporter is a separate Rust tool and is **not** a JS workspace.
 - `packages/editor/` (`@fbe/editor`) — the editor engine. No build step; the
   website imports its TypeScript source directly.
     - `src/Editor.ts` — top-level wiring.
-    - `src/common/input.ts` — the `inputMode` controller (`desktop` vs `mobile`),
-      the source of truth for the explicit-input-mode architecture.
+    - `src/common/input.ts` — the `inputMode` controller: the live input
+      **signals** (`coarse` / `keys` / `compact` / `touchRecent`) plus the
+      `auto`/`mouse`/`touch` preset, and the derived legacy `mode` (#101 Slice 1).
     - `src/containers/` — PixiJS scene graph. `BlueprintContainer.ts` dispatches
-      pointer events per input mode; `PointerGestures.ts` is the framework-free
+      pointer events per event `pointerType` (mouse/pen vs touch); `PointerGestures.ts` is the framework-free
       pinch/pan recognizer (unit-tested in `PointerGestures.test.ts`); `Paint*` are
       the place/preview containers; `Viewport.ts` is pan/zoom.
     - `src/core/` — framework-free domain logic: `Blueprint`, `Book`, `Entity`,
@@ -56,7 +57,7 @@ exporter is a separate Rust tool and is **not** a JS workspace.
       slice — see `docs/mobile-controls.md`.
 - `packages/website/` (`@fbe/website`) — the deployable Vite app that hosts the
   editor. `src/index.ts` (boot + the mobile gate / `?desktopOnly`),
-  `settingsPane.ts` (settings UI incl. the Input Mode toggle and the Data Pack
+  `settingsPane.ts` (settings UI incl. the Input preset and the Data Pack
   selector), `toasts.ts`.
 - `packages/exporter/` — **Rust** CLI that pulls Factorio's data + sprites and
   builds the atlas/data the editor consumes. Needs Factorio credentials; you
@@ -139,16 +140,20 @@ Before declaring a change done, run the relevant subset of:
   canary for it. No exporter/:8081 needed. On a sandboxed host where outbound
   HTTPS goes through an agent proxy, the config routes Chromium's `https=` traffic
   through `HTTPS_PROXY` (never on CI, whose network is direct) and honours
-  `PLAYWRIGHT_CHROMIUM_PATH` / `PLAYWRIGHT_FIREFOX_PATH`. Three projects:
-  `desktop-chromium`, `desktop-firefox` and `mobile-chromium` (Pixel 7 →
-  `isMobile + hasTouch`). The desktop specs run on both desktop browsers —
-  guards key off capabilities via the `e2e/projects.ts` helpers
-  (`isDesktopProject` / `isTouchProject` / `isChromiumProject`), not a browser
-  name. `desktop-firefox` is included only when a Firefox is actually runnable
-  (CI, `PLAYWRIGHT_FIREFOX_PATH`, or a `firefox-*` build in the browser cache),
-  so it self-omits in the Chromium-only sandbox; see `e2e/README.md` and #103.
-  Playwright's high-level `touchscreen` API is **single-touch**; multi-touch
-  (pinch) requires raw CDP `Input.dispatchTouchEvent`, which is Chromium-only.
+  `PLAYWRIGHT_CHROMIUM_PATH` / `PLAYWRIGHT_FIREFOX_PATH`. Four projects:
+  `desktop-chromium`, `desktop-firefox`, `mobile-chromium` (Pixel 7 →
+  `isMobile + hasTouch`) and `hybrid-chromium` (desktop viewport + `hasTouch`,
+  mouse _and_ touch on one page; scoped by `testMatch` to the specs that need
+  both drivers). The desktop specs run on both desktop browsers — guards key off
+  capabilities via the `e2e/projects.ts` helpers (`isDesktopProject` /
+  `isTouchProject` / `isChromiumProject`), not a browser name; the hybrid
+  project has `hasTouch`, so it reads as a touch project to those helpers and
+  its own specs guard by name. `desktop-firefox` is included only when a Firefox
+  is actually runnable (CI, `PLAYWRIGHT_FIREFOX_PATH`, or a `firefox-*` build in
+  the browser cache), so it self-omits in the Chromium-only sandbox; see
+  `e2e/README.md` and #103. Playwright's high-level `touchscreen` API is
+  **single-touch**; multi-touch (pinch) requires raw CDP
+  `Input.dispatchTouchEvent`, which is Chromium-only.
 
 ## Conventions
 
@@ -160,9 +165,12 @@ Before declaring a change done, run the relevant subset of:
   controls under `src/UI/`.
 - Cross-package imports use the `@fbe/*` alias (resolves to each package's
   `src/index.ts`).
-- The `desktop`/`mobile` input modes are **mutually exclusive on purpose**
-  (running both pipelines caused double-acting taps via synthetic mouse events).
-  Don't blur that boundary — route through `input.ts`.
+- Input is dispatched **per pointer event**, by its own `pointerType` — there is
+  no global desktop/mobile switch any more (#101 Slice 1). Double-acting taps are
+  prevented at the source (`touch-action: none` + `preventDefault()` on a touch
+  `pointerdown`, which suppresses the browser's compatibility mouse events), not
+  by muting a whole pipeline. Environment gating goes through `input.ts`'s
+  signals; `inputMode.mode` is a derived compatibility value on its way out.
 
 ## Working agreements for agents
 
