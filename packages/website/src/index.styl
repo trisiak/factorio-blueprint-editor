@@ -80,8 +80,10 @@ html
             animation-fill-mode: forwards
             animation-iteration-count: 1
 
-// Logo badge / info toggle (tap to open the INFO panel). The "Press I" hint was
-// dropped to reclaim height; the logo stays and remains the toggle.
+// Logo badge / info toggle (click/tap to open the INFO panel). The "Press I for
+// info" hint is desktop-only (#101 A9): a mouse user has no other cue that the
+// panel exists, while on touch there is no `I` to press and the height is
+// needed by the rail — body.mobile hides it below.
 #corner-panel
     z-index: 5
     position: fixed
@@ -92,6 +94,7 @@ html
     align-items: center
     justify-content: center
     background-color: #303030
+    gap: 8px
     padding: 6px 10px
     height: 52px
     border-color: #888
@@ -102,6 +105,11 @@ html
         width: auto
     span
         color: white
+    .info-hint
+        font-family: 'Titillium Web', sans-serif
+        font-size: 15px
+        letter-spacing: 0.6px
+        white-space: nowrap
 
 .loadingWheel
     width: 60px
@@ -147,6 +155,10 @@ html
 // input mode (see settingsPane.ts), not a media query, so it tracks the user's
 // explicit desktop/mobile choice rather than just the device.
 body.mobile
+    // No keyboard to press `I` on, and the rail needs the room.
+    #corner-panel .info-hint
+        display: none
+
     .dg.main
         width: unquote('min(360px, 100vw) !important')
     .dg
@@ -171,107 +183,56 @@ body.mobile
                 width: 22px
                 height: 22px
 
-    // Fold the corner buttons (Github / Settings / Library) into one 3-wide
-    // row of flush dark squares directly under the logo — a single 44px row
-    // instead of the old three-tall stack, so the non-action chrome costs
-    // almost no vertical space and the rail starts right below the logo band.
-    // (It's wider than the portrait rail column below, like the logo is —
-    // chrome floats over the full-bleed world, so nothing collides.)
-    #buttons
-        top: 52px
-        display: grid
-        grid-template-columns: repeat(3, 44px)
-        .github-button
-        .settings-button
-            display: flex
-            align-items: center
-            justify-content: center
-            width: 44px
-            height: 44px
-            padding: 0
-            border-left: 0
-            border-radius: 0
-            background: #3a3a3a
-            transform: none
-            &:hover
-            &:active
-            &:focus
-                transform: none
-                filter: brightness(1.15)
-            span
-                display: none
-            img
-                position: static
-                top: auto
-                left: auto
-                transform: none
-                width: 24px
-                height: 24px
-
 #editor
     position: fixed
     outline: none
 
+// Top-left column chrome: the logo band and, directly under it, the corner
+// buttons (Github / Settings / Library) folded into one 3-wide row of flush dark
+// squares — the head of the action rail's column. This *was* the mobile fold;
+// since #101 Slice 4 the rail is universal, so the fold is too and desktop's old
+// three-tall stack of labelled rows (which cost height and clashed with the
+// settings pane anchored under it) is gone. Cell size follows `--rail-cell`,
+// published by actionToolbar.ts from the `coarse` signal, so the chrome and the
+// rail below it are one column of exactly one width.
 #buttons
     position: absolute
     z-index: 5
-    top: 56px
+    top: 52px
     left: 0
+    display: grid
+    grid-template-columns: repeat(3, var(--rail-cell, 44px))
     a
     button
-        position: relative
-        height: 35px
-        display: block
-        border-bottom-right-radius: 5px
-        padding: 4px 8px
+        display: flex
+        align-items: center
+        justify-content: center
+        width: var(--rail-cell, 44px)
+        height: var(--rail-cell, 44px)
+        padding: 0
+        border: none
+        border-radius: 0
+        background: #3a3a3a
         color: #ffffff
         font-family: 'Titillium Web', sans-serif
-        font-size: 18px
-        letter-spacing: 0.6px
-        line-height: 30px
         text-decoration: none
-
-        span
-            position: absolute
-            // pinned explicitly (not via static position) so it lands the same in
-            // an <a> and a <button> — the latter centers its content differently
-            top: 50%
-            left: 25px
-            transform: translateY(-50%)
-
-        img
-            position: absolute
-            top: 0
-            left: 17px
-            transform: translateX(-50%)
-            width: 22px
-            height: 100%
-
-        transition: 0.3s all linear
-        transform: translateX(-5px)
+        cursor: pointer
+        outline: none
         &:hover
         &:active
         &:focus
-            transform: translateX(0)
-
-    .github-button
-        width: 105px
-        border-left: 5px solid #31383f
-        background-color: #31383f
+            filter: brightness(1.15)
+        // The captions are dropped in the fold — the icon carries the meaning
+        // and each control keeps a `title`/`aria-label` (index.html) for
+        // hover text and assistive tech.
+        span:not(.lib-icon)
+            display: none
         img
-            width: 20px
-
-    .settings-button
-        width: 110px
-        border-left: 5px solid #8a8a8a
-        background-color: #43464b
-        cursor: pointer
-        outline: none
-        img
-            width: 20px
-            height: auto
-            top: 50%
-            transform: translate(-50%, -50%)
+            width: 22px
+            height: 22px
+        .lib-icon
+            font-size: 18px
+            line-height: 1
 
 #info-panel
     display: none
@@ -343,52 +304,6 @@ body.mobile
     &:active
         background-color: rgba(255, 255, 255, 0.1)
 
-// Library button in the top-left stack. Sits below Settings; styled to match it.
-// Its label uses the generic `#buttons button span` positioning (left: 25px); the
-// glyph is nudged to the icon column (left: 17px) where the others put their img.
-#buttons
-    .library-button
-        width: 110px
-        border-left: 5px solid #8a8a8a
-        background-color: #43464b
-        cursor: pointer
-        outline: none
-        .lib-icon
-            position: absolute
-            top: 50%
-            left: 17px
-            transform: translate(-50%, -50%)
-            font-size: 18px
-            line-height: 1
-
-// Mobile fold: square dark icon button, continuous with the action rail (mirrors
-// the Github/Settings treatment), showing only the glyph.
-body.mobile
-    #buttons
-        .library-button
-            display: flex
-            align-items: center
-            justify-content: center
-            width: 44px
-            height: 44px
-            padding: 0
-            border-left: 0
-            border-radius: 0
-            background: #3a3a3a
-            transform: none
-            &:hover
-            &:active
-            &:focus
-                transform: none
-                filter: brightness(1.15)
-            span:not(.lib-icon)
-                display: none
-            .lib-icon
-                position: static
-                top: auto
-                left: auto
-                transform: none
-
 // Active-project indicator: a small pill, top-centre, showing the working
 // blueprint's name. Click to open the library. Stays clear of the top-left stack.
 #active-project
@@ -417,23 +332,44 @@ body.mobile
         color: #ffe6c0
         margin-right: 6px
 
-// Entity-info bottom sheet (#89 Phase 2) — the mobile presentation of the
-// entity info panel (entityInfoSheet.ts). Floats over the full-bleed canvas.
-// Portrait: a full-width band at the **top** (below the reserved chrome band) —
-// the sheet appears on every tap-select, and in portrait the active, reachable
-// area is the bottom of the screen, so the passive readout stays out of it
-// (and clear of the EDIT Select/Edit bar, which always co-occurs with it).
-// Landscape: a bottom-right drawer, complementing the rates drawer. Below the
-// contextual clusters (z21) so their buttons win if they ever overlap.
+// The two passive status readouts (#101 Slice 5) — the entity-info sheet
+// (entityInfoSheet.ts) and the production-rates drawer (ratesDrawer.ts). Both
+// are DOM for **every** input now that the Pixi panels they mirrored are
+// retired, so what decides their placement is the `compact` signal and
+// orientation, never a device mode.
+//
+// Wide: they take **opposite corners of the right edge** — the passive sheet
+// top-right, the toggled rates drawer bottom-right. They used to stack in a
+// shared flex column (info above, rates below, as the canvas panels did), which
+// coupled the drawer's position to the sheet's height: the sheet appears and
+// clears on *every* hover, so the drawer jumped away under a mouse aiming for
+// it (#101 Slice 5 review). Two independent fixed boxes can't do that. The
+// drawer clears the quickbar's reserved band (`--fbe-bottom-band`, published by
+// quickbar.ts — the band's height follows the `coarse` cell size, so reading it
+// beats hard-coding the arithmetic here) and grows into whatever vertical space
+// is left rather than stopping at half the viewport: on a tall screen a
+// rates-heavy blueprint should just be *readable*, not scrolled.
+//
+// They can therefore overlap when both are content-rich; the sheet ranks above
+// (z16 vs z15) because it is the transient one you are actively pointing at.
+//
+// Both scroll with `overscroll-behavior: contain` so a scroll that reaches
+// their end doesn't chain to the page — the other half of the wheel fix, whose
+// timing half is `wheelGuard` (a scrolled overlay owns the wheel for 300 ms, so
+// an inertial tail can't zoom the canvas after the pointer leaves).
 #entity-info-sheet
     display: none
     position: fixed
-    z-index: 15
-    left: 54px
-    right: 8px
+    z-index: 16
     top: 60px
-    max-height: 40vh
+    right: 8px
+    width: unquote('min(320px, 34vw)')
+    // Grown from the stack's 40vh — the sheet no longer has to leave room for
+    // the drawer below it — but still bounded well short of the full column, so
+    // a verbose entity doesn't routinely bury the drawer it now overlaps.
+    max-height: unquote('calc(60dvh - 68px)')
     overflow-y: auto
+    overscroll-behavior: contain
     padding: 10px 14px
     color: #eee
     font-size: 13px
@@ -442,16 +378,6 @@ body.mobile
     border-radius: 10px
     &.visible
         display: block
-    // Landscape: a bottom-right drawer — the top-right is the rates drawer's
-    // spot, so the two can be open at once (mirroring the desktop right-edge
-    // stack: info above, rates below).
-    @media (orientation: landscape)
-        left: auto
-        right: 8px
-        top: auto
-        bottom: 8px
-        width: 300px
-        max-height: unquote('calc(50vh - 16px)')
     .eis-name
         font-weight: 600
         font-size: 15px
@@ -471,22 +397,35 @@ body.mobile
         display: inline-flex
         align-items: center
         gap: 3px
+    // Circuit-network id badges, coloured like the game's wires.
+    .eis-net
+        min-width: 18px
+        padding: 0 4px
+        color: #1c1c1c
+        font-weight: 600
+        font-size: 11px
+        text-align: center
+        border-radius: 9px
+    .eis-net-red
+        background: #f28b82
+    .eis-net-green
+        background: #a5d6a7
 
-// Production-rates drawer (#89 Phase 2) — the mobile presentation of the rates
-// readout (ratesDrawer.ts). Portrait: bottom-right, in the reachable band —
-// it's an explicitly toggled overview the user interacts with (scroll, ✕),
-// unlike the passive tap-select sheet at the top; the bottom offset budgets
-// for the contextual clusters it can share the band with. Landscape:
-// top-right, complementing the sheet (bottom-right) like the desktop stack.
 #rates-drawer
     display: none
     position: fixed
     z-index: 15
-    bottom: 96px
     right: 8px
-    width: unquote('min(300px, 70vw)')
-    max-height: unquote('calc(50vh - 40px)')
+    // Above the quickbar band, with a small gap; 56px is the fallback for the
+    // first paint, before quickbar.ts has measured itself.
+    bottom: unquote('calc(var(--fbe-bottom-band, 56px) + 8px)')
+    width: unquote('min(320px, 34vw)')
+    // All the room between the top chrome band and that bottom offset. The old
+    // `min(50vh, 420px)` cap made a tall screen scroll a drawer that would
+    // otherwise have fit (#101 Slice 5 review); beyond this it still scrolls.
+    max-height: unquote('calc(100dvh - 60px - var(--fbe-bottom-band, 56px) - 24px)')
     overflow-y: auto
+    overscroll-behavior: contain
     padding: 8px 12px 10px
     color: #eee
     font-size: 13px
@@ -495,9 +434,6 @@ body.mobile
     border-radius: 10px
     &.visible
         display: block
-    @media (orientation: landscape)
-        bottom: auto
-        top: 60px
     .rd-header
         display: flex
         align-items: center
@@ -544,16 +480,278 @@ body.mobile
         color: #b5b5b5
         font-size: 12px
 
-// Layering contract (#89): while any Pixi dialog is open (entity editor,
-// inventory — the editor mirrors the count over `fbe:dialogs`, see index.ts),
-// the passive DOM readouts yield — the browser composites DOM above the
-// canvas, so this is the only way a canvas dialog can win the surface. The
-// `body` element in the selector out-ranks `#….visible`, and the readouts'
-// own state is untouched, so they restore themselves when the dialog closes.
+// Compact placements — the touch layout the sheets were designed for, kept
+// verbatim and now reached by viewport rather than by input mode.
+// Entity info, portrait: a full-width band at the **top** (below the reserved
+// chrome band) — it appears on every tap-select, and in portrait the active,
+// reachable area is the bottom of the screen, so the passive readout stays out
+// of it (and clear of the EDIT Select/Edit bar, which always co-occurs with
+// it). Landscape: a bottom-right drawer, complementing the rates one.
+// Rates, portrait: bottom-right, in the reachable band — an explicitly toggled
+// overview the user scrolls and dismisses; the bottom offset budgets for the
+// contextual clusters it can share the band with. Landscape: top-right.
+// Both sit below the clusters (z21) so their buttons win on any overlap.
+body.compact
+    #entity-info-sheet
+        position: fixed
+        z-index: 15
+        left: 54px
+        right: 8px
+        top: 60px
+        // left+right span the band, so the wide layout's fixed width must go.
+        width: auto
+        max-height: 40vh
+        @media (orientation: landscape)
+            left: auto
+            right: 8px
+            top: auto
+            bottom: 8px
+            width: 300px
+            max-height: unquote('calc(50vh - 16px)')
+    #rates-drawer
+        position: fixed
+        z-index: 15
+        bottom: 96px
+        right: 8px
+        width: unquote('min(300px, 70vw)')
+        max-height: unquote('calc(50vh - 40px)')
+        @media (orientation: landscape)
+            bottom: auto
+            top: 60px
+
+// Layering contract (#89): while any dialog is open — Pixi (the editor
+// mirrors the count over `fbe:dialogs`) or DOM (#98, registered with
+// dialogs/dialogLayer.ts, which owns this class and ORs both sources) — the
+// passive DOM readouts yield; for canvas dialogs that's the only way to win
+// the surface, since the browser composites DOM above the canvas. The `body`
+// element in the selector out-ranks `#….visible`, and the readouts' own state
+// is untouched, so they restore themselves when the dialog closes.
 body.fbe-dialog-open
     #entity-info-sheet,
     #rates-drawer
         display: none
+
+// DOM dialog shell (#98 Slice 0, dialogs/shell.ts) — the modal tier of the
+// layering contract, in the browser's own stacking order: above the readouts
+// (z15) and the contextual clusters (z21), below the library panel (z100) and
+// toasts. Visual language matches the library panel (the resident DOM modal).
+.fbe-dialog-backdrop
+    position: fixed
+    inset: 0
+    z-index: 90
+    background: rgba(0, 0, 0, 0.45)
+    display: flex
+    align-items: center
+    justify-content: center
+
+.fbe-dialog
+    display: flex
+    flex-direction: column
+    width: unquote('min(480px, 96vw)')
+    max-height: unquote('calc(100dvh - 24px)')
+    color: white
+    background-color: #303030
+    border: 1px solid #888
+    border-radius: 10px
+    overflow: hidden
+
+.fbe-dialog-header
+    display: flex
+    align-items: center
+    justify-content: space-between
+    padding: 6px 8px 6px 14px
+    border-bottom: 1px solid #555
+    flex: none
+    .fbe-dialog-title
+        color: #ffe6c0
+        font-size: 1.15em
+        font-weight: 500
+    .fbe-dialog-close
+        width: 36px
+        height: 36px
+        padding: 0
+        color: #ddd
+        font-size: 16px
+        background: transparent
+        border: 0
+        border-radius: 6px
+        cursor: pointer
+        &:hover
+        &:active
+            background: rgba(255, 255, 255, 0.1)
+
+.fbe-dialog-body
+    display: flex
+    flex-direction: column
+    flex: 1 // fill the panel, so a bottom bar pins to the bottom (thumb reach)
+    min-height: 0 // let the grid's own scroll engage instead of overflowing
+
+// The DOM item picker (#98, dialogs/itemPicker.ts) — the shared grid behind
+// the main-inventory selector and the editors' filtered recipe/module pickers.
+.item-picker
+    height: unquote('min(640px, calc(100dvh - 24px))')
+    .is-search
+        margin: 8px 10px 0
+        padding: 8px 10px
+        color: #eee
+        font-size: 14px
+        background: #262626
+        border: 1px solid #666
+        border-radius: 6px
+        outline: none
+        &:focus
+            border-color: #ff9f1c
+    .is-tabs
+        display: flex
+        gap: 4px
+        padding: 8px 10px
+        overflow-x: auto
+        flex: none
+    .is-tab
+        flex: none
+        padding: 6px 10px
+        color: #ddd
+        font-size: 13px
+        background: #3d3d3d
+        border: 1px solid #555
+        border-radius: 6px
+        cursor: pointer
+        &.active
+            color: #111
+            background: #ffe6c0
+            border-color: #ffe6c0
+    .is-grid
+        flex: 1
+        min-height: 0
+        overflow-y: auto
+        padding: 4px 10px 8px
+    .is-row
+        display: flex
+        flex-wrap: wrap
+        gap: 4px
+        margin-bottom: 6px
+    .is-cell
+        width: 44px
+        height: 44px
+        display: flex
+        align-items: center
+        justify-content: center
+        padding: 0
+        color: #ccc
+        font-size: 9px
+        overflow: hidden
+        background: #3d3d3d
+        border: 1px solid #555
+        border-radius: 6px
+        cursor: pointer
+        &.active
+            background: #5a4a2a
+            border-color: #ff9f1c
+    .is-section
+        margin: 6px 0 4px
+        font-size: 12px
+        font-weight: bold
+        &.is-recent
+            color: #ffffff
+        &.is-quickbar
+            color: #8fd0ff
+        &.is-onbp
+            color: #ffcf8f
+    .is-empty
+        margin: 12px 4px
+        color: #b5b5b5
+        font-size: 13px
+    .is-footer
+        display: flex
+        align-items: center
+        gap: 8px
+        padding: 8px 10px
+        border-top: 1px solid #555
+        flex: none
+        min-height: 52px
+        &:empty
+            display: none
+        // Preview area (icon + name + Pin + ✓), filled on tap; the persistent
+        // ✕ Clear/Cancel escape hatch sits to its left when the picker was
+        // opened from a slot.
+        .is-preview
+            display: flex
+            align-items: center
+            gap: 8px
+            flex: 1
+            min-width: 0
+        .is-footer-icon
+            flex: none
+        .is-footer-name
+            flex: 1
+            min-width: 0
+            overflow: hidden
+            text-overflow: ellipsis
+            white-space: nowrap
+            font-size: 14px
+        .is-pin,
+        .is-confirm,
+        .is-clear
+            flex: none
+            padding: 8px 14px
+            color: #fff
+            font-size: 13px
+            border: 0
+            border-radius: 6px
+            cursor: pointer
+        .is-pin
+            background: #2a5a7a
+        .is-confirm
+            background: #2f7d32
+        .is-clear
+            background: #6b3636
+
+// The DOM entity editor (#98 Slice 2, dialogs/entityEditor.ts) — the mobile
+// presentation of the migrated editor kinds (machines so far). Same slot cell
+// language as the picker grid; the hint line mirrors the Pixi editors' footer
+// band.
+.entity-editor
+    .ee-icon
+        flex: none
+        margin-right: 8px
+    .fbe-dialog-title
+        flex: 1
+        min-width: 0
+        overflow: hidden
+        text-overflow: ellipsis
+        white-space: nowrap
+    .ee-row
+        display: flex
+        align-items: center
+        gap: 10px
+        padding: 8px 14px
+    .ee-label
+        min-width: 72px
+        color: #ffe6c0
+        font-size: 14px
+    .ee-slots
+        display: flex
+        flex-wrap: wrap
+        gap: 4px
+    .ee-slot
+        width: 44px
+        height: 44px
+        display: flex
+        align-items: center
+        justify-content: center
+        padding: 0
+        color: #ccc
+        font-size: 9px
+        overflow: hidden
+        background: #3d3d3d
+        border: 1px solid #555
+        border-radius: 6px
+        cursor: pointer
+        touch-action: none // so a hold isn't hijacked by scroll before it clears
+    .ee-hint
+        padding: 4px 14px 10px
+        color: #b5b5b5
+        font-size: 12px
 
 // Library panel — DOM overlay (like #info-panel) listing the active pack's tree.
 #library-panel
@@ -1017,11 +1215,17 @@ body.fbe-dialog-open
     to
         transform: translateX(100%)
 
-// On-screen action rail — DOM mirror of the keyboard actions for touch users.
-// A left gutter (reserved on the canvas via editor.setViewportInsets); `.visible`
-// toggles on in the `mobile` input mode (see actionToolbar.ts). `top`/`width` and
-// the overflow `left`/`top` are set inline by layout(). Dynamic: the buttons that
-// fit stay in the rail, the rest collapse into the ⋯ overflow sheet.
+// On-screen action rail — DOM mirror of the editor's action registry, and the
+// one left column every layout gets (#101 Slice 4). A left gutter (reserved on
+// the canvas via editor.setViewportInsets); `top`/`width` and the overflow
+// `left`/`top` are set inline by layout(). Dynamic: the buttons that fit stay in
+// the rail, the rest collapse into the ⋯ overflow sheet.
+//
+// Sizing comes from the signals, through classes actionToolbar.ts sets on the
+// rail: `.slim` (a fine primary pointer — 34 px icon cells, no captions) and
+// `.with-hints` (a keyboard is present — show each button's keybind badge). The
+// cell square itself is the `--rail-cell` custom property, shared with the
+// folded corner buttons above so the column has a single width.
 #action-toolbar
     position: fixed
     left: 0
@@ -1045,12 +1249,13 @@ body.fbe-dialog-open
         gap: 0
 
     button
+        position: relative
         display: flex
         flex-direction: column
         align-items: center
         justify-content: center
-        width: 44px
-        height: 44px
+        width: var(--rail-cell, 44px)
+        height: var(--rail-cell, 44px)
         padding: 0
         border: none
         background: #3a3a3a
@@ -1069,14 +1274,39 @@ body.fbe-dialog-open
         .label
             display: block
             margin-top: 1px
-            max-width: 44px
+            max-width: var(--rail-cell, 44px)
             overflow: hidden
             text-overflow: ellipsis
             white-space: nowrap
+        // Keybind badge (#101 Slice 4): the action's registry combo, pinned in
+        // the cell's bottom-right corner so it never reflows the glyph. Hidden
+        // unless a keyboard is present — a badge that says "R" is noise on a
+        // device that can't press R.
+        .hint
+            display: none
+            position: absolute
+            right: 1px
+            bottom: 0
+            font-size: 8px
+            line-height: 1
+            color: #ffe6c0
+            opacity: 0.85
+            pointer-events: none
+
+    // Fine pointer: an icon strip. The caption goes (the cell is too small to
+    // read one), the glyph fills the square, and the keybind badge — which the
+    // caption's row would otherwise fight — becomes the second line of text.
+    &.slim button
+        .glyph
+            font-size: 15px
+        .label
+            display: none
+    &.with-hints button .hint
+        display: block
 
     .rail-more
-        width: 44px
-        height: 44px
+        width: var(--rail-cell, 44px)
+        height: var(--rail-cell, 44px)
         font-size: 18px
         color: #ccc
         background: #2c2c2c
@@ -1097,15 +1327,6 @@ body.fbe-dialog-open
         background: #5a2a2a
         &.active
             background: #b03030
-    // Wire buttons (#89): same square, the glyph carries the wire's colour
-    // (matching the in-game copper/red/green wire tints).
-    button.wire-copper .glyph
-        color: #cf7c00
-    button.wire-red .glyph
-        color: #c83718
-    button.wire-green .glyph
-        color: #588c38
-
     .rail-overflow
         position: fixed
         display: none
@@ -1244,3 +1465,98 @@ body.fbe-dialog-open
         background: #5a2a2a
         &:active
             background: #b03030
+
+// The quickbar (#101 Slice 5) — one DOM bar for every input, bottom-centre,
+// rendering the editor's slot model (`quickbar.ts`). It replaces the Pixi panel
+// that used to draw here on desktop only, so the bottom band finally has a
+// single, non-canvas tenant.
+//
+// Sized from the signals: `--qb-cell` is 44 px when `coarse` and 36 px
+// otherwise (set inline by quickbar.ts, which also picks 10 vs 5 columns for a
+// `compact` viewport). The number-key badges only render while the bar carries
+// `.with-hints`, i.e. only when a keyboard is present — a badge reading "1" is
+// noise on a device that can't press it. Below the contextual clusters (z21)
+// and toasts (z20): on a compact viewport the bar yields the band to a cluster
+// outright (see `bandIsTaken`), so they never fight for the same pixels.
+#quickbar
+    display: none
+    position: fixed
+    z-index: 6
+    bottom: 4px
+    left: 50%
+    transform: translateX(-50%)
+    align-items: center
+    gap: 6px
+    padding: 4px
+    background: rgba(48, 48, 48, 0.88)
+    border: 1px solid #888
+    border-radius: 8px
+    user-select: none
+    &.visible
+        display: flex
+
+    .qb-grid
+        display: grid
+        gap: 2px
+
+    .qb-wires
+        display: grid
+        grid-template-columns: repeat(3, var(--qb-cell))
+        gap: 2px
+
+    .qb-cell
+        position: relative
+        width: var(--qb-cell)
+        height: var(--qb-cell)
+        padding: 0
+        color: #eee
+        font-size: 12px
+        background: #4a4a4a
+        border: 1px solid #6a6a6a
+        border-radius: 4px
+        cursor: pointer
+        &:hover
+            background: #5a5a5a
+        &.qb-slot.empty
+            background: rgba(74, 74, 74, 0.55)
+        .qb-icon
+            display: block
+            margin: 0 auto
+            line-height: var(--qb-cell)
+        // The keybind badge, bottom-right of the cell like the game's.
+        .qb-key
+            display: none
+            position: absolute
+            right: 2px
+            bottom: 0
+            color: #cfcfcf
+            font-size: 9px
+            line-height: 1
+            pointer-events: none
+
+    &.with-hints .qb-cell .qb-key
+        display: block
+
+    // Wire cells: the glyph carries the wire's colour (matching the in-game
+    // copper/red/green tints) until the pack sheet's real icon loads.
+    .qb-wire.wire-copper .qb-icon
+        color: #cf7c00
+    .qb-wire.wire-red .qb-icon
+        color: #c83718
+    .qb-wire.wire-green .qb-icon
+        color: #588c38
+
+    // Rotate the rows (the X action). Slim, since it's a shortcut rather than a
+    // slot — but still tall enough to hit with a finger.
+    .qb-swap
+        width: 18px
+        height: var(--qb-cell)
+        padding: 0
+        color: #ddd
+        font-size: 11px
+        background: #4a4a4a
+        border: 1px solid #6a6a6a
+        border-radius: 4px
+        cursor: pointer
+        &:hover
+            background: #5a5a5a

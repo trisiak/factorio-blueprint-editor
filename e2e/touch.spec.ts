@@ -1,10 +1,12 @@
 import { test, expect } from '@playwright/test'
+import { isChromiumProject, isTouchProject } from './projects'
 
 test.describe('touch', () => {
-    // These run on the touch-capable (mobile-chromium) project only.
+    // Touch + Chromium, not just touch: the gestures are synthesized with raw CDP
+    // (`Input.dispatchTouchEvent`), which only Chromium exposes.
     test.beforeEach(() => {
         test.skip(
-            test.info().project.name !== 'mobile-chromium',
+            !isTouchProject() || !isChromiumProject(),
             'touch tests run on the mobile project only'
         )
     })

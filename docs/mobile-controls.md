@@ -2,11 +2,24 @@
 
 > **Companion doc:** [`mobile-layout-inventory.md`](./mobile-layout-inventory.md)
 > (the screen-space map). **Open issues:** #52 (reposition a selection without
-> breaking wires — the broader problem behind the in-place nudge).
+> breaking wires — the broader problem behind the in-place nudge); **#101**
+> (desktop/mobile unification — brings the held-selection model below to the
+> mouse/keyboard driver and audits what the touch arc changed on desktop; the
+> "desktop unchanged" notes in this doc are reviewed there).
 > This doc is the source of truth for _what's done_ on the touch arc (it leads
 > the issue tracker) — when a slice lands, close/tick the matching issue in the
 > same change so they don't contradict each other. See CLAUDE.md "Keep issues
 > in sync with the work".
+>
+> **Desktop notes (#101 · A14 — Firefox modifier desync):** every pointer press
+> now re-syncs the action registry's modifier state from the event's own
+> `ctrlKey/shiftKey/altKey` (`packages/editor/src/actions.ts`), so a focus loss
+> — which triggers `releaseAll()` — can never leave a physically-held modifier
+> unarmed. Firefox additionally can't have `Shift+RMB` at all (it opens its own
+> context menu without dispatching the event), so **Copy entity settings**
+> defaults to `Ctrl+Shift+Click` there (`common/browser.ts`), announced by a
+> one-time toast; users can restore `Shift+Right-click` via about:config's
+> `dom.event.contextmenu.shift_suppresses_event=false` or a custom keybind.
 
 Tracking doc for the touch-support arc: what's done, what's not, and where the
 pieces live. Intentionally light — update the checkboxes as work lands.
@@ -58,10 +71,11 @@ that drive chrome and sizing.
   settings pane (`packages/website/src/settingsPane.ts`).
 - **Compatibility** — `inputMode.mode` survives as a _derived_ value (forced
   preset wins, else `coarse ? 'mobile' : 'desktop'`) and still emits `change`, so
-  every consumer that hasn't migrated yet (the website clusters, the Pixi panels,
-  `body.mobile`) keeps today's behaviour. It goes away when the last consumer
-  moves onto the signals (#101, later slices). `armMarquee` left that list in
-  Slice 2 — it no longer gates on the mode at all.
+  every consumer that hasn't migrated yet (the website's contextual clusters, the
+  Pixi panels, `body.mobile`) keeps today's behaviour. The action rail and the
+  top band left that list in #101 Slice 4 — they read the signals directly now —
+  and `armMarquee` left it in Slice 2: it no longer gates on the mode at all. It
+  goes away when the last consumer moves onto the signals (#101, later slices).
 - **Tests** — pure decision logic (migration, derived mode, the signal reducers)
   is unit-tested in `packages/editor/src/common/input.test.ts`; the end-to-end
   behaviour has its own Playwright project, `hybrid-chromium` (desktop viewport +
@@ -170,14 +184,15 @@ that drive chrome and sizing.
   `VITE_DATA_URL`; `.nojekyll`). See `.github/workflows/pages-*.yml`.
 - ✅ **Canvas e2e probe** — everything inside the editor is one `<canvas>`, so
   Playwright can't query on-canvas UI through the DOM. Loading with `?test`
-  installs `window.__FBE_TEST__.getState()` (CSS px): logical input mode, screen
-  size, `dialogOpen`, quickbar + wires bounds/scale/visibility, blueprint entity
+  installs `window.__FBE_TEST__.getState()` (CSS px): the input signals + derived
+  mode, screen size and `safeArea` (the insets the chrome reserved),
+  `dialogOpen`, quickbar bounds/scale/visibility, blueprint entity
   count, and the paint ghost's tile/direction; see
   `packages/editor/src/common/testHook.ts`. Opt-in, so it's absent in normal use.
   Extend its `EditorTestState` for any future on-canvas assertion.
 - ✅ **Mobile layout: action rail + retired quickbar** — the layout redesign
   (PR #19). The keyboard-only actions are mirrored into a **left vertical rail**
-  (DOM, mobile-only): as many priority-ordered buttons as fit stay in the rail,
+  (DOM): as many priority-ordered buttons as fit stay in the rail,
   the rest collapse behind a ⋯ overflow sheet (1 column portrait, 3 columns
   landscape). The rail **reserves a left canvas inset** (`Editor.setViewportInsets`
   → `fbe:viewportchange`, which re-anchors the Pixi panels), so the canvas is
@@ -190,7 +205,104 @@ that drive chrome and sizing.
   competition; the wires panel re-centres at the bottom. `actionToolbar.ts`,
   `index.{styl,ts,html}`, `Editor.setViewportInsets`/`onModeChange`, `Panel`;
   e2e `actionToolbar.spec.ts` + `panels.spec.ts`. Remaining: real game-sprite
-  icons (unicode glyphs for now).
+  icons (unicode glyphs for now). _(Mobile-only until #101 Slice 4 made the rail
+  universal — see below.)_
+- ✅ **Universal action rail (#101 Slice 4)** — the rail is no longer a touch
+  affordance but **the left column every layout gets**: logo, corner buttons
+  (Github / Settings / Library, folded into one row of icon squares for everyone
+  — desktop's three-tall stack of labelled rows is gone) and, under them, the
+  live actions. Sizing is by **signal, not device**: 44 px captioned cells when
+  `coarse`, otherwise a slim 34 px icon strip; **keybind badges** when `keys`
+  (read live from the registry — `EDITOR.forEachAction` → `Action.keyCombo`,
+  pretty-printed to `⌃Z` and mirrored into `aria-keyshortcuts`, while `title`
+  stays the plain label so e2e keeps its handle); the ⋯ overflow keyed on what
+  actually fits the remaining height (coarse keeps 1-col portrait / 3-col
+  landscape; a fine pointer starts single-file and only widens when the live
+  buttons don't fit). Management actions (Copy BP / Paste BP / Export / New) stay
+  parked in the ⋯ in every layout — the keyboard reaches them by keybind, so they
+  never cost everyday rail cells. **Desktop gains the left inset**
+  (`setViewportInsets({ left })` → `G.safeArea`), so the Pixi quickbar and the
+  entity-info panel re-anchor beside the column, and the settings pane steps to
+  the right of the rail instead of covering it; the top band
+  (`viewportRegions.ts`) now runs in every layout too and reserves only chrome
+  that isn't already inside the rail's column. The desktop-only Pixi
+  **wires panel is retired** (`UI/WiresPanel.ts` deleted, `WIRE_ITEMS` moved to
+  `core/wireItems.ts`) — the rail's three colour-coded toggles are the single
+  affordance for holding a wire. e2e: new desktop cases in
+  `actionToolbar.spec.ts` (slim strip + hints, rail-Rotate turns a held ghost,
+  the wire toggles, the reserved inset, the settings pane's placement), a
+  rewritten wires ratchet in `panels.spec.ts`, and the hybrid B1 case now expects
+  rail _and_ quickbar. `EditorTestState` gained `safeArea` and lost `wires`.
+  _(The committed desktop storyboard strips are stale until someone regenerates
+  them with `STORYBOARD=1`.)_
+- ✅ **Slice 5 review follow-up: a drawer that stays where you left it (#101)** —
+  three desktop findings from the maintainer's pass over the DOM readouts. (1)
+  The rates drawer sat _below_ the entity-info sheet in the shared right-edge
+  column, so it moved every time the sheet appeared or cleared — i.e. on every
+  hover, which is precisely when a mouse is travelling toward it. The drawer is
+  now its own fixed box **bottom-right**, above the quickbar's band (whose
+  height it reads from `--fbe-bottom-band`, published by `quickbar.ts` from the
+  same measurement that feeds its viewport inset); the sheet keeps the
+  **top-right** corner and `readoutStack.ts` is deleted. (2) The drawer's
+  `min(50vh, 420px)` cap scrolled content that would have fitted on a tall
+  screen; it now takes the room between the top chrome band and that bottom
+  offset, and the sheet grew from `40vh` to `60dvh - 68px`. (3) Inertial
+  scrolling kept emitting `wheel` after the pointer left the drawer, and those
+  events zoomed the canvas: every DOM overlay now claims the wheel while it is
+  scrolled (`common/wheelGuard.ts`, a 300 ms ownership window consulted by
+  `BlueprintContainer.onWheel`, unit-tested with a fake clock) and the
+  scrollable readouts carry `overscroll-behavior: contain`. A wheel over the
+  canvas with no recent overlay wheel zooms exactly as before. e2e:
+  `domReadouts.spec.ts` gains a stationary-drawer case, a
+  1280×1400 growth case with a rates-heavy blueprint, and a wheel-bleed case,
+  on desktop **and** hybrid.
+- ✅ **One DOM quickbar for every input (#101 Slice 5b)** — the Pixi
+  `QuickbarPanel` is deleted. Its state became a render-free model in the editor
+  (`UI/quickbarModel.ts`: the slot array, the five activation cases, the number
+  keys, `changeActiveQuickbar`, and the `hasItem`/`addItem`/`removeItem` the
+  inventory's Pin/Unpin drives) with a `change` event; `packages/website/src/quickbar.ts`
+  is its only view. Signals, not modes, decide everything device-ish: **44 px
+  cells when `coarse`** and 36 px otherwise, **number-key badges when `keys`**
+  (read live from the registry, so the second row correctly reads `⇧1`…`⇧5`),
+  and **5 columns instead of 10 when `compact`**, where the swap button (`X`)
+  rotates the rows so every slot stays reachable. Slot gestures match the canvas
+  slots: click/tap activates, right-click or a 500 ms long-press clears. The
+  **three wire toggles moved onto the quickbar** and left the rail — they are
+  paint items, and after the Pixi wires panel (Slice 4) this retires the last
+  duplicate affordance for them. Bottom-band etiquette: on a `compact` viewport
+  the quickbar yields the band whenever a contextual cluster owns it (PAINT /
+  SELECT / touch-EDIT), and the rail's Cancel remains the way out of a held
+  cursor; otherwise it **reserves the band** as a bottom inset of `G.safeArea`,
+  so Pixi dialogs never overlap it. `?test`: `quickbar` is DOM-backed
+  (`visible` / `bounds` / `slotCount`, replacing the canvas `scale`), and
+  `quickbarSlotPos` is gone — specs address `#quickbar .qb-slot` directly.
+  e2e: new `domQuickbar.spec.ts` on all three projects, plus flipped ratchets in
+  `panels.spec.ts` (quickbar + wires), `clearSlots.spec.ts` (the clear gestures,
+  which now run on touch too) and `actionToolbar.spec.ts`.
+- ✅ **DOM status readouts for every input (#101 Slice 5a)** — the entity-info
+  and production-rates readouts were the last split affordance: Pixi panels on
+  desktop, DOM sheets on touch, one presentation per `inputMode.mode`. Both Pixi
+  panels are **retired**. The editor keeps only what computes —
+  `UI/entityInfo.ts`'s `buildEntityInfo` (`fbe:entityinfo`) and
+  `UI/ratesModel.ts`'s `RatesModel` (`showRates`/`T`, the live recompute
+  subscriptions, `onBlueprintSwapped`, `fbe:rates`) — and the website renders,
+  with **placement by `compact` + orientation, never by mode**: a shared
+  right-edge column (`readoutStack.ts` — info above, rates below, as the canvas
+  panels stacked) on a wide viewport — _superseded by the review follow-up
+  below, which pins the drawer to the bottom-right corner and deletes the
+  column_ — and on `compact` the touch placements (portrait top band /
+  bottom-right drawer). The sheet also gained what only the canvas had: module
+  icons and an **icon-rich circuit summary** — `EntityInfoToken` rows (signal /
+  count / red-green network badge) resolved through the `packIcons.ts` seam,
+  falling back to the signal's name for Factorio's _virtual_ signals, which the
+  browser icon artifact doesn't carry (item/fluid/recipe only). The layering
+  contract is unchanged and now universal (`body.fbe-dialog-open` hides both
+  while a Pixi dialog is open). `?test`: `infoPanelVisible`/`ratesPanelVisible`
+  became DOM-backed truth and the canvas stand-ins (`infoPanelBounds`,
+  `ratesPanelLines`, `ratesPanelClosePos`) are gone; e2e `panels.spec.ts` /
+  `rates.spec.ts` flipped to "DOM for everyone", plus a new `domReadouts.spec.ts`
+  (hover fills the sheet, `T` toggles the drawer, a dialog eclipses both, a
+  forced `compact` moves them) on desktop **and** hybrid.
 - ✅ **Item-selector overhaul** (`InventoryDialog`, the shared item/recipe/module
   picker) — now touch-usable: **scrollable** group-tabs (◀▶) and item grid (▲▼),
   masked with viewport-gated hit-testing; a **Recents tab** (first/active) with
@@ -451,6 +563,50 @@ that drive chrome and sizing.
       contract"). Ratchet: "modal layering" in `panels.spec.ts`. The fallback
       if this ever needs iteration is migrating dialogs to DOM wholesale, not
       more coexistence rules.
+    - ✅ **DOM dialogs — shell + main item selector (#98 Slices 0–1)**: the
+      "pull the plug" arc begins. `website/src/dialogs/` gains the modal
+      shell (`shell.ts`: backdrop, ✕, Escape, auto-close on mode switch) and
+      `dialogLayer.ts` (owns `body.fbe-dialog-open`, ORing the Pixi
+      `fbe:dialogs` count with open DOM dialogs, so the contract holds
+      through the migration). First tenant: the **main inventory** —
+      E / rail "Items" on mobile opens the DOM `inventorySelector.ts`
+      (group tabs, native scrolling, a real **search box** — the first
+      selector text input touch users get, retiring that #56 case for this
+      dialog — ★ Recents with the Recent/Quickbar/On-blueprint sections,
+      tap-to-preview → ✓ Confirm, Pin/Unpin). It renders from the new
+      render-free `core/itemCatalog.ts` (unit-tested; the same walk the Pixi
+      dialog does inline) and commits through `editor.spawnPaintItem`.
+      Desktop keeps the Pixi dialog; so do the editor-embedded pickers
+      (recipe/module/filter slots) until their editors migrate. Seam:
+      `UIContainer.openMainInventory` → `fbe:openinventory`. Ratchets in
+      `inventorySelector.spec.ts` (per-mode presentation, search→select→
+      paint, backdrop/E close, readouts yield + restore).
+    - ✅ **DOM entity editor — crafting machines (#98 Slice 2)**: the
+      recipe+modules form (the editor behind the recipe-changing bug)
+      presents as the DOM `dialogs/entityEditor.ts` on mobile — both the
+      `machine` kind (assembling machines) and the generic `temp` kind
+      (furnaces, refineries, chem plants, and every modded/expansion machine
+      the name switch doesn't know — the first live-testing gap: SE's space
+      assembler opened nothing). The recipe row gates on the new shared
+      `Entity.hasRecipeSlot` (furnaces/rocket silos auto-pick — modules
+      only), now also used by editor routing and the Pixi TempEditor. Routed
+      per kind from `UIContainer.openEntityEditor` → `fbe:openentityeditor`
+      (the event
+      carries the live `Entity`; the DOM editor reads its accessors, writes
+      its History-wrapped setters, and follows its change events — undo/redo
+      reflect live, destroy closes it). Slots keep the established touch
+      grammar: tap opens the **filtered DOM picker** (the shared
+      `itemPicker.ts` — recipes confirm-gated, modules commit-on-tap, ✕
+      Clear/Cancel escape hatch), long-press clears, hint line included; the
+      picker stacks over the editor (Escape peels the top dialog only —
+      `dialogLayer.isTopDomDialog`). A mobile→desktop switch closes the DOM
+      editor (presentation follows mode). Preview decision (v1): **no live
+      sprite preview** — the header carries the entity's pack-sheet icon;
+      revisit with render-to-texture if missed. The `?test` hook is
+      DOM-aware (slot/✕/✓ probes report DOM coords in the same shape), so the
+      whole `clearSlots.spec.ts` gesture matrix runs against the DOM editor
+      unchanged; new per-mode + recipe-end-to-end ratchets in
+      `entityEditor.spec.ts`. Other kinds keep Pixi until their slices.
     - ⬜ **Phase 4 — e2e bounds-disjointness ratchets**
 - 🚧 **Touch placement: preview + confirm (Slice 1 done)** — desktop previews a
   placement by hovering (ghost shows orientation/validity before you click);
@@ -620,6 +776,59 @@ that drive chrome and sizing.
   `actionToolbar.ts` (Select tiles button, `when`-gated SELECT d-pad).
   Covered by the marquee half of `e2e/touchTiles.spec.ts` via
   `marquee.tileCount` on the `?test` hook.
+
+## Desktop notes (#101 Slice 0)
+
+The touch arc landed a handful of its changes on shared code paths, so desktop
+inherited them without ever being designed for. #101 ("one editor model, two
+input drivers") is the tracking issue and holds the full review tables; this
+section records only what Slice 0 actually changed here — the doc and the issue
+should agree, so update both together.
+
+- ✅ **A7 — the numeric keypad takes keyboard input.** `NumericField` replaced
+  upstream's slider+text input, and the canvas `NumericKeypad` was click-only:
+  a 10-digit constant cost 10 clicks. While a keypad is open it is now modal
+  text entry — digits (main row, and the numpad by `code` so NumLock doesn't
+  matter), `Backspace`, `Delete` (= the `C` key), `-` where the field allows
+  negatives, `Enter` (= `✓ OK`), `Escape`. Digits **append** to the buffer, the
+  same as pressing the on-screen keys. Routed through `Editor.ts`'s window
+  `keydown` _before_ `ActionRegistry`, so the topmost open keypad swallows its
+  keys and they don't also fire editor actions (`Escape` closing windows, `KeyS`
+  panning); anything it ignores falls through unchanged. The transition is a
+  pure function in `packages/editor/src/UI/keypadInput.ts` (vitest:
+  `keypadInput.test.ts`), and `allowNegative` is threaded from the field —
+  request counts and the 0-255 station priority set it false, which also drops
+  their `±` key. Retired for good when Slice 6 puts DOM dialogs on desktop.
+- ✅ **A9 — "Press I for info" is back on desktop.** Dropped when the mobile
+  rail folded the top-left chrome (187915e7); `I` still worked but nothing said
+  so. Restored in `packages/website/index.html` as `#corner-panel .info-hint`
+  and hidden for `body.mobile` in `index.styl` — no `I` to press on touch, and
+  the rail needs the height. The panel stays clickable either way.
+- ✅ **A10 — the scratchpad restore is silent.** "Restored your scratchpad" on
+  every load announced the _default_ state. `loadBp` now accepts `null` for "no
+  toast"; a named project ("Opened …"), a `?source` import and all error paths
+  still toast.
+- ✅ **A13 — no red `textures.json` 404 on full packs.** Only a graphics variant
+  ships the sidecar, so `loadTextureTransforms` asks the (cached) pack manifest
+  first — `packMayHaveTextureTransforms` in `core/packManifest.ts`, unit-tested.
+  An unlisted pack or a manifest-less deploy still probes, as before.
+- ✅ **Factoriobin as a `?source` host** (upstream #272 / `12bbcef0`, ported).
+  The per-host page-URL → raw-content-URL table moved out of `bpString.ts` into
+  a pure `core/blueprintSource.ts` (`blueprintSourceRequest`) with unit tests.
+  Same caveat as every URL import: it goes through `/corsproxy`, which is a
+  Cloudflare Pages Function and does **not** exist on the GitHub Pages deploy.
+- ✅ **Desktop e2e ratchets** — `e2e/desktopEditing.spec.ts` (desktop project
+  only, alongside the older `desktopBuild.spec.ts` build/mine net): hover → info
+  panel; `Ctrl+LMB` drag → a blueprint ghost that follows the mouse; `→` nudges
+  it a tile; a click places all 8 entities clear of the originals; `Escape`
+  drops the cursor; `Ctrl+Z` undoes; `Ctrl+RMB` drag deletes the box; `Enter`
+  with nothing held is a no-op; a single click on an entity opens its editor;
+  `E` → inventory → one click commits to the cursor; `T` toggles the rates
+  panel; and every test asserts the page threw nothing.
+- Still open in #101 and deliberately untouched here: A5 (the always-on circuit
+  hover highlight), A6 (the inventory's Recents default tab), and Slices 1-6 —
+  the hybrid input signals, held selection from mouse + keyboard, and the DOM
+  chrome convergence.
 
 ## Notes / tradeoffs
 

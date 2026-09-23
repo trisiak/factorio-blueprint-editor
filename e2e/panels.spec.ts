@@ -1,18 +1,19 @@
 import { test, expect, type Page } from '@playwright/test'
 import type { EditorTestState } from '@fbe/editor'
+import { isTouchProject } from './projects'
 
 /**
  * UI coverage for the mobile-layout work:
  *  - the INFO / shortcuts panel (responsive, openable/closable without a keyboard)
  *  - the dat.gui settings pane (touch layout: closes properly, hides Keybinds)
- *  - the quickbar (canvas-rendered, asserted via the `?test` window hook)
+ *  - the quickbar, the wire toggles and the status readouts, whose per-mode
+ *    presentations all collapsed into one DOM surface each (#101 Slice 5)
  *
- * The quickbar is drawn in the PixiJS canvas, so the DOM has nothing to query;
- * loading with `?test` installs window.__FBE_TEST__, which exposes its logical
- * bounds/scale (see packages/editor/src/common/testHook.ts).
+ * `?test` installs window.__FBE_TEST__ (packages/editor/src/common/testHook.ts).
+ * Its `quickbar` / `infoPanelVisible` / `ratesPanelVisible` fields are DOM-backed
+ * now — they report what is actually rendered — so a spec can assert geometry
+ * through the probe and content through the element, whichever reads better.
  */
-
-const isMobileProject = (): boolean => test.info().project.name === 'mobile-chromium'
 
 /** Read the opt-in canvas-state probe (only present when the page is loaded with `?test`). */
 async function readTestState(page: Page): Promise<EditorTestState> {
@@ -98,7 +99,7 @@ test.describe('settings pane (dat.gui)', () => {
     })
 
     test('collapses fully when closed in mobile mode', async ({ page }) => {
-        test.skip(!isMobileProject(), 'mobile-only: pane starts closed and uses touch rows')
+        test.skip(!isTouchProject(), 'mobile-only: pane starts closed and uses touch rows')
 
         await page.goto('/')
         await waitForAppReady(page)
@@ -119,7 +120,7 @@ test.describe('settings pane (dat.gui)', () => {
     })
 
     test('hides the keyboard-only Keybinds folder in mobile mode', async ({ page }) => {
-        test.skip(!isMobileProject(), 'mobile-only')
+        test.skip(!isTouchProject(), 'mobile-only')
 
         await page.goto('/')
         await waitForAppReady(page)
@@ -135,7 +136,7 @@ test.describe('settings pane (dat.gui)', () => {
     })
 
     test('keeps folders collapsed until tapped in mobile mode', async ({ page }) => {
-        test.skip(!isMobileProject(), 'mobile-only')
+        test.skip(!isTouchProject(), 'mobile-only')
 
         await page.goto('/')
         await waitForAppReady(page)
@@ -154,7 +155,7 @@ test.describe('settings pane (dat.gui)', () => {
     })
 
     test('keeps the Keybinds folder on desktop', async ({ page }) => {
-        test.skip(isMobileProject(), 'desktop-only')
+        test.skip(isTouchProject(), 'desktop-only')
 
         await page.goto('/')
         await waitForAppReady(page)
@@ -166,60 +167,64 @@ test.describe('settings pane (dat.gui)', () => {
 })
 
 test.describe('quickbar', () => {
-    test('renders on desktop and fits; retired on mobile', async ({ page }) => {
+    test('renders for every input, inside the safe area', async ({ page }) => {
         await page.goto('/?test')
         await waitForAppReady(page)
 
+        // #101 Slice 5b: one DOM quickbar for everyone. It used to be a Pixi
+        // panel that was *retired on mobile*, so touch users had no pinned items
+        // at all; the ratchet flips from "desktop only" to "present in both,
+        // reflowed by `compact`" (the column count and the cell size are
+        // asserted in domQuickbar.spec.ts).
         const state = await readTestState(page)
         const viewport = page.viewportSize()!
-
-        if (isMobileProject()) {
-            // Retired on mobile — touch users build via the action rail's Items
-            // (Recents) + Pick instead of a fixed bottom bar.
-            expect(state.quickbar.visible).toBe(false)
-            return
-        }
-
-        // Desktop: rendered full-size, anchored along the bottom, on-screen.
-        // (Regression: a NaN scale during super() once left it invisible.)
         expect(state.quickbar.visible).toBe(true)
-        expect(state.quickbar.scale).toBe(1)
+        await expect(page.locator('#quickbar')).toBeVisible()
 
+        // On screen, and not overlapping the rail. Note it is *not* required to
+        // start right of the rail's column: the bar is centred in the bottom
+        // band, which on a compact viewport begins below where the rail's
+        // buttons end — the left inset exists so the *Pixi* panels anchored in
+        // `G.safeArea` clear the column, while DOM chrome only has to not
+        // collide (the same "restrict the panels, not the world" reasoning).
         const b = state.quickbar.bounds
+        const rail = await page.locator('#action-toolbar').boundingBox()
+        const overlapsRail =
+            b.x < rail.x + rail.width &&
+            rail.x < b.x + b.width &&
+            b.y < rail.y + rail.height &&
+            rail.y < b.y + b.height
+        expect(overlapsRail).toBe(false)
         expect(b.x).toBeGreaterThanOrEqual(0)
         expect(b.x + b.width).toBeLessThanOrEqual(viewport.width + 1)
-        expect(b.y).toBeGreaterThanOrEqual(0)
-        expect(b.y).toBeLessThan(viewport.height)
+        expect(b.y).toBeGreaterThan(0)
+        expect(b.y + b.height).toBeLessThanOrEqual(viewport.height + 1)
     })
 })
 
-test.describe('wires panel', () => {
-    test('desktop: fits within the viewport; mobile: retired (wires live in the rail)', async ({
+test.describe('wires', () => {
+    // The three wire toggles have had three homes and now have one. They were a
+    // Pixi panel beside the desktop quickbar and three rail buttons on touch —
+    // two affordances for one action; #101 Slice 4 deleted the panel, and Slice
+    // 5b moved the rail's buttons onto the DOM quickbar, where the other paint
+    // items live. The panel's probe field went with it, so its absence is the
+    // ratchet that it can't come back.
+    test('the toggles live on the quickbar; neither Pixi panel nor rail entry remains', async ({
         page,
     }) => {
         await page.goto('/?test')
         await waitForAppReady(page)
 
-        const state = await readTestState(page)
-        const viewport = page.viewportSize()!
+        const hasWiresField = await page.evaluate(() => {
+            const w = window as unknown as { __FBE_TEST__: { getState: () => object } }
+            return 'wires' in w.__FBE_TEST__.getState()
+        })
+        expect(hasWiresField).toBe(false)
 
-        if (isMobileProject()) {
-            // Retired on mobile (#89): the bottom band belongs to the contextual
-            // PAINT/SELECT clusters; the three wires are rail buttons instead
-            // (covered in actionToolbar.spec.ts).
-            expect(state.wires.visible).toBe(false)
-            return
+        for (const title of ['Copper', 'Red wire', 'Green wire']) {
+            await expect(page.locator(`#quickbar button[title="${title}"]`)).toBeVisible()
+            await expect(page.locator(`#action-toolbar button[title="${title}"]`)).toHaveCount(0)
         }
-
-        // Regression: the wires panel was anchored off the right edge of the
-        // (now scaled) quickbar via a hardcoded width, so on a narrow viewport
-        // it fell entirely off-screen.
-        expect(state.wires.visible).toBe(true)
-        const b = state.wires.bounds
-        expect(b.x).toBeGreaterThanOrEqual(0)
-        expect(b.y).toBeGreaterThanOrEqual(0)
-        expect(b.x + b.width).toBeLessThanOrEqual(viewport.width + 1)
-        expect(b.y + b.height).toBeLessThanOrEqual(viewport.height + 1)
     })
 })
 
@@ -268,25 +273,31 @@ test.describe('top band (#89 Phase 1)', () => {
         expect(shown).toBe(true)
         const sheet = page.locator('#entity-info-sheet')
 
-        if (!isMobileProject()) {
-            // Desktop: the Pixi panel presents (top-right of the safe area,
-            // which is the whole screen here); the DOM sheet stays out of it.
-            expect((await readTestState(page)).infoPanelVisible).toBe(true)
-            await expect(sheet).toBeHidden()
-            return
-        }
-
-        // Mobile: the DOM sheet presents (#89 Phase 2) — the Pixi panel is
-        // retired here. In portrait the sheet is a full-width top band: it
-        // must clear the fixed top chrome (the pill) *and* stay out of the
-        // bottom reachable band, where the user's thumbs (and the contextual
-        // EDIT bar) live — the placement rationale, as assertions.
-        expect((await readTestState(page)).infoPanelVisible).toBe(false)
+        // The DOM sheet is **the** entity-info presentation, on every input
+        // (#101 Slice 5 — the Pixi panel it used to share the job with on
+        // desktop is retired). `infoPanelVisible` is DOM-backed truth now, so
+        // it agrees with the element in both projects.
+        expect((await readTestState(page)).infoPanelVisible).toBe(true)
         await expect(sheet).toBeVisible()
         await expect(sheet).toContainText('Wooden chest')
         const sb = await sheet.boundingBox()
         const viewport = page.viewportSize()!
+
+        // Either way it must clear the fixed top chrome (the pill) — the top
+        // band's whole point.
         expect(sb!.y).toBeGreaterThanOrEqual(pill!.y + pill!.height)
+
+        if (!isMobileProject()) {
+            // Wide: a right-edge drawer in the readout stack, the same corner
+            // the canvas panel anchored to.
+            expect(sb!.x).toBeGreaterThan(viewport.width / 2)
+            expect(sb!.x + sb!.width).toBeLessThanOrEqual(viewport.width)
+            return
+        }
+
+        // Compact portrait: a full-width band at the top, staying out of the
+        // bottom reachable band where the user's thumbs (and the contextual
+        // EDIT bar) live — the placement rationale, as assertions.
         expect(sb!.y + sb!.height).toBeLessThanOrEqual(viewport.height - 80)
     })
 })
@@ -298,12 +309,14 @@ const ASSEMBLER_BP =
     '0eJyd0tuKgzAQgOF3mWuFrYdu66sspcQ42x2IE0nGUhHffUcLpdDj7o2QxHx/Ahmhdj12gVigGoEEW6iu5hJwpkanc84Mvpc0Gm5qf9KFI4ZInqEq19m22G7LvMhW+SpLgKznCNXXCJEObNwsy9ChKksgATbtPDIxYls74kPaGvtDjGkOkwLc4Amq1bRLAFlICM/eMhj23Lc1Bv3huZRA56Nung85goIfCQz61UJAS8uBuuAtxjhv7JlE6zeV7I+V8raCDq0Ez2RTS8H290P5v65TXodMczRssXmWKS6ZbxMlJY4YRBceXGT2G9LCeaW4I5YX8TGWL1j+GltfMAmGY+eDpPoE5RG5eU1+vk0W75Kbt8nyPrmbpl8tsiv1'
 
 test.describe('modal layering (#89)', () => {
-    test('Pixi dialogs eclipse the DOM readouts; both restore on close', async ({ page }) => {
-        // Mobile-only: desktop's readouts are Pixi siblings of the dialogs, so
-        // UIContainer's child order already arbitrates — the DOM sheet/drawer
-        // (and thus the cross-technology stacking problem) only exist on touch.
-        test.skip(!isMobileProject(), 'mobile-only: the DOM readouts only present on touch')
-
+    test('dialogs eclipse the DOM readouts; both restore on close', async ({ page }) => {
+        // Runs on every project since #101 Slice 5: the readouts are DOM for
+        // all inputs, so the cross-technology stacking problem this contract
+        // solves (DOM always composites above the canvas, so a Pixi dialog
+        // can't paint over a readout — the readouts have to yield) is no
+        // longer a touch-only concern. On mobile the machine's editor is the
+        // DOM one since #98 Slice 2 — the ratchet holds either way: the dialog
+        // layer gates the readouts on Pixi and DOM dialogs alike.
         await page.goto(`/?test&source=${encodeURIComponent(ASSEMBLER_BP)}`)
         await waitForAppReady(page)
         await expect

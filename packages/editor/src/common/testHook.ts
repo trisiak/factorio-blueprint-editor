@@ -30,14 +30,23 @@ export interface EditorTestState {
     /** The user's override: `auto` (signals decide), or a forced pointer kind. */
     inputPreset: InputPreset
     screen: { width: number; height: number }
+    /**
+     * The rect the Pixi UI anchors and clamps within (`G.safeArea`) — the screen
+     * minus the bands reserved for DOM chrome. Since #101 Slice 4 the action
+     * rail is universal, so *every* layout reserves a left inset; this is how a
+     * spec asserts the reservation actually reached the editor (and that the
+     * on-canvas panels kept out of the rail's column).
+     */
+    safeArea: { x: number; y: number; width: number; height: number }
+    /**
+     * The quickbar, **DOM-backed** since #101 Slice 5 (the Pixi panel is
+     * retired): whether the website's `#quickbar` is rendered, its viewport
+     * bounds, and how many slot cells it currently draws — the last of which is
+     * what the `compact` reflow changes.
+     */
     quickbar: {
         visible: boolean
-        scale: number
-        bounds: { x: number; y: number; width: number; height: number }
-    }
-    /** The wires (copper/red/green) panel; sits next to the quickbar. */
-    wires: {
-        visible: boolean
+        slotCount: number
         bounds: { x: number; y: number; width: number; height: number }
     }
     /**
@@ -86,6 +95,13 @@ export interface EditorTestState {
      */
     dialogOpen: boolean
     /**
+     * Whether any modal is open in *either* technology — a Pixi dialog or a
+     * DOM one (#98). Presentation-agnostic specs (tap-to-edit, Edit-toggle)
+     * assert this; `dialogOpen` stays Pixi-only for the per-mode-presentation
+     * ratchets that need "the canvas dialog did NOT open".
+     */
+    modalOpen: boolean
+    /**
      * Touch box-select (#21): entities under the held marquee selection (0 unless
      * a selection is held, i.e. mode SELECT with the action controls showing).
      * `origin` is the selection's top-left tile — lets tests assert in-place
@@ -105,13 +121,18 @@ export interface EditorTestState {
         direction: number | null
     }
     /**
-     * Whether the top-right entity info panel is showing (hover/tap-select).
-     * Desktop presentation only: on mobile this is always false — the DOM
-     * `#entity-info-sheet` presents instead (#89 Phase 2), and specs assert on
-     * that element directly.
+     * Whether the entity-info readout is showing (hover/tap-select). **DOM-backed
+     * truth** since #101 Slice 5: the readouts are DOM for every input, so this
+     * reports whether the website's `#entity-info-sheet` is actually rendered —
+     * which also folds in the layering contract (a Pixi dialog open ⇒ false, the
+     * `body.fbe-dialog-open` gate) rather than reporting a logical intent.
      */
     infoPanelVisible: boolean
-    /** Whether the top-left blueprint-wide production rates panel is showing. */
+    /**
+     * Whether the blueprint-wide production rates readout is showing —
+     * DOM-backed the same way (`#rates-drawer`). The *logical* toggle state
+     * lives in the editor's `RatesModel`; this is what the user can see.
+     */
     ratesPanelVisible: boolean
     /**
      * Current viewport zoom (the blueprint container's scale). A pinch/wheel zoom
@@ -121,26 +142,51 @@ export interface EditorTestState {
     viewportScale: number
 }
 
+/**
+ * Element ids the **website** gives the two DOM status readouts
+ * (`entityInfoSheet.ts` / `ratesDrawer.ts`). The probe reaches across the
+ * package boundary on purpose: since #101 Slice 5 the DOM *is* the only
+ * presentation, so "is the readout visible" can no longer be answered from
+ * inside the editor — and asking the rendered document also folds in the CSS
+ * gates (`.visible`, the `body.fbe-dialog-open` layering contract) that a
+ * logical flag would miss.
+ */
+const READOUT_IDS = { info: 'entity-info-sheet', rates: 'rates-drawer' }
+
+/** Likewise for the DOM quickbar (`quickbar.ts`) and its slot cells. */
+const QUICKBAR_ID = 'quickbar'
+const QUICKBAR_SLOT_SELECTOR = '#quickbar .qb-slot'
+
+/** Is `id` rendered — laid out and not display:none, from any rule. */
+function domReadoutVisible(id: string): boolean {
+    if (typeof document === 'undefined') return false
+    const el = document.getElementById(id)
+    return !!el && el.getClientRects().length > 0
+}
+
+/** The DOM quickbar's rendered geometry, as the state snapshot reports it. */
+function domQuickbarState(): EditorTestState['quickbar'] {
+    const empty = { visible: false, slotCount: 0, bounds: { x: 0, y: 0, width: 0, height: 0 } }
+    if (typeof document === 'undefined') return empty
+    const el = document.getElementById(QUICKBAR_ID)
+    if (!el || el.getClientRects().length === 0) return empty
+    const r = el.getBoundingClientRect()
+    return {
+        visible: true,
+        slotCount: document.querySelectorAll(QUICKBAR_SLOT_SELECTOR).length,
+        bounds: { x: r.x, y: r.y, width: r.width, height: r.height },
+    }
+}
+
 export function getEditorTestState(): EditorTestState {
-    const qb = G.UI.quickbarPanel
-    const r = qb.getBounds().rectangle
-    const wp = G.UI.wiresPanel
-    const wr = wp.getBounds().rectangle
     const painting = G.BPC.mode === EditorMode.PAINT && !!G.BPC.paintContainer
     return {
         inputMode: inputMode.mode,
         signals: inputMode.signals,
         inputPreset: inputMode.preset,
         screen: { width: G.app.screen.width, height: G.app.screen.height },
-        quickbar: {
-            visible: qb.visible && r.width > 0 && r.height > 0,
-            scale: qb.scale.x,
-            bounds: { x: r.x, y: r.y, width: r.width, height: r.height },
-        },
-        wires: {
-            visible: wp.visible && wr.width > 0 && wr.height > 0,
-            bounds: { x: wr.x, y: wr.y, width: wr.width, height: wr.height },
-        },
+        safeArea: { ...G.safeArea },
+        quickbar: domQuickbarState(),
         blueprint: { entityCount: G.bp.entities.size, tileCount: G.bp.tiles.size },
         paint: {
             active: painting,
@@ -167,14 +213,15 @@ export function getEditorTestState(): EditorTestState {
                     : null,
         },
         dialogOpen: Dialog.anyOpen(),
+        modalOpen: Dialog.anyModalOpen(),
         marquee: {
             count: G.BPC.marqueeCount,
             tileCount: G.BPC.marqueeTileCount,
             origin: G.BPC.marqueeOrigin ?? null,
             direction: G.BPC.marqueeDirection ?? null,
         },
-        infoPanelVisible: G.UI.entityInfoPanelVisible,
-        ratesPanelVisible: G.UI.ratesPanelVisible,
+        infoPanelVisible: domReadoutVisible(READOUT_IDS.info),
+        ratesPanelVisible: domReadoutVisible(READOUT_IDS.rates),
         viewportScale: G.BPC.getViewportScale(),
     }
 }
@@ -294,11 +341,17 @@ export interface FbeTestHook {
      */
     inventoryFirstItemPos: () => { x: number; y: number } | null
     /**
-     * Whether an item selector is open. Distinct from `getState().dialogOpen`,
-     * which stays true for the entity editor the selector was opened *from* —
-     * so "the picker closed" needs its own signal.
+     * Whether an item selector is open — the Pixi InventoryDialog *or* the DOM
+     * item picker (#98), whichever presents in the current mode. Distinct from
+     * `getState().dialogOpen`, which stays true for the entity editor the
+     * selector was opened *from* — so "the picker closed" needs its own signal.
      */
     inventoryOpen: () => boolean
+    /**
+     * Whether the *Pixi* InventoryDialog specifically is open — the probe for
+     * "the canvas dialog did NOT present" in per-mode presentation ratchets.
+     */
+    pixiInventoryOpen: () => boolean
     /**
      * Open `name`'s editor and report its clear-a-slot hint text (null when the
      * editor has no clearable slots — currently none: every routed editor holds
@@ -312,25 +365,14 @@ export interface FbeTestHook {
      */
     openEditorClearHint: () => string | null
     /**
-     * Bounds of the entity info panel (CSS px, canvas-relative), null while
-     * hidden — desktop presentation only (see `infoPanelVisible`); on mobile
-     * the DOM sheet is asserted through the DOM instead.
+     * Toggle the blueprint-wide production rates readout (as the T keybind and
+     * the rail's Rates button do). Both readouts are DOM since #101 Slice 5, so
+     * their *contents* — the rendered lines, the ✕ hit point, the anchoring —
+     * are asserted straight off `#rates-drawer` / `#entity-info-sheet`; the
+     * canvas probes that stood in for them (`ratesPanelLines`,
+     * `ratesPanelClosePos`, `infoPanelBounds`) went with the Pixi panels.
      */
-    infoPanelBounds: () => { x: number; y: number; width: number; height: number } | null
-    /** Toggle the blueprint-wide production rates panel (as the T keybind does). */
     toggleRatesPanel: () => void
-    /**
-     * The rates panel's rendered text lines, top to bottom — section headers,
-     * per-material rates, the machines-counted footer. Canvas-drawn, so the DOM
-     * can't see them; e2e asserts on these instead of pixels.
-     */
-    ratesPanelLines: () => string[]
-    /**
-     * On-screen centre of the rates panel's ✕ close button (canvas-relative CSS
-     * px), or null while the panel is hidden — so the spec can dismiss it with
-     * a real click/tap instead of the toggle action.
-     */
-    ratesPanelClosePos: () => { x: number; y: number } | null
     /**
      * Train-stop config, read through the entity — text typed into the DOM
      * station-name overlay (#56) / flags toggled in the editor only count once
@@ -389,8 +431,6 @@ export interface FbeTestHook {
     entityPositions: () => { name: string; x: number; y: number }[]
     /** Quickbar slot contents, `null` for an unassigned slot. */
     quickbarItems: () => (string | null)[]
-    /** On-screen centre of quickbar slot `index`, or null if it isn't rendered. */
-    quickbarSlotPos: (index: number) => { x: number; y: number } | null
     /**
      * Seed quickbar slot 0 with a known item, so a spec has something to clear
      * without driving the assign flow (which is not what those tests are about).
@@ -414,31 +454,59 @@ function findEntity(name: string): Entity | undefined {
  * Attach the state probe to `window`. Opt-in only — the website installs it
  * under `?test` — so it is absent in normal use.
  */
+/**
+ * The DOM presentations of the migrated dialogs (#98) are queryable directly,
+ * but the hook still reports them through the same coordinate/label shapes as
+ * the Pixi ones, so specs stay press-at-position across the migration. These
+ * class names are the website's dialog markup — test-only coupling, kept here
+ * because the hook *is* the cross-boundary probe.
+ */
+function domPicker(): Element | null {
+    const pickers = document.querySelectorAll('.fbe-dialog.item-picker')
+    return pickers.length ? pickers[pickers.length - 1] : null
+}
+
+function domCenter(el: Element | null): { x: number; y: number } | null {
+    if (!el) return null
+    const r = el.getBoundingClientRect()
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
+}
+
+/** Close Pixi dialogs and (over the bridge event) the DOM ones. */
+function closeEverything(): void {
+    Dialog.closeAllModals()
+}
+
 export function installTestHook(win: Window = window): void {
     const hook: FbeTestHook = {
         getState: getEditorTestState,
         showEntityInfo: name => {
             if (name === null) {
-                G.UI.updateEntityInfoPanel(undefined)
+                G.UI.updateEntityInfo(undefined)
                 return true
             }
             const e = findEntity(name)
-            if (e) G.UI.updateEntityInfoPanel(e)
+            if (e) G.UI.updateEntityInfo(e)
             return !!e
         },
         openEntityEditor: name => {
             const e = findEntity(name)
             if (!e) return false
-            Dialog.closeAll()
-            return G.UI.createEditor(e) !== undefined
+            closeEverything()
+            // The real per-mode entry (#98): DOM editor on mobile for the
+            // migrated kinds, Pixi otherwise.
+            return G.UI.openEntityEditor(e)
         },
+        // Routed through the real per-mode entry (#98) so the probe drives the
+        // presentation the user would get: Pixi dialog on desktop, the DOM
+        // selector (via `fbe:openinventory`) on mobile.
         openInventory: () => {
-            Dialog.closeAll()
-            G.UI.createInventory('Inventory', undefined, undefined, 'items')
+            closeEverything()
+            G.UI.openMainInventory()
         },
         previewInventoryItem: name => {
-            Dialog.closeAll()
-            G.UI.createInventory('Inventory', undefined, undefined, 'items').beginPreview(name)
+            closeEverything()
+            G.UI.openMainInventory(name)
         },
         inventoryScrollToLastItem: () => {
             Dialog.closeAll()
@@ -449,7 +517,9 @@ export function installTestHook(win: Window = window): void {
                 'items'
             ).scrollToLastItem()
         },
-        closeDialogs: () => Dialog.closeAll(),
+        // Closes the Pixi dialogs and — over the `fbe:closedialogs` bridge —
+        // the website-side DOM ones (#98).
+        closeDialogs: () => closeEverything(),
         centerView: () => G.BPC.centerViewport(),
         spawnPasteGhost: () => {
             const entities = G.bp.entities.valuesArray()
@@ -532,9 +602,23 @@ export function installTestHook(win: Window = window): void {
         openEditorSlot: (name, kind, index) => {
             const e = findEntity(name)
             if (!e) return null
-            Dialog.closeAll()
-            const editor = G.UI.createEditor(e)
-            if (!editor) return null
+            closeEverything()
+            if (!G.UI.openEntityEditor(e)) return null
+            // DOM editor (#98, mobile migrated kinds): the slots are real
+            // buttons; report the same coordinate shape so specs stay
+            // press-at-position either way.
+            const dom = document.querySelector('.fbe-dialog.entity-editor')
+            if (dom) {
+                return domCenter(
+                    kind === 'recipe'
+                        ? dom.querySelector('.ee-recipe-slot')
+                        : dom.querySelector(
+                              `.ee-${kind === 'modules' ? 'module' : 'filter'}-slot[data-index="${index}"]`
+                          )
+                )
+            }
+            const editor = Dialog.openDialogs.findLast(d => d instanceof Editor)
+            if (!(editor instanceof Editor)) return null
             // The recipe control *is* a Slot (Recipe extends Slot), so it sits
             // directly on the editor rather than inside a group container.
             const target =
@@ -548,14 +632,20 @@ export function installTestHook(win: Window = window): void {
             return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
         },
         inventoryClearButtonPos: () => {
+            const dom = domPicker()
+            if (dom) return domCenter(dom.querySelector('.is-clear'))
             const inv = Dialog.openDialogs.findLast(d => d instanceof InventoryDialog)
             return inv ? inv.clearButtonPosition() : null
         },
         inventoryClearButtonLabel: () => {
+            const dom = domPicker()
+            if (dom) return dom.querySelector('.is-clear')?.textContent ?? null
             const inv = Dialog.openDialogs.findLast(d => d instanceof InventoryDialog)
             return inv ? inv.clearButtonLabel() : null
         },
         inventoryConfirmButtonPos: () => {
+            const dom = domPicker()
+            if (dom) return domCenter(dom.querySelector('.is-confirm'))
             const inv = Dialog.openDialogs.findLast(d => d instanceof InventoryDialog)
             return inv ? inv.confirmButtonPosition() : null
         },
@@ -569,24 +659,31 @@ export function installTestHook(win: Window = window): void {
             inputMode.overrideSignals(next)
         },
         openEditorClearHint: () => {
+            const dom = document.querySelector('.fbe-dialog.entity-editor .ee-hint')
+            if (dom) return dom.textContent
             const editor = Dialog.openDialogs.findLast(d => d instanceof Editor)
             return editor ? editor.clearHintText : null
         },
         inventoryFirstItemPos: () => {
+            const dom = domPicker()
+            if (dom) return domCenter(dom.querySelector('.is-cell'))
             const inv = Dialog.openDialogs.findLast(d => d instanceof InventoryDialog)
             return inv ? inv.firstItemPosition() : null
         },
-        inventoryOpen: () => Dialog.openDialogs.some(d => d instanceof InventoryDialog),
+        inventoryOpen: () =>
+            Dialog.openDialogs.some(d => d instanceof InventoryDialog) || domPicker() !== null,
+        pixiInventoryOpen: () => Dialog.openDialogs.some(d => d instanceof InventoryDialog),
         editorClearHint: name => {
             const e = findEntity(name)
             if (!e) return null
-            Dialog.closeAll()
-            return G.UI.createEditor(e)?.clearHintText ?? null
+            closeEverything()
+            if (!G.UI.openEntityEditor(e)) return null
+            const dom = document.querySelector('.fbe-dialog.entity-editor .ee-hint')
+            if (dom) return dom.textContent
+            const editor = Dialog.openDialogs.findLast(d => d instanceof Editor)
+            return editor instanceof Editor ? editor.clearHintText : null
         },
-        infoPanelBounds: () => G.UI.entityInfoPanelBounds(),
         toggleRatesPanel: () => G.UI.toggleRatesPanel(),
-        ratesPanelLines: () => G.UI.ratesPanelLines(),
-        ratesPanelClosePos: () => G.UI.ratesPanelClosePos(),
         entityTrainStop: name => {
             const e = findEntity(name)
             if (!e) return null
@@ -641,16 +738,9 @@ export function installTestHook(win: Window = window): void {
                 .valuesArray()
                 .map(e => ({ name: e.name, x: e.position.x, y: e.position.y })),
         quickbarItems: () =>
-            G.UI.quickbarPanel.serialize().map(itemName => itemName ?? null) as (string | null)[],
-        quickbarSlotPos: index => {
-            const slot = G.UI.quickbarPanel.slotAt(index)
-            if (!slot) return null
-            const r = slot.getBounds().rectangle
-            if (r.width === 0 || r.height === 0) return null
-            return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
-        },
+            G.UI.quickbar.serialize().map(itemName => itemName ?? null) as (string | null)[],
         quickbarAssign: (name = 'fast-inserter') => {
-            G.UI.quickbarPanel.slotAt(0)?.assignItem(name)
+            G.UI.quickbar.assign(0, name)
         },
     }
     ;(win as unknown as Record<string, unknown>)[TEST_HOOK_KEY] = hook

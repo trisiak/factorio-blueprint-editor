@@ -106,13 +106,15 @@ async function holdItem(page: Page): Promise<void> {
     await expect.poll(async () => (await getState(page)).paint.active).toBe(true)
 }
 
-// Two well-separated points in open canvas, clear of the top-left button stack
-// and the bottom quickbar. Element-relative for `tap({position})`; the canvas
-// has no left inset here (no rail), so they double as page coordinates.
 /** The multi-entity vanilla blueprint the marquee specs use (decodes locally). */
 const SELECTION_BLUEPRINT =
     '0eJyd0tuKgzAQgOF3mWuFrYdu66sspcQ42x2IE0nGUhHffUcLpdDj7o2QxHx/Ahmhdj12gVigGoEEW6iu5hJwpkanc84Mvpc0Gm5qf9KFI4ZInqEq19m22G7LvMhW+SpLgKznCNXXCJEObNwsy9ChKksgATbtPDIxYls74kPaGvtDjGkOkwLc4Amq1bRLAFlICM/eMhj23Lc1Bv3huZRA56Nung85goIfCQz61UJAS8uBuuAtxjhv7JlE6zeV7I+V8raCDq0Ez2RTS8H290P5v65TXodMczRssXmWKS6ZbxMlJY4YRBceXGT2G9LCeaW4I5YX8TGWL1j+GltfMAmGY+eDpPoE5RG5eU1+vk0W75Kbt8nyPrmbpl8tsiv1'
 
+// Two well-separated points in open canvas, clear of the top-left column (the
+// logo, the corner buttons and the rail below them) and the bottom quickbar.
+// Element-relative for `tap({position})`; the canvas is full-bleed — the rail's
+// inset restricts the *panels*, not the world — so they double as page
+// coordinates.
 const AT_A = { x: 420, y: 300 }
 const AT_B = { x: 700, y: 380 }
 
@@ -136,10 +138,16 @@ test.describe('hybrid input (mouse + touch on one page)', () => {
         expect(s.signals.coarse).toBe(false)
         expect(s.inputPreset).toBe('auto')
         expect(s.inputMode).toBe('desktop')
-        // ...so the desktop chrome is intact: the quickbar is there, the
-        // touch-only action rail is not.
+        // ...so the desktop chrome is intact: the quickbar is there, and the
+        // action rail — universal since #101 Slice 4, where it used to be the
+        // touch-only affordance this assertion guarded the absence of — comes up
+        // in its slim, keybind-hinted presentation rather than the touch one.
         expect(s.quickbar.visible).toBe(true)
-        await expect(page.locator('#action-toolbar')).not.toHaveClass(/visible/)
+        const rail = page.locator('#action-toolbar')
+        await expect(rail).toBeVisible()
+        await expect(rail).toHaveClass(/slim/)
+        await expect(rail).toHaveClass(/with-hints/)
+        await expect(rail.locator('button[title="Undo"] .hint')).toHaveText('\u2303Z')
 
         // The signals are mirrored onto <body> for CSS gating.
         const body = page.locator('body')

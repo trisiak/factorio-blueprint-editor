@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { longPressOneFinger } from './touchGestures'
+import { isTouchProject } from './projects'
 
 /**
  * Clearing a slot (module / filter / recipe).
@@ -33,8 +34,6 @@ const BP =
 // now, so it asserts the hint like the rest — `trainStop.spec.ts` covers it fully).
 const CHEST_BP =
     '0eNp9ksFuwjAQRH8F7dmpIIQW/B29VRFywkJXMrbr3SCiyP9eOaERFaUna0fjN+OVB2hshyGSE9ADkOAZ9J2mwJoGLWhoLZpYsPXCi/YTWRZHukoXERRcMDJ5B3rzWu6q3W5TlW/rcrtUQK13DPpjAKaTMzaHSB8Q9JSlwJlznlh8NCcsRjQkBeQOeAW9SrUCdEJCOIHGod+77txgBL16glAQPJOMtQa4gl6+bBT045kURPzqkGV/JCsYOXsY22yfUn7iFcyOX+otk6J3RbBG8hpa3+U1rlKd6pTUQ9VyvnZLx/isbHlX9g/SeiYFw0wXLEL0Fzo8B1b/A6sZKNGQK1h8eIRsR0SVFLCYSYf3/BVGe370N6lYxgY='
-
-const isMobileProject = (): boolean => test.info().project.name === 'mobile-chromium'
 
 type SlotKind = 'modules' | 'filters' | 'recipe'
 
@@ -141,7 +140,7 @@ const readConfirmButton = (page: Page): Promise<{ x: number; y: number } | null>
  * except the module picker (see `m_commitOnTap`), so anything else needs the
  * ✓ Confirm press to actually commit. Desktop commits on click.
  */
-async function pickFirstItem(page: Page, needsConfirm = isMobileProject()): Promise<void> {
+async function pickFirstItem(page: Page, needsConfirm = isTouchProject()): Promise<void> {
     const item = await readFirstItem(page)
     expect(item, 'the selector should show at least one item').not.toBeNull()
     await tap(page, item)
@@ -170,7 +169,7 @@ const inventoryOpen = (page: Page): Promise<boolean> =>
  * failing outright.
  */
 async function holdToClear(page: Page, at: { x: number; y: number }): Promise<void> {
-    if (isMobileProject()) {
+    if (isTouchProject()) {
         await longPressOneFinger(page, at)
         return
     }
@@ -184,7 +183,7 @@ async function holdToClear(page: Page, at: { x: number; y: number }): Promise<vo
 /** Quick tap / click — the *activate* half of the same slot gesture. */
 async function tap(page: Page, at: { x: number; y: number }): Promise<void> {
     const o = await canvasOrigin(page)
-    if (isMobileProject()) await page.touchscreen.tap(o.x + at.x, o.y + at.y)
+    if (isTouchProject()) await page.touchscreen.tap(o.x + at.x, o.y + at.y)
     else await page.mouse.click(o.x + at.x, o.y + at.y)
 }
 
@@ -295,7 +294,7 @@ test.describe('clearing a filled slot', () => {
     test('right-click still clears a module slot', async ({ page }) => {
         // The desktop path predates the touch work and is what the refactor onto
         // bindSlotGestures could plausibly have broken.
-        test.skip(isMobileProject(), 'desktop-only: touch has no right-click')
+        test.skip(isTouchProject(), 'desktop-only: touch has no right-click')
 
         await page.goto(`/?test&source=${encodeURIComponent(BP)}`)
         await waitForAppReady(page)
@@ -368,7 +367,7 @@ test.describe('the clear-a-slot hint', () => {
 
         const hint = await readClearHint(page, 'assembling-machine-2')
         expect(hint).toBe(
-            isMobileProject() ? 'Hold a slot to clear it' : 'Right-click a slot to clear it'
+            isTouchProject() ? 'Hold a slot to clear it' : 'Right-click a slot to clear it'
         )
     })
 
@@ -381,7 +380,7 @@ test.describe('the clear-a-slot hint', () => {
         await waitForAppReady(page)
 
         expect(await readClearHint(page, 'storage-chest')).toBe(
-            isMobileProject() ? 'Hold a slot to clear it' : 'Right-click a slot to clear it'
+            isTouchProject() ? 'Hold a slot to clear it' : 'Right-click a slot to clear it'
         )
     })
 
@@ -395,7 +394,7 @@ test.describe('the clear-a-slot hint', () => {
         await waitForAppReady(page)
 
         expect(await readClearHint(page, 'train-stop')).toBe(
-            isMobileProject() ? 'Hold a slot to clear it' : 'Right-click a slot to clear it'
+            isTouchProject() ? 'Hold a slot to clear it' : 'Right-click a slot to clear it'
         )
     })
 
@@ -403,11 +402,16 @@ test.describe('the clear-a-slot hint', () => {
         // Input mode switches without a reload and the settings pane is DOM, so
         // toggling it leaves canvas dialogs open — a hint computed once at
         // construction would keep naming the gesture of the mode you just left.
+        // The beacon, not the machine: machines present as the DOM editor on
+        // mobile (#98), which *closes* on a mode switch by design (presentation
+        // follows mode — covered in entityEditor.spec.ts); the live-updating
+        // hint is a property of the Pixi editors, which the beacon still is in
+        // both modes.
         await page.goto(`/?test&source=${encodeURIComponent(BP)}`)
         await waitForAppReady(page)
 
         // Open the editor once and leave it open across the switch.
-        await openSlot(page, 'assembling-machine-2', 'modules', 0)
+        await openSlot(page, 'beacon', 'modules', 0)
 
         const setMode = (mode: 'desktop' | 'mobile'): Promise<void> =>
             page.evaluate(
@@ -464,7 +468,7 @@ test.describe('module selector: one tap either way', () => {
     test('the recipe selector still requires Confirm on touch', async ({ page }) => {
         // The one-tap shortcut is scoped to modules; everywhere else the deliberate
         // two-step stays, so this guards the scoping rather than the shortcut.
-        test.skip(!isMobileProject(), 'desktop commits on click everywhere by design')
+        test.skip(!isTouchProject(), 'desktop commits on click everywhere by design')
 
         await page.goto(`/?test&source=${encodeURIComponent(BP)}`)
         await waitForAppReady(page)
@@ -568,48 +572,56 @@ test.describe('logistic chest requests', () => {
 })
 
 test.describe('quickbar slots', () => {
-    // The quickbar is retired on mobile (its slots still work, but nothing renders
-    // to press), so this is the desktop contract — and the refactor onto
-    // bindSlotGestures is exactly the kind of change that could silently break it.
-    test.skip(() => isMobileProject(), 'the quickbar is retired on mobile')
+    // The quickbar is DOM for every input since #101 Slice 5b (it used to be a
+    // Pixi panel, retired on mobile — hence the old desktop-only skip). The
+    // slot gesture contract has to survive that move intact, on both drivers:
+    // a tap/click activates, a long-press or right-click clears.
+    const slotZero = (page: Page) => page.locator('#quickbar .qb-slot').first()
+
+    /** Seed slot 0 through the model, as the picker path would. */
+    const seedSlotZero = async (page: Page): Promise<void> => {
+        await page.evaluate(() =>
+            (
+                window as unknown as { __FBE_TEST__: { quickbarAssign: () => void } }
+            ).__FBE_TEST__.quickbarAssign()
+        )
+        await expect.poll(async () => (await readQuickbar(page))[0]).toBe('fast-inserter')
+    }
+
+    /** Centre of the DOM slot, in page coordinates. */
+    const slotCentre = async (page: Page): Promise<{ x: number; y: number }> => {
+        const box = await slotZero(page).boundingBox()
+        expect(box, 'quickbar slot 0 should be rendered').not.toBeNull()
+        return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    }
 
     test('long-press unassigns a quickbar slot', async ({ page }) => {
         await page.goto(`/?test&source=${encodeURIComponent(BP)}`)
         await waitForAppReady(page)
+        await seedSlotZero(page)
 
-        // Seed slot 0 by picking an item through the (empty-slot) picker path.
-        await page.evaluate(() =>
-            (
-                window as unknown as { __FBE_TEST__: { quickbarAssign: () => void } }
-            ).__FBE_TEST__.quickbarAssign()
-        )
-        await expect.poll(async () => (await readQuickbar(page))[0]).toBe('fast-inserter')
+        const at = await slotCentre(page)
+        if (isMobileProject()) {
+            await longPressOneFinger(page, at)
+        } else {
+            await page.mouse.move(at.x, at.y)
+            await page.mouse.down()
+            await page.waitForTimeout(1_500)
+            await page.mouse.up()
+        }
 
-        const slot = await page.evaluate(() =>
-            (window as unknown as { __FBE_TEST__: ClearHook }).__FBE_TEST__.quickbarSlotPos(0)
-        )
-        expect(slot, 'quickbar slot 0 should be rendered on desktop').not.toBeNull()
-
-        await holdToClear(page, slot)
         await expect.poll(async () => (await readQuickbar(page))[0]).toBeNull()
     })
 
     test('right-click still unassigns a quickbar slot', async ({ page }) => {
+        test.skip(isMobileProject(), 'no right button on a touchscreen — long-press covers it')
+
         await page.goto(`/?test&source=${encodeURIComponent(BP)}`)
         await waitForAppReady(page)
+        await seedSlotZero(page)
 
-        await page.evaluate(() =>
-            (
-                window as unknown as { __FBE_TEST__: { quickbarAssign: () => void } }
-            ).__FBE_TEST__.quickbarAssign()
-        )
-        await expect.poll(async () => (await readQuickbar(page))[0]).toBe('fast-inserter')
-
-        const slot = await page.evaluate(() =>
-            (window as unknown as { __FBE_TEST__: ClearHook }).__FBE_TEST__.quickbarSlotPos(0)
-        )
-        const o = await canvasOrigin(page)
-        await page.mouse.click(o.x + slot.x, o.y + slot.y, { button: 'right' })
+        const at = await slotCentre(page)
+        await page.mouse.click(at.x, at.y, { button: 'right' })
 
         await expect.poll(async () => (await readQuickbar(page))[0]).toBeNull()
     })

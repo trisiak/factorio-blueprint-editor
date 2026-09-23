@@ -308,7 +308,7 @@ export class InventoryDialog extends Dialog {
             e.stopPropagation()
             const name = this.m_previewName
             if (!name) return
-            const qb = G.UI.quickbarPanel
+            const qb = G.UI.quickbar
             if (qb.hasItem(name)) qb.removeItem(name)
             else qb.addItem(name)
             this.updatePreviewBar()
@@ -534,7 +534,7 @@ export class InventoryDialog extends Dialog {
         if (recent.length) sections.push({ label: 'Recent', color: 0xffffff, names: recent })
         if (key === 'items') {
             const quickbar = collect(
-                G.UI.quickbarPanel.serialize().filter((n): n is string => !!n),
+                G.UI.quickbar.serialize().filter((n): n is string => !!n),
                 false
             )
             if (quickbar.length)
@@ -601,9 +601,7 @@ export class InventoryDialog extends Dialog {
             const canPin = active && this.m_recentsKey === 'items'
             this.m_pinBtn.visible = canPin
             if (canPin) {
-                this.m_pinText.text = G.UI.quickbarPanel.hasItem(this.m_previewName)
-                    ? 'Unpin'
-                    : 'Pin'
+                this.m_pinText.text = G.UI.quickbar.hasItem(this.m_previewName) ? 'Unpin' : 'Pin'
             }
         }
     }

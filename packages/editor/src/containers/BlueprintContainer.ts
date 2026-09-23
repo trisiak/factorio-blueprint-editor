@@ -19,6 +19,7 @@ import { Dialog } from '../UI/controls/Dialog'
 import { Viewport } from './Viewport'
 import { PinchPanRecognizer, PinchPanUpdate } from './PointerGestures'
 import { acceptsPointerType, inputMode, isMousePipeline } from '../common/input'
+import { wheelGuard } from '../common/wheelGuard'
 import { EntitySprite } from './EntitySprite'
 import { WiresContainer } from './WiresContainer'
 import { UnderlayContainer } from './UnderlayContainer'
@@ -31,7 +32,7 @@ import { PaintWireContainer } from './PaintWireContainer'
 import { Axis, IllegalFlipError, PaintContainer } from './PaintContainer'
 import { PaintBlueprintContainer } from './PaintBlueprintContainer'
 import { GridData } from './GridData'
-import { WiresPanel } from '../UI/WiresPanel'
+import { WIRE_ITEMS } from '../core/wireItems'
 
 export enum GridPattern {
     CHECKER = 'checker',
@@ -422,7 +423,9 @@ export class BlueprintContainer extends Container {
                 }
 
                 Dialog.closeAll()
-                G.UI.createEditor(this.hoverContainer.entity)
+                // Per-mode presentation (#98): DOM editor on mobile for the
+                // migrated kinds, Pixi otherwise.
+                G.UI.openEntityEditor(this.hoverContainer.entity)
                 return true
             }
             return false
@@ -471,6 +474,12 @@ export class BlueprintContainer extends Container {
         const onWheel = (e: WheelEvent): void => {
             e.preventDefault()
             e.stopPropagation()
+
+            // A DOM overlay that was just scrolled owns the wheel for a moment
+            // (#101 Slice 5 review): inertial scrolling keeps firing `wheel`
+            // after the pointer leaves the drawer, and without this the tail of
+            // that gesture lands here and zooms the map. See common/wheelGuard.
+            if (wheelGuard.blocksCanvas()) return
 
             if (Math.sign(e.deltaY) === 1) {
                 this.zoom(false)
@@ -1348,8 +1357,10 @@ export class BlueprintContainer extends Container {
 
     /** Open the editor for the EDIT-mode entity, or close it if already open (toggle). */
     public editHovered(): void {
-        if (Dialog.anyOpen()) {
-            Dialog.closeAll()
+        // Either technology counts (#98): with a DOM editor open, a repeat
+        // Edit press must close it, not stack a duplicate over it.
+        if (Dialog.anyModalOpen()) {
+            Dialog.closeAllModals()
             return
         }
         if (this.mode === EditorMode.EDIT) this.openEditor()
@@ -1679,8 +1690,7 @@ export class BlueprintContainer extends Container {
                 const itemData = FD.items[itemNameOrEntities]
                 if (!itemData) throw new Error(`Item data not found: ${itemNameOrEntities}`)
 
-                const wireResult =
-                    WiresPanel.Wires.includes(itemNameOrEntities) && itemNameOrEntities
+                const wireResult = WIRE_ITEMS.includes(itemNameOrEntities) && itemNameOrEntities
                 const tileResult = itemData.place_as_tile && itemData.place_as_tile.result
                 const placeResult = itemData.place_result || tileResult || wireResult
 

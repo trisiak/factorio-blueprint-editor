@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import pako from 'pako'
 import { Buffer } from 'buffer'
+import { isChromiumProject, isDesktopProject } from './projects'
 
 // Basic end-to-end coverage for the in-app blueprint library (issue #50 /
 // docs/blueprint-library.md). The library chrome is plain DOM, so these drive it
@@ -54,10 +55,7 @@ async function pasteImport(page: Page, str: string): Promise<void> {
 
 test.describe('blueprint library', () => {
     test.beforeEach(() => {
-        test.skip(
-            test.info().project.name !== 'desktop-chromium',
-            'library DOM flows run on the desktop project only'
-        )
+        test.skip(!isDesktopProject(), 'library DOM flows run on the desktop projects only')
     })
 
     test('opens the panel and shows the scratchpad as the working context', async ({ page }) => {
@@ -177,7 +175,10 @@ test.describe('blueprint library', () => {
         await waitForReady(page)
         await expect(indicator(page)).toHaveText('Scratchpad')
 
-        const at = { x: 320, y: 360 } // open canvas, clear of corner/side UI
+        // Open canvas, clear of the side UI: the left column (rail) and the
+        // settings pane anchored beside it, which reaches ~356px on desktop now
+        // that it steps right of the rail (#101 Slice 4); the quickbar is lower.
+        const at = { x: 500, y: 360 }
         await page.locator('#editor').focus()
         await page.mouse.move(at.x, at.y)
         await page.keyboard.press('1') // hold assembling-machine-2 (paint)
@@ -202,10 +203,7 @@ test.describe('blueprint library', () => {
 
 test.describe('blueprint library — organization & multi-pack (Phase 2)', () => {
     test.beforeEach(() => {
-        test.skip(
-            test.info().project.name !== 'desktop-chromium',
-            'library DOM flows run on the desktop project only'
-        )
+        test.skip(!isDesktopProject(), 'library DOM flows run on the desktop projects only')
     })
 
     // Open the ⋯ menu for the first row matching `name`, then click a menu item.
@@ -383,6 +381,11 @@ test.describe('blueprint library — organization & multi-pack (Phase 2)', () =>
     })
 
     test('exports a folder as a native book and imports the string back', async ({ page }) => {
+        // Chromium-only, not just desktop: reading back what the app put on the
+        // clipboard needs `grantPermissions('clipboard-read')` +
+        // `navigator.clipboard.readText()`, neither of which Firefox exposes to a
+        // page. The rest of the library flows above do run on both desktop browsers.
+        test.skip(!isChromiumProject(), 'clipboard read-back is Chromium-only')
         await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
         await page.goto(`/?test&source=${encodeURIComponent(CHEST)}`)
         await waitForReady(page)
@@ -453,6 +456,11 @@ test.describe('blueprint library — organization & multi-pack (Phase 2)', () =>
     test('importing a known book then exporting it preserves content + metadata', async ({
         page,
     }) => {
+        // Chromium-only, not just desktop: reading back what the app put on the
+        // clipboard needs `grantPermissions('clipboard-read')` +
+        // `navigator.clipboard.readText()`, neither of which Firefox exposes to a
+        // page. The rest of the library flows above do run on both desktop browsers.
+        test.skip(!isChromiumProject(), 'clipboard read-back is Chromium-only')
         await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
         // A known-good vanilla book: two real blueprints (chest, belt) wrapped in a
         // book with a label / description / icons.
