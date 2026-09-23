@@ -287,7 +287,7 @@ test.describe('top band (#89 Phase 1)', () => {
         // band's whole point.
         expect(sb!.y).toBeGreaterThanOrEqual(pill!.y + pill!.height)
 
-        if (!isMobileProject()) {
+        if (!isTouchProject()) {
             // Wide: a right-edge drawer in the readout stack, the same corner
             // the canvas panel anchored to.
             expect(sb!.x).toBeGreaterThan(viewport.width / 2)
