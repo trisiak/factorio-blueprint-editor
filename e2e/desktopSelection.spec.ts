@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { isChromiumProject, isDesktopProject } from './projects'
 
 /**
  * Desktop held selection (#101 Slice 2) — the mouse/keyboard driver for the
@@ -136,8 +137,8 @@ async function selectAll(page: Page): Promise<number> {
 test.describe('desktop held selection', () => {
     test.beforeEach(() => {
         test.skip(
-            test.info().project.name !== 'desktop-chromium',
-            'the mouse/keyboard selection driver runs on the desktop project'
+            !isDesktopProject(),
+            'the mouse/keyboard selection driver runs on the desktop projects'
         )
     })
 
@@ -334,6 +335,9 @@ test.describe('desktop held selection', () => {
         page,
         context,
     }) => {
+        // Chromium-only clipboard surface: `navigator.clipboard.readText` isn't
+        // exposed to pages in Firefox, so the assertion can't be read back there.
+        test.skip(!isChromiumProject(), 'reads the clipboard back (Chromium-only API)')
         await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => undefined)
         await gotoWithBlueprint(page)
 
@@ -353,6 +357,9 @@ test.describe('desktop held selection', () => {
         page,
         context,
     }) => {
+        // Chromium-only clipboard surface: `navigator.clipboard.readText` isn't
+        // exposed to pages in Firefox, so the assertion can't be read back there.
+        test.skip(!isChromiumProject(), 'reads the clipboard back (Chromium-only API)')
         await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => undefined)
         await gotoWithBlueprint(page)
         await page.evaluate(() => navigator.clipboard.writeText('sentinel'))

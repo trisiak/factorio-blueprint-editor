@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { isDesktopProject } from './projects'
 
 // Desktop merge-safety net. All the placement/mine coverage in
 // touchPlacement.spec.ts drives the *touch* path; PR #6 (Space Age) reworks the
@@ -27,10 +28,7 @@ async function waitForLoaded(page: Page): Promise<void> {
 
 test.describe('desktop build / mine', () => {
     test.beforeEach(() => {
-        test.skip(
-            test.info().project.name !== 'desktop-chromium',
-            'desktop mouse pipeline runs on the desktop project only'
-        )
+        test.skip(!isDesktopProject(), 'desktop mouse pipeline runs on the desktop projects only')
     })
 
     test('left-click places an entity and right-click mines it', async ({ page }) => {
@@ -43,7 +41,10 @@ test.describe('desktop build / mine', () => {
         await page.goto('/?test')
         await waitForLoaded(page)
 
-        const at = { x: 320, y: 360 } // open canvas, clear of corner/side UI
+        // Open canvas, clear of the side UI: the left column (rail) and the
+        // settings pane anchored beside it, which reaches ~356px on desktop now
+        // that it steps right of the rail (#101 Slice 4); the quickbar is lower.
+        const at = { x: 500, y: 360 }
 
         await page.locator('#editor').focus()
         await page.mouse.move(at.x, at.y) // pointer inside so the ghost shows

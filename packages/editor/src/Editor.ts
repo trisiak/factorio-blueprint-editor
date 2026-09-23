@@ -18,8 +18,11 @@ import { Blueprint, oilOutpostSettings, IOilOutpostSettings } from './core/Bluep
 import { BlueprintContainer, EditorMode, GridPattern } from './containers/BlueprintContainer'
 import { PaintTileContainer } from './containers/PaintTileContainer'
 import { UIContainer } from './UI/UIContainer'
+import { QuickbarModel } from './UI/quickbarModel'
 import { Dialog } from './UI/controls/Dialog'
+import { NumericKeypad } from './UI/NumericKeypad'
 import { ActionRegistry, MouseButton } from './actions'
+import { isFirefox } from './common/browser'
 
 export class Editor {
     // Stable mode emitter. The BlueprintContainer is swapped out on every
@@ -209,6 +212,29 @@ export class Editor {
         }
     }
 
+    /**
+     * Put `itemName` on the cursor unconditionally — the item selector's commit
+     * (#98): re-picking the held item keeps painting it, unlike the rail wire
+     * buttons' toggle semantics above.
+     */
+    public spawnPaintItem(itemName: string): void {
+        G.BPC.spawnPaintContainer(itemName)
+    }
+
+    /**
+     * Names in use on the blueprint, per picker category (with repeats
+     * collapsed by the callers that want that) — backs the DOM pickers'
+     * Recents-tab "On blueprint" section, same source as the Pixi dialog's:
+     * entity names for the item picker, set recipes for the recipe picker,
+     * slotted modules for the module picker.
+     */
+    public blueprintUsedNames(kind: 'items' | 'recipes' | 'modules'): string[] {
+        const ents = G.bp.entities.valuesArray()
+        if (kind === 'recipes') return ents.map(e => e.recipe).filter((r): r is string => !!r)
+        if (kind === 'modules') return ents.flatMap(e => e.modules).filter((m): m is string => !!m)
+        return ents.map(e => e.name)
+    }
+
     // --- Touch marquee (#21) — thin delegators for the website's Select button
     // and the Copy/Cut/Delete bar (the gesture itself lives in BlueprintContainer).
     /**
@@ -307,11 +333,22 @@ export class Editor {
         G.BPC.gridPattern = pattern
     }
 
+    /**
+     * The quickbar's slot model (#101 Slice 5) — the render-free state the DOM
+     * quickbar draws and follows (`change`), and the same object the number-key
+     * bindings and the inventory's Pin/Unpin act on.
+     */
+    public get quickbar(): QuickbarModel {
+        return G.UI.quickbar
+    }
+
     public get quickbarItems(): string[] {
-        return G.UI.quickbarPanel.serialize()
+        // `undefined` for an empty slot round-trips through JSON as `null`,
+        // which the persisted `quickbarItemNames` shape has always allowed.
+        return G.UI.quickbar.serialize() as string[]
     }
     public set quickbarItems(items: string[]) {
-        G.UI.quickbarPanel.generateSlots(items)
+        G.UI.quickbar.generateSlots(items)
     }
 
     public get limitWireReach(): boolean {
@@ -449,13 +486,22 @@ export class Editor {
                 },
             },
             // EDIT
+            //
+            // Firefox can't have the game's `Shift+RMB`: it always opens its own
+            // context menu on Shift+right-click and doesn't dispatch the event to
+            // the page, so the site-wide `contextmenu` preventDefault can't stop
+            // it (see `common/browser.ts` / #101). We therefore *default* it to
+            // `Ctrl+Shift+LMB` there. That's safe next to the other left-button
+            // actions: the registry matches most-modifiers-first, so this two-
+            // modifier action is tried before `copySelection` (`Ctrl+LMB`), and
+            // it only succeeds in EDIT mode — outside EDIT it reports failure and
+            // the press falls through to the copy-drag exactly as before.
+            // A user's own binding still wins: `importKeybinds` runs after this.
             copyEntitySettings: {
                 trigger: {
-                    button: MouseButton.Right,
+                    button: isFirefox() ? MouseButton.Left : MouseButton.Right,
                 },
-                modifiers: {
-                    shift: true,
-                },
+                modifiers: isFirefox() ? { control: true, shift: true } : { shift: true },
                 callbacks: {
                     onPress: () => G.BPC.copyEntitySettings(),
                 },
@@ -611,12 +657,10 @@ export class Editor {
                         if (Dialog.anyOpen()) {
                             Dialog.closeLast()
                         } else {
-                            G.UI.createInventory(
-                                'Inventory',
-                                undefined,
-                                G.BPC.spawnPaintContainer.bind(G.BPC),
-                                'items'
-                            )
+                            // Per-mode presentation (#98): Pixi dialog on
+                            // desktop, the website's DOM selector on mobile
+                            // (which toggles itself closed on a repeat press).
+                            G.UI.openMainInventory()
                         }
                         return true
                     },
@@ -854,7 +898,7 @@ export class Editor {
                 trigger: { code: 'KeyX' },
                 callbacks: {
                     onPress: () => {
-                        G.UI.quickbarPanel.changeActiveQuickbar()
+                        G.UI.quickbar.changeActiveQuickbar()
                         return true
                     },
                 },
@@ -862,7 +906,7 @@ export class Editor {
         })
 
         const bindKeyToSlot = (slot: number): boolean => {
-            G.UI.quickbarPanel.bindKeyToSlot(slot)
+            G.UI.quickbar.bindKeyToSlot(slot)
             return true
         }
 
@@ -876,6 +920,15 @@ export class Editor {
             if (e.repeat) return
             if (e.target instanceof HTMLInputElement) return
             if (e.target instanceof HTMLTextAreaElement) return
+            // An open numeric keypad is modal text entry (#101 A7): it takes the
+            // digits, Backspace, `-`, Enter and Escape itself, so they don't
+            // *also* fire editor actions (Escape closing windows, KeyS panning).
+            // The topmost keypad swallows them; anything it ignores falls
+            // through to the registry as usual.
+            if (NumericKeypad.handleWindowKeyDown(e)) {
+                e.preventDefault()
+                return
+            }
             G.actions.pressKey(e)
         }
 

@@ -52,10 +52,12 @@ export class TrainStopEditor extends Editor {
                 this.m_Entity.trainStopPriority = v
                 priorityField.value = this.m_Entity.trainStopPriority
             },
-            'Station priority (0-255)'
+            'Station priority (0-255)',
+            64,
+            false // 0-255, so no sign key / `-` keybind
         )
         priorityField.position.set(275, 122)
-        this.addChild(priorityField)
+        this.addChild(this.registerControl('priority', priorityField))
 
         // Colour of the station sign: one tap per swatch, live on the sprite
         // (`EntityContainer` rebuilds on the `color` event). ✕ resets to the

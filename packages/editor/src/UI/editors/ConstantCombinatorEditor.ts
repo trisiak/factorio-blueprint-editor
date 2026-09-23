@@ -3,6 +3,7 @@ import G from '../../common/globals'
 import { Entity } from '../../core/Entity'
 import { ISignal, LogisticFilter } from '../../types'
 import FD from '../../core/factorioData'
+import { qualitySpec } from '../../core/itemFilters'
 import { Slot } from '../controls/Slot'
 import { NumericField } from '../controls/NumericField'
 import { bindSlotGestures } from '../controls/gestures'
@@ -95,8 +96,7 @@ export class ConstantCombinatorEditor extends Editor {
             index: i + 1,
             name: signal.name,
             type,
-            quality: 'normal',
-            comparator: '=',
+            ...qualitySpec(this.m_filters[i]),
             count: this.m_filters[i]?.count ?? 1,
         }
         this.commit()

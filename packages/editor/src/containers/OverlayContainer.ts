@@ -104,12 +104,15 @@ export class OverlayContainer extends Container {
             // unscaled — without the guard, setting any recipe on those
             // machines threw here, breaking their info panel and editor (#35).
             const spec = entity.entityData.icon_draw_specification ?? {}
-            const shift = spec.shift || [0, 0]
+            // Vector, so both spellings are possible — see the module-icon
+            // block below for the object form a mod dumps and what indexing it
+            // as an array costs.
+            const shift = util.Point(spec.shift || [0, 0])
             const scale = spec.scale || 1
             const recipeInfo = new Container()
             createIconWithBackground(recipeInfo, entity.recipe)
             recipeInfo.scale.set(scale)
-            recipeInfo.position.set(shift[0] * 32, shift[1] * 32)
+            recipeInfo.position.set(shift.x * 32, shift.y * 32)
             entityInfo.addChild(recipeInfo)
         }
 
@@ -206,21 +209,43 @@ export class OverlayContainer extends Container {
                     ip => ip.inventory_index === getModuleInventoryIndex(e)
                 )
 
-                const shift = module_icon_positioning?.shift || [0, 0.7]
+                // `shift` is a Factorio Vector, and the two spellings of one are
+                // NOT interchangeable in the dump: base-game data writes the
+                // array form (`{0, 0.7}` → `[0, 0.7]`), a mod written as
+                // `{x = 0, y = -0.5}` dumps an object — which is exactly what
+                // every SE beacon does. Indexing that with [0]/[1] yielded
+                // `undefined * 32` = NaN for both axes, so the icon row was
+                // positioned at NaN and the GPU drew nothing: the module icons
+                // of SE's compact/wide beacons never appeared at all.
+                // `util.Point` is the normalizer both shapes already flow
+                // through elsewhere.
+                const shift = util.Point(module_icon_positioning?.shift || [0, 0.7])
                 const scale = module_icon_positioning?.scale || 0.5
                 const separation_multiplier = module_icon_positioning?.separation_multiplier || 1.1
+                // Factorio wraps the icon block at `max_icons_per_row` rather
+                // than growing one ever-wider row. That only starts to matter
+                // past vanilla's ≤4 slots: SE's beacons hold 10-20 modules, and
+                // a single row of 15 would stretch ~8 tiles across a 5-tile
+                // building. Absent (every vanilla/SA prototype) ⇒ one row, i.e.
+                // pixel-identical to before.
+                const perRow = module_icon_positioning?.max_icons_per_row || module_slots
+                const columns = Math.min(module_slots, perRow)
+                const rows = Math.ceil(module_slots / perRow)
                 for (let slot = 0; slot < module_slots; slot++) {
                     if (modules[slot]) {
                         createIconWithBackground(moduleInfo, modules[slot], {
-                            x: slot * 32 * separation_multiplier,
-                            y: 0,
+                            x: (slot % perRow) * 32 * separation_multiplier,
+                            y: Math.floor(slot / perRow) * 32 * separation_multiplier,
                         })
                     }
                 }
                 moduleInfo.scale.set(scale)
+                // Centre the block on the entity: half its width/height back off
+                // the shift (the 8 = 32 * 0.5 / 2 halves one icon at the 0.5
+                // scale the layout assumes). A single row leaves the y term 0.
                 moduleInfo.position.set(
-                    shift[0] * 32 - module_slots * 8 * separation_multiplier + 8,
-                    shift[1] * 32
+                    shift.x * 32 - columns * 8 * separation_multiplier + 8,
+                    shift.y * 32 - (rows - 1) * 8 * separation_multiplier
                 )
                 entityInfo.addChild(moduleInfo)
             }
@@ -526,22 +551,27 @@ export class OverlayContainer extends Container {
             )
 
             if (otherEntity) {
-                // Return if directionTypes are the same
+                // Return if directionTypes are the same. Misplaced parens used
+                // to make the wrap `direction + (8 % 16)` — i.e. a plain +8 — so
+                // a south/west end came out as 16/20 and could never match, and
+                // two same-type ends were drawn as if they paired up.
                 if (
                     fd.type === 'underground-belt' &&
                     (otherEntity.directionType === 'input'
                         ? otherEntity.direction
-                        : otherEntity.direction + (8 % 16)) === searchDirection
+                        : (otherEntity.direction + 8) % 16) === searchDirection
                 ) {
                     return
                 }
 
-                const searchingAlongY = searchDirection % 4 === 0
-                const distance = searchingAlongY
-                    ? Math.abs(otherEntity.position.y - position.y)
-                    : Math.abs(otherEntity.position.x - position.x)
-
-                const sign = searchDirection === 0 || searchDirection === 6 ? -1 : 1
+                // Step along the search axis the 16-way way — the old `% 4` /
+                // `=== 6` tests are 8-way leftovers that sent east and west
+                // marching south (see util.directionToVector).
+                const step = util.directionToVector(searchDirection)
+                const distance =
+                    step.x !== 0
+                        ? Math.abs(otherEntity.position.x - position.x)
+                        : Math.abs(otherEntity.position.y - position.y)
 
                 const lineParts = new Container()
                 lineParts.x = position.x * 32
@@ -561,15 +591,15 @@ export class OverlayContainer extends Container {
                         s.scale.set(data.scale)
                     }
                     s.anchor.set(0.5)
-                    s.x = searchingAlongY ? 0 : sign * i * 32
-                    s.y = searchingAlongY ? sign * i * 32 : 0
+                    s.x = step.x * i * 32
+                    s.y = step.y * i * 32
                     lineParts.addChild(s)
                 }
 
                 const otherEntityCursorBox = this.createCursorBox(
                     {
-                        x: searchingAlongY ? 0 : sign * distance * 32,
-                        y: searchingAlongY ? sign * distance * 32 : 0,
+                        x: step.x * distance * 32,
+                        y: step.y * distance * 32,
                     },
                     otherEntity.size,
                     'pair'

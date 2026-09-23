@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
+import { isDesktopProject } from './projects'
 import { dragOneFinger } from './touchGestures'
 
 /**
@@ -156,10 +157,7 @@ const boxOf = async (
 
 test.describe('SELECT cluster on a fine pointer (floating, anchored)', () => {
     test.beforeEach(() => {
-        test.skip(
-            test.info().project.name !== 'desktop-chromium',
-            'the fine-pointer placement is the desktop project'
-        )
+        test.skip(!isDesktopProject(), 'the fine-pointer placement is the desktop projects')
     })
 
     test('a held selection shows the toolbar anchored to it, clear of the selection', async ({
@@ -195,18 +193,21 @@ test.describe('SELECT cluster on a fine pointer (floating, anchored)', () => {
 
         const hint = (title: string): Locator =>
             clusterButton(page, 'select-actions', title).locator('.hint')
-        await expect(hint('Copy')).toHaveText('Ctrl+C')
-        await expect(hint('Cut')).toHaveText('Ctrl+X')
+        // The same pretty form the rail's badges use (`keyCombo.ts`), so a
+        // shortcut reads identically wherever it's shown.
+        await expect(hint('Copy')).toHaveText('⌃C')
+        await expect(hint('Cut')).toHaveText('⌃X')
         await expect(hint('Delete')).toHaveText('Del')
         await expect(hint('Rotate')).toHaveText('R')
         await expect(hint('Cancel')).toHaveText('Esc')
         // Visible, not just present: `body.keys` is what shows them.
         await expect(hint('Copy')).toBeVisible()
         // The nudge arrows say the same thing to a screen reader, without
-        // touching `title` (which the specs and the pack-icon pass locate by).
+        // touching `title` (which the specs and the pack-icon pass locate by) —
+        // in the registry's raw form, as the rail's buttons do.
         await expect(clusterButton(page, 'select-dpad', 'Up')).toHaveAttribute(
             'aria-keyshortcuts',
-            '↑'
+            'ArrowUp'
         )
     })
 

@@ -4,7 +4,11 @@ import { UIContainer } from '../UI/UIContainer'
 import { BlueprintContainer } from '../containers/BlueprintContainer'
 import { ActionRegistry } from '../actions'
 import { TextureTransforms, mapRectToFrame } from '../core/textureTransform'
-import { PackManifestEntry, canonicalPackId } from '../core/packManifest'
+import {
+    PackManifestEntry,
+    canonicalPackId,
+    packMayHaveTextureTransforms,
+} from '../core/packManifest'
 
 const debug = false
 
@@ -128,10 +132,23 @@ let textureTransforms: TextureTransforms | undefined
 /**
  * Fetch the active pack's `textures.json` sidecar, if it has one. A 404 (or any
  * failure) leaves the transforms undefined, i.e. identity: full packs and older
- * deploys are completely unaffected by variant support. Awaited alongside
- * `data.json` at editor init, so it's in place before the first `getTexture`.
+ * deploys are completely unaffected by variant support.
+ *
+ * The manifest decides whether to ask at all (#101 A13): only a graphics variant
+ * publishes the sidecar, so probing a full pack just logged a red 404 on every
+ * load. `loadPackManifest()` is the same cached fetch the settings pane and the
+ * library use and never rejects; with no manifest (or an unlisted pack) the
+ * probe happens as before. Awaited alongside `data.json` at editor init, so the
+ * transforms are in place before the first `getTexture`.
  */
 export function loadTextureTransforms(): Promise<void> {
+    return loadPackManifest().then(manifest => {
+        if (!packMayHaveTextureTransforms(manifest, DATA_PACK)) return
+        return fetchTextureTransforms()
+    })
+}
+
+function fetchTextureTransforms(): Promise<void> {
     return fetch(`${DATA_URL}/textures.json`)
         .then(res => (res.ok ? res.json() : undefined))
         .then((transforms?: TextureTransforms) => {
