@@ -19,6 +19,7 @@ import EDITOR, {
     getCanonicalDataPack,
     canonicalPacks,
     inputMode,
+    wheelGuard,
     isFirefox,
 } from '@fbe/editor'
 import type { PackManifestEntry } from '@fbe/editor'
@@ -792,6 +793,10 @@ function registerActions(): void {
     })
 
     const infoPanel = document.getElementById('info-panel')
+    // The keybinds panel scrolls; like every other DOM overlay it claims the
+    // wheel briefly so its inertial tail doesn't zoom the canvas underneath
+    // (#101 Slice 5 review, `wheelGuard`).
+    wheelGuard.watch(infoPanel)
     const toggleInfoPanel = (): void => {
         infoPanel.classList.toggle('active')
     }

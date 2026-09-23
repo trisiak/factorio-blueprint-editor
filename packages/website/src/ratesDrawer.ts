@@ -1,7 +1,6 @@
-import EDITOR, { formatRate } from '@fbe/editor'
+import EDITOR, { formatRate, wheelGuard } from '@fbe/editor'
 import type { RatesData, RatesEntryData } from '@fbe/editor'
 import { applyPackIcon } from './packIcons'
-import { readoutStack } from './readoutStack'
 
 // Production-rates drawer (#89 Phase 2): **the** presentation of the rates
 // readout (#87), for every input since #101 Slice 5 — the Pixi panel is
@@ -11,8 +10,12 @@ import { readoutStack } from './readoutStack'
 // that projection as DOM.
 //
 // Placement follows `compact` + orientation, never an input mode (CSS, see
-// index.styl): wide → the right-edge readout stack, below the entity-info
-// sheet, the same order the two canvas panels had; compact portrait →
+// index.styl): wide → **bottom-right**, above the quickbar's band and pinned
+// there. It was stacked under the entity-info sheet, which made it jump
+// whenever the sheet appeared or cleared — that happens on every hover, so
+// reaching for the drawer with the mouse meant chasing a moving target (#101
+// Slice 5 review). Being the deliberately-opened readout it takes the corner
+// the user can aim at; the passive sheet keeps the top. Compact portrait →
 // bottom-right, in the reachable band (it's an explicitly toggled overview the
 // user scrolls and dismisses, unlike the passive tap-select sheet at the top);
 // compact landscape → top-right, complementing the sheet at the bottom. Sheet
@@ -20,7 +23,12 @@ import { readoutStack } from './readoutStack'
 export function initRatesDrawer(): void {
     const drawer = document.createElement('div')
     drawer.id = 'rates-drawer'
-    readoutStack().appendChild(drawer)
+    document.body.appendChild(drawer)
+    // The drawer is the one readout users actually scroll, so it's the one that
+    // must not leak an inertial flick into the canvas' zoom (#101 Slice 5
+    // review). It claims the wheel for `WHEEL_OWNERSHIP_MS` on every wheel
+    // event; `BlueprintContainer` declines anything inside that window.
+    wheelGuard.watch(drawer)
 
     const iconSpan = (type: string, name: string, size = 20): HTMLElement => {
         const icon = document.createElement('span')

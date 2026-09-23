@@ -1,6 +1,6 @@
+import { wheelGuard } from '@fbe/editor'
 import type { EntityInfoData, EntityInfoRow, EntityInfoStack, EntityInfoToken } from '@fbe/editor'
 import { applyPackIcon } from './packIcons'
-import { readoutStack } from './readoutStack'
 
 // Entity-info sheet: **the** presentation of the entity-info readout (#89
 // Phase 2, universal since #101 Slice 5 — the Pixi panel that drew this on
@@ -11,8 +11,11 @@ import { readoutStack } from './readoutStack'
 //
 // Placement is decided by the `compact` signal and orientation, never by an
 // input mode (CSS does it, see index.styl):
-//   - wide: a top-right drawer in the shared readout stack, above the rates
-//     drawer — the same right-edge order the two canvas panels had;
+//   - wide: a fixed top-right drawer. It used to share a flex column with the
+//     rates drawer, which meant the drawer *moved* every time this sheet
+//     appeared or cleared — i.e. on every hover (#101 Slice 5 review). The two
+//     are independent boxes now: this one keeps the top-right corner, the
+//     rates drawer owns the bottom-right one;
 //   - compact portrait: a full-width band at the **top**. It appears on every
 //     tap-select, and the active, reachable area of a portrait phone is the
 //     bottom of the screen, so the passive readout stays out of it (and clear
@@ -23,7 +26,10 @@ import { readoutStack } from './readoutStack'
 export function initEntityInfoSheet(): void {
     const sheet = document.createElement('div')
     sheet.id = 'entity-info-sheet'
-    readoutStack().appendChild(sheet)
+    document.body.appendChild(sheet)
+    // Scrolling this sheet must not end up zooming the canvas once the pointer
+    // leaves it — see `wheelGuard` (the CSS half is `overscroll-behavior`).
+    wheelGuard.watch(sheet)
 
     /** An icon span for `iconId`, falling back to `label` when the pack has none. */
     const iconSpan = (className: string, iconId: string | undefined, label: string, size = 20) => {

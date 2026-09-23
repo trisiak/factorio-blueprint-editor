@@ -12,6 +12,7 @@ import EDITOR, {
     canonicalPackId,
     canonicalPacks,
     graphicsOptions,
+    wheelGuard,
 } from '@fbe/editor'
 import type { InputMode, InputPreset } from '@fbe/editor'
 import type { IToastsOptions } from './toasts'
@@ -92,6 +93,10 @@ export function initSettingsPane(
     )
 
     document.body.appendChild(gui.domElement)
+    // A scrolled settings pane owns the wheel for a moment after the pointer
+    // leaves it, so an inertial flick can't continue as a canvas zoom (#101
+    // Slice 5 review, `wheelGuard`).
+    wheelGuard.watch(gui.domElement)
 
     // dat.gui's own open/close bar is hidden (CSS); drive the pane from the
     // top-left Settings button instead.
