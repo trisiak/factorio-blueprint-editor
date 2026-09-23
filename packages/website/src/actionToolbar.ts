@@ -1,15 +1,30 @@
 import EDITOR, { Editor, EditorMode, inputMode } from '@fbe/editor'
+import { formatKeyCombo } from './keyCombo'
 
-// On-screen action rail: a DOM (not Pixi) mirror of the keyboard-only actions in
-// the editor's action registry, so touch users — who have no keyboard — can
-// rotate / flip / undo / open the inventory and, crucially, *exit paint mode*.
+// On-screen action rail: a DOM (not Pixi) mirror of the editor's action
+// registry — the one left column every layout gets (#101 Slice 4). It carries
+// the logo + corner buttons (Github / Settings / Library, folded in by CSS) and
+// below them the live actions: rotate / flip / undo / the inventory / the wire
+// toggles and, crucially on touch, an explicit way to *exit paint mode*.
 //
 // Layout is a left **gutter** (the "layout authority" for the left edge): the
 // rail claims a reserved left inset on the canvas (`editor.setViewportInsets`)
 // so the Pixi UI reflows out of it instead of being covered. It's *dynamic* —
 // as many priority-ordered buttons as fit the available height stay in the rail;
 // the rest collapse behind a ⋯ button that opens an overflow sheet over the
-// canvas. Shown only in the `mobile` input mode (desktop has the keyboard).
+// canvas.
+//
+// It is sized by the input *signals*, never by a device switch (#101 §2):
+//
+//   `coarse`  → 44 px touch cells with captions; otherwise a slim 34 px strip
+//   `keys`    → a keybind badge on every button whose action is in the registry,
+//               so a mouse+keyboard user learns the shortcut instead of being
+//               told to click (the rail is a discovery surface for them, not a
+//               replacement input)
+//   `compact` → the height that's left decides how much overflows behind the ⋯
+//
+// It used to be mobile-only, which left desktop with the old top-left clutter
+// and no on-screen mirror of the registry at all.
 //
 // Below the rail, **contextual** clusters appear in the freed bottom band, one
 // per mode: a PAINT d-pad (nudge + Place), SELECT controls (nudge a held
@@ -240,8 +255,13 @@ const EDIT_ACTIONS: ToolbarButton[] = [
     { action: 'editHovered', glyph: '✎', label: 'Edit', className: 'confirm' },
 ]
 
-const BTN = 44 // button square (px); flush, no gap — see index.styl
+// Cell square (px), flush with no gap — see index.styl. Touch needs a 44 px
+// target; a mouse doesn't, and a slim strip keeps the desktop gutter cheap.
+const COARSE_CELL = 44
+const FINE_CELL = 34
 const MARGIN = 2 // sliver between the rail and the canvas
+/** Widest the rail may grow, in cells — beyond this the ⋯ overflow takes over. */
+const MAX_COLUMNS = 3
 
 /** A cursor mode the user needs an explicit way out of (no keyboard on touch). */
 function isCancelableMode(mode: EditorMode): boolean {
@@ -306,7 +326,17 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
 
     const closeOverflow = (): void => overflow.classList.remove('open')
 
-    /** Build a button (glyph + optional label), wired to `run`. */
+    /**
+     * Build a button (glyph, caption, keybind badge), wired to `run`.
+     *
+     * `title` stays exactly the action's label in every layout — it is the
+     * stable handle the e2e suite locates buttons by, so the keybind rides
+     * along in `aria-keyshortcuts` (the raw registry combo, e.g.
+     * `Control+KeyZ`) and in a `.hint` badge (the pretty form, `⌃Z` — see
+     * `keyCombo.ts`). CSS shows the badge only while the rail carries
+     * `.with-hints`, i.e. only when a keyboard is present: a badge reading "R"
+     * is noise on a device that can't press R.
+     */
     const makeButton = (spec: ToolbarButton, withLabel: boolean): HTMLButtonElement => {
         const button = document.createElement('button')
         button.type = 'button'
@@ -329,7 +359,30 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
             label.textContent = spec.label
             button.appendChild(label)
         }
+        const hint = document.createElement('span')
+        hint.className = 'hint'
+        button.appendChild(hint)
         return button
+    }
+
+    /**
+     * Refresh the keybind badges from the registry. Read live rather than
+     * cached: keybinds are user-editable in the settings pane's Keybinds folder,
+     * and this runs on every layout pass (which a settings-driven reflow
+     * triggers anyway), so a rebind shows up without a reload. Buttons whose
+     * action isn't a registry action — the wire toggles, the marquee/selection
+     * handlers — simply have no combo and keep an empty badge.
+     */
+    const refreshHints = (targets: { spec: ToolbarButton; button: HTMLButtonElement }[]): void => {
+        const combos = new Map<string, string>()
+        EDITOR.forEachAction(action => combos.set(action.name, action.keyCombo))
+        for (const { spec, button } of targets) {
+            const combo = combos.get(spec.action)
+            const hint = button.querySelector('.hint')
+            if (hint) hint.textContent = combo ? formatKeyCombo(combo) : ''
+            if (combo) button.setAttribute('aria-keyshortcuts', combo)
+            else button.removeAttribute('aria-keyshortcuts')
+        }
     }
 
     // Rail buttons (rebuilt into primary/overflow by layout()). Closing the
@@ -402,15 +455,21 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
         if (overflow.classList.contains('open') && !rail.contains(e.target as Node)) closeOverflow()
     })
 
-    // Lay out the rail: pick a column count by orientation, split buttons into
-    // rail vs overflow, and reserve the matching left gutter on the canvas.
+    // Lay out the rail: size the cells from the signals, pick a column count,
+    // split buttons into rail vs overflow, and reserve the matching left gutter
+    // on the canvas. Runs for every layout since #101 Slice 4 — the rail is the
+    // one left column, not a touch-only affordance.
     const layout = (): void => {
-        const mobile = inputMode.mode === 'mobile'
-        rail.classList.toggle('visible', mobile)
-        if (!mobile) {
-            editor.setViewportInsets({ left: 0 })
-            return
-        }
+        const { coarse, keys, compact } = inputMode.signals
+        rail.classList.add('visible')
+        // 44 px touch cells with captions vs a slim icon strip. The cell size is
+        // published as a custom property on <html> because the folded corner
+        // buttons (#buttons, styled in index.styl) have to match the column
+        // width exactly — the rail and the chrome above it are one column.
+        const cell = coarse ? COARSE_CELL : FINE_CELL
+        document.documentElement.style.setProperty('--rail-cell', `${cell}px`)
+        rail.classList.toggle('slim', !coarse)
+        rail.classList.toggle('with-hints', keys)
 
         // Sit directly below the top-left logo + folded-in corner buttons.
         const stack = document.getElementById('buttons')
@@ -426,29 +485,44 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
                 (!b.spec.when || b.spec.when(editor))
         )
 
-        // Single-file in portrait — a second column cramps the Pixel-7-class
-        // width too much (feedback on the lattice round); 3 columns in
-        // landscape. The corner Github/Settings/Library block above is one
-        // 3-wide row either way (index.styl), so the vertical cost of the
-        // non-action chrome is a single row. As many priority buttons as fit
-        // the height stay in the rail; the rest collapse into the ⋯ overflow
-        // so nothing falls below the viewport. The ⋯ takes the last grid cell
-        // when present.
-        const columns = window.innerWidth > window.innerHeight ? 3 : 1
-        const rows = Math.max(1, Math.floor((window.innerHeight - top - MARGIN) / BTN))
-        const capacity = rows * columns
-
         // Parked buttons go straight to the overflow; the rest compete for
         // rail cells in priority order. Whenever *anything* overflows, the ⋯
-        // needs a grid cell of its own.
+        // needs a grid cell of its own. (Management actions stay parked in
+        // every layout: a keyboard reaches them by their own keybinds, so
+        // spending everyday rail cells on them would only make the column
+        // taller for both drivers.)
         const railCandidates = live.filter(b => !b.spec.parked)
         const parked = live.filter(b => b.spec.parked)
+
+        // How many rows fit under the chrome, and how wide the column has to be
+        // to hold the live buttons in them.
+        //
+        // A `compact` viewport is never worth a second column — width is the
+        // scarce axis there, and the ⋯ overflow is the pressure valve. Otherwise
+        // coarse keeps the touch rule the feedback rounds settled on: single-file
+        // in portrait (a second 44 px column cramps a Pixel-7-class width), 3
+        // wide in landscape, where height is scarce instead. On a fine pointer
+        // the strip is slim, so it starts single-file and only widens when the
+        // live buttons genuinely don't fit the height — the column stays a
+        // sliver on a roomy window and never eats desktop canvas for nothing.
+        // Whatever still doesn't fit collapses into the ⋯ overflow so nothing
+        // falls below the viewport; the ⋯ takes the last grid cell.
+        const rows = Math.max(1, Math.floor((window.innerHeight - top - MARGIN) / cell))
+        const columns = compact
+            ? 1
+            : coarse
+              ? window.innerWidth > window.innerHeight
+                  ? 3
+                  : 1
+              : Math.min(MAX_COLUMNS, Math.max(1, Math.ceil((railCandidates.length + 1) / rows)))
+        const capacity = rows * columns
+
         const overflowNeeded = parked.length > 0 || railCandidates.length > capacity
         const inRail = overflowNeeded
             ? Math.min(railCandidates.length, capacity - 1)
             : railCandidates.length
 
-        primary.style.gridTemplateColumns = `repeat(${columns}, ${BTN}px)`
+        primary.style.gridTemplateColumns = `repeat(${columns}, ${cell}px)`
         primary.replaceChildren(...railCandidates.slice(0, inRail).map(b => b.button))
         if (overflowNeeded) {
             primary.appendChild(moreBtn)
@@ -460,7 +534,9 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
             closeOverflow()
         }
 
-        const railWidth = columns * BTN + MARGIN
+        refreshHints(buttons)
+
+        const railWidth = columns * cell + MARGIN
         rail.style.top = `${top}px`
         rail.style.width = `${railWidth}px`
         overflow.style.left = `${railWidth}px`
@@ -485,7 +561,10 @@ export function initActionToolbar(editor: Editor, handlers: Record<string, () =>
     layout()
     updateContextual()
     window.addEventListener('resize', layout)
-    inputMode.on('change', layout)
+    // The rail re-lays out on any *signal* change now (`coarse` resizes the
+    // cells, `keys` adds the badges, `compact` changes what still fits), not
+    // just on the derived mode flip the contextual clusters still key off.
+    inputMode.on('signals', layout)
     inputMode.on('change', updateContextual)
     // The top-left stack's height changes (mobile collapses it to square icons,
     // icons load async); re-anchor when it actually resizes, like settingsPane.
