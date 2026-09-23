@@ -601,7 +601,7 @@ test.describe('quickbar slots', () => {
         await seedSlotZero(page)
 
         const at = await slotCentre(page)
-        if (isMobileProject()) {
+        if (isTouchProject()) {
             await longPressOneFinger(page, at)
         } else {
             await page.mouse.move(at.x, at.y)
@@ -614,7 +614,7 @@ test.describe('quickbar slots', () => {
     })
 
     test('right-click still unassigns a quickbar slot', async ({ page }) => {
-        test.skip(isMobileProject(), 'no right button on a touchscreen — long-press covers it')
+        test.skip(isTouchProject(), 'no right button on a touchscreen — long-press covers it')
 
         await page.goto(`/?test&source=${encodeURIComponent(BP)}`)
         await waitForAppReady(page)
