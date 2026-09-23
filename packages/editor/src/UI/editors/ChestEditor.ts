@@ -112,7 +112,8 @@ export class ChestEditor extends Editor {
             undefined,
             value => filters.updateFilter(this.m_Filter, value),
             'Request count',
-            80
+            80,
+            false // a request count is never negative
         )
         count.position.set(208, yOffset + 6)
         count.visible = false

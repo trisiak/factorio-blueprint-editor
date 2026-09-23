@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import * as fs from 'fs'
 import * as path from 'path'
+import { isChromiumProject, isDesktopProject } from './projects'
 
 /**
  * Guards that a blueprint's wires are actually visible — across the two paths
@@ -74,11 +75,19 @@ test('a wire-dense combinator blueprint renders all its wires', async ({ page })
  * paste had no circuit/copper connections at all — even though the same blueprint
  * loaded via `?source` (which keeps the source blueprint) wired up fine. The drop
  * is plain logic (not GPU-dependent), so it reproduces here on WebGL and this
- * guards it directly. Keyboard-driven, so desktop only (touch pastes via the
- * action rail, same `appendBlueprint` seam).
+ * guards it directly. Keyboard- and clipboard-driven, so desktop Chromium only
+ * (touch pastes via the action rail, same `appendBlueprint` seam; see the guard).
  */
 test('pasting a blueprint and placing it keeps its wires', async ({ page, context }) => {
-    test.skip(test.info().project.name !== 'desktop-chromium', 'keyboard paste is desktop-only')
+    // Desktop *and* Chromium: it's keyboard-driven (touch pastes via the action
+    // rail), and it round-trips through the async clipboard — `grantPermissions`
+    // for 'clipboard-read' and `navigator.clipboard.readText()` are Chromium-only,
+    // Firefox never exposes read access to a page. The two `?source` tests above
+    // carry the cross-browser wire-rendering coverage.
+    test.skip(
+        !isDesktopProject() || !isChromiumProject(),
+        'keyboard paste via the Chromium-only clipboard read API'
+    )
 
     await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => undefined)
     await page.goto('/?test')
