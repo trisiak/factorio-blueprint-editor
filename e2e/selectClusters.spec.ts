@@ -288,28 +288,36 @@ test.describe('SELECT cluster on a fine pointer (floating, anchored)', () => {
 
         // Pan with the keyboard (a mouse drag would land inside the selection
         // and move it instead — that is Slice 2's drag-to-move).
-        // WASD pans per rendered frame, so hold the key for a few *frames*
-        // rather than a fixed time: on a slow renderer (CI's software-GL
-        // Firefox) a 300 ms tap can fall between two frames and pan nothing,
-        // while holding until the toolbar moves overshoots — the selection
-        // leaves the screen and the toolbar clamps to the edge. Three frames is
-        // a bounded pan either way (the ticker caps a frame's step at 100 ms).
+        // WASD pans per rendered frame, scaled by the frame's real length, so a
+        // fixed-time tap is unreliable on a slow renderer (CI's software-GL
+        // Firefox): it can fall between two frames and pan nothing, or ride one
+        // multi-second frame and fling the selection clean off screen. Hold for
+        // a few frames — at least one tick is guaranteed — and let the
+        // assertion below cope with however far that went.
         await page.keyboard.down('KeyD')
         await page.evaluate(async () => {
             for (let i = 0; i < 3; i++) await new Promise(r => requestAnimationFrame(r))
         })
         await page.keyboard.up('KeyD')
         await expect.poll(async () => (await boxOf(float(page))).x).not.toBe(before.x)
-        // ...and it is still glued to the selection's box once the camera stops.
-        // Polled: the toolbar re-anchors on the next animation frame, so a read
-        // taken mid-pan can trail the selection by a frame's worth of scroll.
-        const gap = async (): Promise<number> =>
-            Math.abs((await boxOf(float(page))).x - (await selectionBounds(page)).x)
+        // ...and it is still glued to the selection's box once the camera stops,
+        // i.e. at the selection's left edge — clamped to the viewport's 8 px
+        // margin when the pan pushed the selection partly off screen, the same
+        // rule `positionSelectFloat` applies. Polled: the toolbar re-anchors on
+        // the next animation frame, so a read taken mid-pan can trail by one.
+        const viewportWidth = page.viewportSize()!.width
+        const gap = async (): Promise<number> => {
+            const f = await boxOf(float(page))
+            const sel = await selectionBounds(page)
+            const anchorX = Math.min(Math.max(sel.x, 8), Math.max(8, viewportWidth - 8 - f.width))
+            return Math.abs(f.x - anchorX)
+        }
         await expect.poll(gap).toBeLessThanOrEqual(16)
 
         // Zoom too, with the pointer over open canvas rather than over the
-        // toolbar (the wheel handler is on the canvas). Zooming *out* keeps the
-        // whole selection on screen, so the anchor isn't clamped to an edge.
+        // toolbar (the wheel handler is on the canvas). Zooming *out* pulls the
+        // selection back toward the screen; `gap` applies the same clamp rule
+        // in case the pan above left part of it off screen.
         const zoomedFrom = await selectionBounds(page)
         await page.mouse.move(700, 140)
         await page.mouse.wheel(0, 120)
