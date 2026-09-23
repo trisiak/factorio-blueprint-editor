@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import type { EditorTestState } from '@fbe/editor'
+import { isTouchProject } from './projects'
 
 /**
  * UI coverage for the mobile-layout work:
@@ -11,8 +12,6 @@ import type { EditorTestState } from '@fbe/editor'
  * loading with `?test` installs window.__FBE_TEST__, which exposes its logical
  * bounds/scale (see packages/editor/src/common/testHook.ts).
  */
-
-const isMobileProject = (): boolean => test.info().project.name === 'mobile-chromium'
 
 /** Read the opt-in canvas-state probe (only present when the page is loaded with `?test`). */
 async function readTestState(page: Page): Promise<EditorTestState> {
@@ -98,7 +97,7 @@ test.describe('settings pane (dat.gui)', () => {
     })
 
     test('collapses fully when closed in mobile mode', async ({ page }) => {
-        test.skip(!isMobileProject(), 'mobile-only: pane starts closed and uses touch rows')
+        test.skip(!isTouchProject(), 'mobile-only: pane starts closed and uses touch rows')
 
         await page.goto('/')
         await waitForAppReady(page)
@@ -119,7 +118,7 @@ test.describe('settings pane (dat.gui)', () => {
     })
 
     test('hides the keyboard-only Keybinds folder in mobile mode', async ({ page }) => {
-        test.skip(!isMobileProject(), 'mobile-only')
+        test.skip(!isTouchProject(), 'mobile-only')
 
         await page.goto('/')
         await waitForAppReady(page)
@@ -135,7 +134,7 @@ test.describe('settings pane (dat.gui)', () => {
     })
 
     test('keeps folders collapsed until tapped in mobile mode', async ({ page }) => {
-        test.skip(!isMobileProject(), 'mobile-only')
+        test.skip(!isTouchProject(), 'mobile-only')
 
         await page.goto('/')
         await waitForAppReady(page)
@@ -154,7 +153,7 @@ test.describe('settings pane (dat.gui)', () => {
     })
 
     test('keeps the Keybinds folder on desktop', async ({ page }) => {
-        test.skip(isMobileProject(), 'desktop-only')
+        test.skip(isTouchProject(), 'desktop-only')
 
         await page.goto('/')
         await waitForAppReady(page)
@@ -173,7 +172,7 @@ test.describe('quickbar', () => {
         const state = await readTestState(page)
         const viewport = page.viewportSize()!
 
-        if (isMobileProject()) {
+        if (isTouchProject()) {
             // Retired on mobile — touch users build via the action rail's Items
             // (Recents) + Pick instead of a fixed bottom bar.
             expect(state.quickbar.visible).toBe(false)
@@ -302,12 +301,14 @@ const ASSEMBLER_BP =
     '0eJyd0tuKgzAQgOF3mWuFrYdu66sspcQ42x2IE0nGUhHffUcLpdDj7o2QxHx/Ahmhdj12gVigGoEEW6iu5hJwpkanc84Mvpc0Gm5qf9KFI4ZInqEq19m22G7LvMhW+SpLgKznCNXXCJEObNwsy9ChKksgATbtPDIxYls74kPaGvtDjGkOkwLc4Amq1bRLAFlICM/eMhj23Lc1Bv3huZRA56Nung85goIfCQz61UJAS8uBuuAtxjhv7JlE6zeV7I+V8raCDq0Ez2RTS8H290P5v65TXodMczRssXmWKS6ZbxMlJY4YRBceXGT2G9LCeaW4I5YX8TGWL1j+GltfMAmGY+eDpPoE5RG5eU1+vk0W75Kbt8nyPrmbpl8tsiv1'
 
 test.describe('modal layering (#89)', () => {
-    test('Pixi dialogs eclipse the DOM readouts; both restore on close', async ({ page }) => {
+    test('dialogs eclipse the DOM readouts; both restore on close', async ({ page }) => {
         // Runs on every project since #101 Slice 5: the readouts are DOM for
         // all inputs, so the cross-technology stacking problem this contract
         // solves (DOM always composites above the canvas, so a Pixi dialog
         // can't paint over a readout — the readouts have to yield) is no
-        // longer a touch-only concern.
+        // longer a touch-only concern. On mobile the machine's editor is the
+        // DOM one since #98 Slice 2 — the ratchet holds either way: the dialog
+        // layer gates the readouts on Pixi and DOM dialogs alike.
         await page.goto(`/?test&source=${encodeURIComponent(ASSEMBLER_BP)}`)
         await waitForAppReady(page)
         await expect

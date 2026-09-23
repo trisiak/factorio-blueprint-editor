@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { PackManifestEntry, canonicalPackId, canonicalPacks, graphicsOptions } from './packManifest'
+import {
+    PackManifestEntry,
+    canonicalPackId,
+    canonicalPacks,
+    graphicsOptions,
+    packMayHaveTextureTransforms,
+} from './packManifest'
 
 /**
  * Graphics variants (docs/slim-graphics.md): a slim pack is the same game data as
@@ -74,5 +80,24 @@ describe('graphicsOptions', () => {
         const orphan: PackManifestEntry[] = [{ id: 'x-slim', variantOf: 'x', graphics: 'slim' }]
         expect(graphicsOptions(orphan, 'x')).toEqual([{ id: 'x-slim', label: 'Low quality' }])
         expect(graphicsOptions(MANIFEST, 'some-modpack')).toEqual([])
+    })
+})
+
+describe('packMayHaveTextureTransforms', () => {
+    it('is false for a full pack — nothing to fetch, so no console 404 (#101 A13)', () => {
+        expect(packMayHaveTextureTransforms(MANIFEST, 'vanilla-2.0')).toBe(false)
+        expect(packMayHaveTextureTransforms(MANIFEST, 'space-age')).toBe(false)
+    })
+
+    it('is true for a graphics variant, which is the only kind that ships one', () => {
+        expect(packMayHaveTextureTransforms(MANIFEST, 'vanilla-2.0-slim')).toBe(true)
+        expect(packMayHaveTextureTransforms(MANIFEST, 'space-age-slim')).toBe(true)
+    })
+
+    it('falls back to probing when the manifest cannot decide', () => {
+        // Unlisted pack (e.g. a local exporter dump) and no manifest at all:
+        // keep the pre-gate behaviour rather than silently dropping transforms.
+        expect(packMayHaveTextureTransforms(MANIFEST, 'some-modpack')).toBe(true)
+        expect(packMayHaveTextureTransforms([], 'vanilla-2.0')).toBe(true)
     })
 })

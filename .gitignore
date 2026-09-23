@@ -16,3 +16,6 @@ packages/exporter/target
 /playwright-report
 /playwright/.cache
 /blob-report
+
+# Claude Code subagent worktrees (isolated checkouts, auto-cleaned)
+.claude/worktrees/

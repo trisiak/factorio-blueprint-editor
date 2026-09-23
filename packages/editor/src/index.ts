@@ -12,6 +12,7 @@ import {
 import { Editor } from './Editor'
 import { inputMode, InputMode, InputPreset, InputSignals } from './common/input'
 import { installTestHook } from './common/testHook'
+import { isFirefox } from './common/browser'
 import type { EditorTestState, FbeTestHook } from './common/testHook'
 import FD from './core/factorioData'
 import {
@@ -27,6 +28,9 @@ import type { PackManifestEntry } from './core/packManifest'
 
 export * from './core/bpString'
 export { Editor, Book, Blueprint, GridPattern, EditorMode, FD, inputMode, installTestHook }
+// Browser sniffing for the couple of input quirks with no feature to detect —
+// the website uses it to explain Firefox's Shift+right-click limitation (#101).
+export { isFirefox }
 export { DATA_ROOT, DATA_PACK, DEFAULT_DATA_PACK, setDataPack }
 export { loadPackManifest, getCanonicalDataPack, canonicalPackId, canonicalPacks }
 export { graphicsOptions }
@@ -52,6 +56,20 @@ export type {
 // formatted by the model that computes them, not by the renderer.
 export type { RatesData, RatesEntryData } from './UI/ratesModel'
 export { formatRate } from './UI/ratesModel'
+// The render-free item-catalog projection + recents store behind the website's
+// DOM item selector (#98 Slice 1; opened at runtime via `fbe:openinventory`).
+export {
+    buildItemCatalog,
+    isItemAllowed,
+    itemDisplayName,
+    itemMatchesQuery,
+} from './core/itemCatalog'
+export type { CatalogGroup } from './core/itemCatalog'
+export { getRecents, recordRecent } from './UI/recentItems'
+// The DOM entity editor (#98 Slice 2) receives the live Entity over the
+// `fbe:openentityeditor` event (same JS runtime — no serialization) and works
+// it through the same accessors/setters the Pixi editors use.
+export type { Entity } from './core/Entity'
 export default {
     registerAction,
     callAction,
