@@ -139,7 +139,7 @@ const BUTTONS: ToolbarButton[] = [
         glyph: '✕',
         label: 'Cancel',
         className: 'cancel',
-        modes: [EM.PAINT, EM.COPY, EM.DELETE, EM.SELECT],
+        modes: [EM.PAINT, EM.SELECT],
     },
     // (The three wire toggles used to sit here, as the touch stand-in for the
     // Pixi wires panel. Both are gone: since #101 Slice 5 they are pinned cells
@@ -244,12 +244,7 @@ const MAX_COLUMNS = 3
 
 /** A cursor mode the user needs an explicit way out of (no keyboard on touch). */
 function isCancelableMode(mode: EditorMode): boolean {
-    return (
-        mode === EditorMode.PAINT ||
-        mode === EditorMode.COPY ||
-        mode === EditorMode.DELETE ||
-        mode === EditorMode.SELECT
-    )
+    return mode === EditorMode.PAINT || mode === EditorMode.SELECT
 }
 
 /**

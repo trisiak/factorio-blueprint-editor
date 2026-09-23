@@ -67,11 +67,11 @@ const LONG_PRESS_MS = 500
  * Editor modes whose on-screen cluster takes the bottom-centre band. EDIT only
  * counts when the last pointer was a touch: with a mouse, EDIT is a transient
  * hover state with no bar, and blinking the quickbar on every hover would be
- * absurd.
+ * absurd. (The old commit-on-release COPY / DELETE drags used to be listed
+ * here too; #101 Slice 2 folded both into the held SELECT mode.)
  */
 function bandIsTaken(mode: EditorMode): boolean {
     if (mode === EditorMode.PAINT || mode === EditorMode.SELECT) return true
-    if (mode === EditorMode.COPY || mode === EditorMode.DELETE) return true
     return mode === EditorMode.EDIT && inputMode.touchRecent
 }
 

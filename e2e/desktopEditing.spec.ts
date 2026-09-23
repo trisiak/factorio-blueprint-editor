@@ -109,7 +109,7 @@ const BOX_TO = { x: 1120, y: 600 }
 // with the originals.
 const AWAY = { x: 1000, y: 300 }
 
-/** Ctrl+drag with `button` — the copy (left) / delete (right) selection pair. */
+/** Ctrl+drag with `button` — the held selection (left) / delete (right) pair. */
 async function ctrlDrag(page: Page, button: 'left' | 'right'): Promise<void> {
     await page.keyboard.down('Control')
     await page.mouse.move(BOX_FROM.x, BOX_FROM.y)
@@ -151,13 +151,15 @@ test.describe('desktop editing', () => {
         await expect.poll(async () => (await getState(page)).infoPanelVisible).toBe(false)
     })
 
-    test('Ctrl+LMB drag holds a blueprint ghost that follows the mouse and nudges', async ({
+    test('Ctrl+LMB drag then Ctrl+C holds a blueprint ghost that follows the mouse and nudges', async ({
         page,
     }) => {
         await gotoWithBlueprint(page)
         await ctrlDrag(page, 'left')
 
-        // Releasing the copy drag hands the covered entities back as a ghost.
+        // The drag *holds* a selection (Slice 2, see desktopSelection.spec.ts);
+        // Ctrl+C picks it up as a ghost.
+        await page.keyboard.press('Control+KeyC')
         await expect.poll(async () => (await getState(page)).paint.kind).toBe('blueprint')
         expect((await getState(page)).paint.visible).toBe(true)
 
@@ -182,6 +184,7 @@ test.describe('desktop editing', () => {
     }) => {
         const original = await gotoWithBlueprint(page)
         await ctrlDrag(page, 'left')
+        await page.keyboard.press('Control+KeyC')
         await expect.poll(async () => (await getState(page)).paint.kind).toBe('blueprint')
 
         // Clear of the originals, so nothing is dropped for colliding: all 8 land.
