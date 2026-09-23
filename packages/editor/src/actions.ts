@@ -211,10 +211,66 @@ export class ActionRegistry {
     }
 
     public pressButton(e: PointerEvent): void {
+        this.syncModifiers(e)
         this.press(e)
     }
     public releaseButton(e: PointerEvent): void {
+        this.syncModifiers(e)
         this.release(e)
+    }
+
+    /**
+     * Re-sync the tracked modifier state from a pointer event's own
+     * `ctrlKey/shiftKey/altKey` before matching it.
+     *
+     * The registry learns about modifiers from key events, so anything that eats
+     * a keyup — or forces a `releaseAll()` — desyncs it from what the user is
+     * physically holding. The concrete case (#101) is Firefox's Shift+right-click:
+     * it opens the native context menu without dispatching `contextmenu` to the
+     * page, the menu steals focus, `window`'s `blur` calls `releaseAll()` (which
+     * clears `shift`), and because Shift is *still held* no fresh `keydown` ever
+     * re-arms it — so the next Shift+click matched `pan` instead of
+     * `pasteEntitySettings` until Shift was released and re-pressed. Every mouse
+     * event carries the authoritative modifier state, so trusting it here closes
+     * that hole for good, whatever swallowed the key event.
+     *
+     * Modifier *callbacks* are driven through the same `pressMod`/`releaseMod`
+     * paths the keyboard uses, so a modifier that flips here also shows/hides its
+     * affordance (e.g. `pasteEntitySettings`' copy cursor box).
+     */
+    private syncModifiers(e: PointerEvent): void {
+        // Synthetic/exotic events may not carry the modifier flags at all; a
+        // missing flag must not be read as "released".
+        if (
+            typeof e.ctrlKey !== 'boolean' ||
+            typeof e.shiftKey !== 'boolean' ||
+            typeof e.altKey !== 'boolean'
+        ) {
+            return
+        }
+
+        const next: [ModifierKey, keyof Modifiers, boolean][] = [
+            ['Control', 'control', e.ctrlKey],
+            ['Shift', 'shift', e.shiftKey],
+            ['Alt', 'alt', e.altKey],
+        ]
+
+        // Releases first, then presses — so an action's `hasModifiers` check
+        // during a press never sees a modifier the user already let go of.
+        for (const [key, prop, held] of next) {
+            if (held || !this.modifiers[prop]) continue
+            for (const action of this.sortedActions) {
+                action.releaseMod(key)
+            }
+            this.setModifiers(key, false)
+        }
+        for (const [key, prop, held] of next) {
+            if (!held || this.modifiers[prop]) continue
+            this.setModifiers(key, true)
+            for (const action of this.sortedActions) {
+                if (action.pressMod(this.modifiers, key)) break
+            }
+        }
     }
 
     public pressKey(e: KeyboardEvent): void {
@@ -241,7 +297,12 @@ export class ActionRegistry {
     private press(e: TriggerEvent): void {
         for (const action of this.sortedActions) {
             if (action.press(this.modifiers, e)) {
-                if (e instanceof KeyboardEvent) {
+                // Only key presses are swallowed (so e.g. `Ctrl+S` doesn't reach
+                // the browser); mouse presses fall through untouched. Sniffed by
+                // shape rather than `instanceof KeyboardEvent`, matching
+                // `triggerMatches` — the registry is framework-free and gets
+                // unit-tested with plain objects in a DOM-less environment.
+                if (!('button' in e)) {
                     e.preventDefault()
                 }
                 return

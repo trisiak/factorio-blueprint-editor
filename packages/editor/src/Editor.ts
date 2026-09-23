@@ -21,6 +21,7 @@ import { UIContainer } from './UI/UIContainer'
 import { Dialog } from './UI/controls/Dialog'
 import { NumericKeypad } from './UI/NumericKeypad'
 import { ActionRegistry, MouseButton } from './actions'
+import { isFirefox } from './common/browser'
 
 export class Editor {
     // Stable mode emitter. The BlueprintContainer is swapped out on every
@@ -182,6 +183,29 @@ export class Editor {
         } else {
             G.BPC.spawnPaintContainer(itemName)
         }
+    }
+
+    /**
+     * Put `itemName` on the cursor unconditionally — the item selector's commit
+     * (#98): re-picking the held item keeps painting it, unlike the rail wire
+     * buttons' toggle semantics above.
+     */
+    public spawnPaintItem(itemName: string): void {
+        G.BPC.spawnPaintContainer(itemName)
+    }
+
+    /**
+     * Names in use on the blueprint, per picker category (with repeats
+     * collapsed by the callers that want that) — backs the DOM pickers'
+     * Recents-tab "On blueprint" section, same source as the Pixi dialog's:
+     * entity names for the item picker, set recipes for the recipe picker,
+     * slotted modules for the module picker.
+     */
+    public blueprintUsedNames(kind: 'items' | 'recipes' | 'modules'): string[] {
+        const ents = G.bp.entities.valuesArray()
+        if (kind === 'recipes') return ents.map(e => e.recipe).filter((r): r is string => !!r)
+        if (kind === 'modules') return ents.flatMap(e => e.modules).filter((m): m is string => !!m)
+        return ents.map(e => e.name)
     }
 
     // --- Touch marquee (#21) — thin delegators for the website's Select button
@@ -398,13 +422,22 @@ export class Editor {
                 },
             },
             // EDIT
+            //
+            // Firefox can't have the game's `Shift+RMB`: it always opens its own
+            // context menu on Shift+right-click and doesn't dispatch the event to
+            // the page, so the site-wide `contextmenu` preventDefault can't stop
+            // it (see `common/browser.ts` / #101). We therefore *default* it to
+            // `Ctrl+Shift+LMB` there. That's safe next to the other left-button
+            // actions: the registry matches most-modifiers-first, so this two-
+            // modifier action is tried before `copySelection` (`Ctrl+LMB`), and
+            // it only succeeds in EDIT mode — outside EDIT it reports failure and
+            // the press falls through to the copy-drag exactly as before.
+            // A user's own binding still wins: `importKeybinds` runs after this.
             copyEntitySettings: {
                 trigger: {
-                    button: MouseButton.Right,
+                    button: isFirefox() ? MouseButton.Left : MouseButton.Right,
                 },
-                modifiers: {
-                    shift: true,
-                },
+                modifiers: isFirefox() ? { control: true, shift: true } : { shift: true },
                 callbacks: {
                     onPress: () => G.BPC.copyEntitySettings(),
                 },
@@ -554,12 +587,10 @@ export class Editor {
                         if (Dialog.anyOpen()) {
                             Dialog.closeLast()
                         } else {
-                            G.UI.createInventory(
-                                'Inventory',
-                                undefined,
-                                G.BPC.spawnPaintContainer.bind(G.BPC),
-                                'items'
-                            )
+                            // Per-mode presentation (#98): Pixi dialog on
+                            // desktop, the website's DOM selector on mobile
+                            // (which toggles itself closed on a repeat press).
+                            G.UI.openMainInventory()
                         }
                         return true
                     },

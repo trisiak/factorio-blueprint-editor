@@ -414,7 +414,9 @@ export class BlueprintContainer extends Container {
                 }
 
                 Dialog.closeAll()
-                G.UI.createEditor(this.hoverContainer.entity)
+                // Per-mode presentation (#98): DOM editor on mobile for the
+                // migrated kinds, Pixi otherwise.
+                G.UI.openEntityEditor(this.hoverContainer.entity)
                 return true
             }
             return false
@@ -1239,8 +1241,10 @@ export class BlueprintContainer extends Container {
 
     /** Open the editor for the EDIT-mode entity, or close it if already open (toggle). */
     public editHovered(): void {
-        if (Dialog.anyOpen()) {
-            Dialog.closeAll()
+        // Either technology counts (#98): with a DOM editor open, a repeat
+        // Edit press must close it, not stack a duplicate over it.
+        if (Dialog.anyModalOpen()) {
+            Dialog.closeAllModals()
             return
         }
         if (this.mode === EditorMode.EDIT) this.openEditor()
