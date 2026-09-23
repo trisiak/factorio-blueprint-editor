@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
+import { isDesktopProject } from './projects'
 
 /**
  * Desktop (mouse + keyboard) editing ratchets — #101 Slice 0.
@@ -123,8 +124,8 @@ test.describe('desktop editing', () => {
 
     test.beforeEach(({ page }) => {
         test.skip(
-            test.info().project.name !== 'desktop-chromium',
-            'the mouse + keyboard pipeline runs on the desktop project only'
+            !isDesktopProject(),
+            'the mouse + keyboard pipeline runs on the desktop projects only'
         )
         pageErrors.length = 0
         page.on('pageerror', error => pageErrors.push(String(error)))
