@@ -53,6 +53,11 @@ export async function loadPackIcons(): Promise<void> {
     for (const el of document.querySelectorAll<HTMLElement>('[data-pack-icon]')) {
         applyPackIcon(el, el.dataset.packIcon)
     }
+    // Chrome that *re-renders* (the quickbar redraws its slots on every model
+    // change) can't rely on the one-shot sweep above: it marks elements that
+    // don't exist yet. Announcing the load lets such views re-apply their icons
+    // once, instead of polling for the manifest.
+    window.dispatchEvent(new Event('fbe:packicons'))
 }
 
 /**

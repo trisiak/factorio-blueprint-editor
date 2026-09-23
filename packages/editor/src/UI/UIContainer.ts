@@ -3,7 +3,7 @@ import { Entity } from '../core/Entity'
 import G from '../common/globals'
 import { inputMode } from '../common/input'
 import { DebugContainer } from './DebugContainer'
-import { QuickbarPanel } from './QuickbarPanel'
+import { QuickbarModel } from './quickbarModel'
 import { buildEntityInfo } from './entityInfo'
 import { InventoryDialog, SlotClear } from './InventoryDialog'
 import { SignalPicker, SignalChoice } from './SignalPicker'
@@ -14,7 +14,13 @@ import { createEditor, editorKindFor, EditorKind } from './editors/factory'
 
 export class UIContainer extends Container {
     private debugContainer: DebugContainer
-    public quickbarPanel: QuickbarPanel
+    /**
+     * The quickbar's slots. Like the rates readout below, a render-free model
+     * (#101 Slice 5): the website draws one DOM quickbar for every input, and
+     * the editor keeps the slot state, the activation rules and the number-key
+     * binding — see `quickbarModel.ts`.
+     */
+    public readonly quickbar: QuickbarModel
     /**
      * The rates readout's state holder. Not a display object any more (#101
      * Slice 5): both status readouts present as DOM now, so what the editor
@@ -29,17 +35,12 @@ export class UIContainer extends Container {
         super()
 
         this.debugContainer = new DebugContainer()
-        this.quickbarPanel = new QuickbarPanel(2)
+        this.quickbar = new QuickbarModel(2)
         this.ratesModel = new RatesModel()
         this.dialogsContainer = new Container()
         this.paintIconContainer = new Container()
 
-        this.addChild(
-            this.debugContainer,
-            this.quickbarPanel,
-            this.dialogsContainer,
-            this.paintIconContainer
-        )
+        this.addChild(this.debugContainer, this.dialogsContainer, this.paintIconContainer)
     }
 
     /**
@@ -180,13 +181,4 @@ export class UIContainer extends Container {
         this.dialogsContainer.addChild(pad)
         return pad
     }
-
-    // public changeQuickbarRows(rows: number): void {
-    //     const itemNames = this.quickbarPanel.serialize()
-    //     this.quickbarPanel.destroy()
-    //     this.quickbarPanel = new QuickbarContainer(rows, itemNames)
-
-    //     const index = this.getChildIndex(this.quickbarPanel)
-    //     this.addChildAt(this.quickbarPanel, index)
-    // }
 }
